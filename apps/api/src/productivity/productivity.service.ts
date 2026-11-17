@@ -88,7 +88,7 @@ export class ProductivityService {
   }
 
   async createProject(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    const userId = await this.requireMembership(identity, workspaceId);
+    const userId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const name = textField(body.name, 'Project name', 160);
     const description = optionalText(body.description, 'Project description', 5000);
@@ -103,7 +103,7 @@ export class ProductivityService {
   }
 
   async updateProject(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const data: { name?: string; description?: string | null; status?: ProjectStatus; dueAt?: Date | null; budgetTotalCents?: number | null; budgetSpentCents?: number } = {};
     if ('name' in body) data.name = textField(body.name, 'Project name', 160);
@@ -135,7 +135,7 @@ export class ProductivityService {
   }
 
   async createProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
     if (!project) throw new NotFoundException('Project not found in this workspace.');
     const body = objectInput(input);
@@ -147,7 +147,7 @@ export class ProductivityService {
   }
 
   async updateProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, milestoneId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const data: { title?: string; dueAt?: Date | null; completedAt?: Date | null } = {};
     if ('title' in body) data.title = textField(body.title, 'Milestone title', 160);
@@ -181,7 +181,7 @@ export class ProductivityService {
   }
 
   async createTask(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    const userId = await this.requireMembership(identity, workspaceId);
+    const userId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const projectId = optionalUuid(body.projectId, 'Project');
     const assigneeId = optionalUuid(body.assigneeId, 'Assignee');
@@ -215,7 +215,7 @@ export class ProductivityService {
   }
 
   async updateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const data: {
       title?: string;
@@ -264,7 +264,7 @@ export class ProductivityService {
   }
 
   async setTaskDependencies(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     if (!Array.isArray(body.dependsOnTaskIds) || body.dependsOnTaskIds.length > 100) {
       throw new BadRequestException('dependsOnTaskIds must be an array of up to 100 task IDs.');
@@ -312,7 +312,7 @@ export class ProductivityService {
   }
 
   async createDocument(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const projectId = optionalUuid(body.projectId, 'Project');
     if (projectId) {
@@ -333,7 +333,7 @@ export class ProductivityService {
   }
 
   async updateDocument(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const data: { title?: string; content?: string } = {};
     if ('title' in body) data.title = textField(body.title, 'Document title', 200);
@@ -372,7 +372,7 @@ export class ProductivityService {
   }
 
   async createDocumentVersion(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const label = optionalText(body.label, 'Version label', 120);
     const document = await this.requireDocument(workspaceId, documentId);
@@ -385,7 +385,7 @@ export class ProductivityService {
   }
 
   async restoreDocumentVersion(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, versionId: string) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const [document, version] = await Promise.all([
       this.requireDocument(workspaceId, documentId),
       this.prisma.documentVersion.findFirst({ where: { id: versionId, workspaceId, documentId } }),
@@ -409,7 +409,7 @@ export class ProductivityService {
   }
 
   async createDocumentComment(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const message = textField(body.body, 'Comment', 2000);
     const document = await this.requireDocument(workspaceId, documentId);
@@ -419,7 +419,7 @@ export class ProductivityService {
   }
 
   async resolveDocumentComment(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, commentId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     if (typeof body.resolved !== 'boolean') throw new BadRequestException('resolved must be a boolean.');
     const result = await this.prisma.documentComment.updateMany({
@@ -480,7 +480,7 @@ export class ProductivityService {
   }
 
   async createCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const taskId = optionalUuid(body.taskId, 'Task');
     const projectId = optionalUuid(body.projectId, 'Project');
@@ -522,7 +522,7 @@ export class ProductivityService {
   }
 
   async updateCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, eventId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const existing = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true, startsAt: true, endsAt: true, recurrence: true, recurrenceInterval: true, recurrenceUntil: true, recurrenceTimeZone: true } });
     if (!existing) throw new NotFoundException('Calendar event not found in this workspace.');
@@ -563,7 +563,7 @@ export class ProductivityService {
   }
 
   async deleteCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, eventId: string) {
-    const actorId = await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId, true);
     const event = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true, recurrence: true } });
     if (!event) throw new NotFoundException('Calendar event not found in this workspace.');
     await this.prisma.$transaction([
@@ -577,7 +577,7 @@ export class ProductivityService {
     return this.prisma.workspaceActivity.create({ data: { workspaceId, actorId, entityType, entityId, message } });
   }
 
-  private async requireMembership(identity: AuthenticatedIdentity, workspaceId: string) {
+  private async requireMembership(identity: AuthenticatedIdentity, workspaceId: string, write = false) {
     const user = await this.prisma.user.findUnique({
       where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } },
       select: { id: true },
@@ -585,9 +585,10 @@ export class ProductivityService {
     if (!user) throw new ForbiddenException('Your AVEN account is not connected to a workspace yet.');
     const membership = await this.prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: user.id } },
-      select: { userId: true },
+      select: { userId: true, role: true },
     });
     if (!membership) throw new NotFoundException('Workspace not found.');
+    if (write && membership.role === 'GUEST') throw new ForbiddenException('Guest members have read-only access to this workspace.');
     return user.id;
   }
 }

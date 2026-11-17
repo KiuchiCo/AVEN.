@@ -480,6 +480,7 @@ body {
 .workspace-create-menu small { padding: 8px 7px 3px; border-top: 1px solid #ece6dd; color: #827a70; font-size: 10px; line-height: 1.5; }
 
 .workspace-content { width: min(100%, 1500px); margin: 0 auto; padding: clamp(24px, 4vw, 50px) clamp(20px, 3vw, 46px) 36px; }
+.workspace-readonly-banner { margin: 0 0 16px; padding: 11px 14px; border: 1px solid #e4d5c3; border-radius: 10px; background: #f5eee5; color: #66533f; font-size: 13px; }
 .workspace-dashboard { display: grid; gap: 22px; }
 .workspace-hero { position: relative; display: flex; min-height: 205px; align-items: center; overflow: hidden; padding: clamp(26px, 4vw, 42px); border: 1px solid #e7dfd4; border-radius: 18px; background: linear-gradient(100deg, #fcfaf6 0%, #f7f1e9 58%, #eee4d7 100%); }
 .workspace-hero__copy { position: relative; z-index: 1; max-width: 650px; }

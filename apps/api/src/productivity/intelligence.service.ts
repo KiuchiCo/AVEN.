@@ -75,9 +75,10 @@ export class IntelligenceService {
     });
     if (!user) throw new ForbiddenException('Your AVEN account is not connected to a workspace yet.');
     const membership = await this.prisma.workspaceMember.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId: user.id } }, select: { userId: true },
+      where: { workspaceId_userId: { workspaceId, userId: user.id } }, select: { userId: true, role: true },
     });
     if (!membership) throw new NotFoundException('Workspace not found.');
+    if (membership.role === 'GUEST') throw new ForbiddenException('Guest members have read-only access to this workspace.');
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A project plan is required.');
     const body = input as Record<string, unknown>;
     const name = requiredText(body.name, 'Project name', 160);

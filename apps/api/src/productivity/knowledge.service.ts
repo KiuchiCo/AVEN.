@@ -23,7 +23,7 @@ export class KnowledgeService {
   }
 
   async create(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    const userId = await this.requireMember(identity, workspaceId);
+    const userId = await this.requireMember(identity, workspaceId, true);
     const body = objectBody(input);
     const title = requiredText(body.title, 'Title', 200);
     const content = requiredText(body.content, 'Content', 20_000);
@@ -35,7 +35,7 @@ export class KnowledgeService {
   }
 
   async update(identity: AuthenticatedIdentity, workspaceId: string, itemId: string, input: unknown) {
-    const userId = await this.requireMember(identity, workspaceId);
+    const userId = await this.requireMember(identity, workspaceId, true);
     const body = objectBody(input);
     const data: { title?: string; content?: string; sourceUrl?: string | null; tags?: string[]; isPinned?: boolean } = {};
     if ('title' in body) data.title = requiredText(body.title, 'Title', 200);
@@ -55,7 +55,7 @@ export class KnowledgeService {
   }
 
   async archive(identity: AuthenticatedIdentity, workspaceId: string, itemId: string, archived: boolean) {
-    const userId = await this.requireMember(identity, workspaceId);
+    const userId = await this.requireMember(identity, workspaceId, true);
     const result = await this.prisma.knowledgeItem.updateMany({ where: { id: itemId, workspaceId }, data: { archivedAt: archived ? new Date() : null } });
     if (!result.count) throw new NotFoundException('Knowledge item not found in this workspace.');
     const item = await this.prisma.knowledgeItem.findFirstOrThrow({ where: { id: itemId, workspaceId }, select: { id: true, title: true } });
@@ -63,11 +63,12 @@ export class KnowledgeService {
     return { id: item.id, archived };
   }
 
-  private async requireMember(identity: AuthenticatedIdentity, workspaceId: string) {
+  private async requireMember(identity: AuthenticatedIdentity, workspaceId: string, write = false) {
     const user = await this.prisma.user.findUnique({ where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } }, select: { id: true } });
     if (!user) throw new ForbiddenException('Your AVEN account is not connected to a workspace yet.');
-    const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: user.id } }, select: { userId: true } });
+    const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: user.id } }, select: { userId: true, role: true } });
     if (!member) throw new NotFoundException('Workspace not found.');
+    if (write && member.role === 'GUEST') throw new ForbiddenException('Guest members have read-only access to this workspace.');
     return user.id;
   }
 

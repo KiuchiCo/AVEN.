@@ -108,6 +108,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
                 <NavIcon name="search" />
                 <span>Search your workspace</span><kbd>⌘ K</kbd>
               </Link>
+              {session.workspace.role !== 'GUEST' && <>
               <button
                 className="workspace-create-button"
                 onClick={() => setCreateOpen((open) => !open)}
@@ -126,10 +127,14 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
                   <small>More creation options will be added as each section is built.</small>
                 </div>
               )}
+              </>}
             </div>
           </header>
 
-          <main className="workspace-content">{children}</main>
+          <main className="workspace-content">
+            {session.workspace.role === 'GUEST' && <p className="workspace-readonly-banner" role="status">Guest access is read-only. You can browse workspace information, but editing is disabled.</p>}
+            {children}
+          </main>
         </div>
       </div>
     </WorkspaceContext.Provider>

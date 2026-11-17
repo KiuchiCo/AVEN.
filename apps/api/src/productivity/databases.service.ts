@@ -24,7 +24,7 @@ export class DatabasesService {
   }
 
   async create(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const name = textField(body.name, 'Database name', 160);
     const description = body.description == null || body.description === ''
@@ -34,7 +34,7 @@ export class DatabasesService {
   }
 
   async createRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    await this.requireMembership(identity, workspaceId, true);
     const database = await this.prisma.workspaceDatabase.findFirst({ where: { id: databaseId, workspaceId }, select: { id: true, properties: true } });
     if (!database) throw new NotFoundException('Database not found in this workspace.');
     const values = recordValues(database.properties, objectInput(input).values);
@@ -50,7 +50,7 @@ export class DatabasesService {
   }
 
   async importRecords(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     if (!Array.isArray(body.rows) || body.rows.length === 0 || body.rows.length > 500) {
       throw new BadRequestException('Import between 1 and 500 CSV rows at a time.');
@@ -77,7 +77,7 @@ export class DatabasesService {
   }
 
   async addProperty(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const name = textField(body.name, 'Property name', 80);
     const type = enumValue(body.type, ['text', 'number', 'checkbox', 'date', 'status', 'relation', 'formula'] as const);
@@ -108,7 +108,7 @@ export class DatabasesService {
   }
 
   async saveView(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const name = textField(body.name, 'View name', 80);
     const filterQuery = optionalText(body.filterQuery, 'Filter', 200) ?? '';
@@ -150,14 +150,14 @@ export class DatabasesService {
   }
 
   async deleteView(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, viewId: string) {
-    await this.requireMembership(identity, workspaceId);
+    await this.requireMembership(identity, workspaceId, true);
     const result = await this.prisma.databaseView.deleteMany({ where: { id: viewId, databaseId, workspaceId } });
     if (result.count !== 1) throw new NotFoundException('Saved view not found in this database.');
     return { deleted: true };
   }
 
   async updateRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, recordId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    await this.requireMembership(identity, workspaceId, true);
     const database = await this.prisma.workspaceDatabase.findFirst({
       where: { id: databaseId, workspaceId },
       select: { id: true, properties: true },
@@ -227,7 +227,7 @@ export class DatabasesService {
     return { ...base, values };
   }
 
-  private async requireMembership(identity: AuthenticatedIdentity, workspaceId: string) {
+  private async requireMembership(identity: AuthenticatedIdentity, workspaceId: string, write = false) {
     const user = await this.prisma.user.findUnique({
       where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } },
       select: { id: true },
@@ -235,9 +235,10 @@ export class DatabasesService {
     if (!user) throw new ForbiddenException('Your AVEN account is not connected to a workspace yet.');
     const membership = await this.prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: user.id } },
-      select: { userId: true },
+      select: { userId: true, role: true },
     });
     if (!membership) throw new NotFoundException('Workspace not found.');
+    if (write && membership.role === 'GUEST') throw new ForbiddenException('Guest members have read-only access to this workspace.');
   }
 }
 
