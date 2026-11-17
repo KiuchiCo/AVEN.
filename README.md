@@ -37,6 +37,7 @@ The current tooling milestone is documented in [Section 1.2 · Monorepo tooling]
 The local PostgreSQL and Prisma setup is documented in [Section 1.3 · Persistence](docs/sections/03-postgres-prisma.md).
 The identity provider recommendation is documented in [Section 1.4 · Identity decision](docs/sections/04-identity-decision.md).
 The first Clerk sign-in and personal workspace slice is in [Section 1.5 · Sign-in and personal workspace](docs/sections/05-auth-workspace.md).
+The authenticated product shell is documented in [Section 1.6 · Product shell](docs/sections/06-product-shell.md).
 
 ## Current state
 

@@ -1,68 +1,78 @@
-import { UserButton } from '@clerk/nextjs';
-import { auth } from '@clerk/nextjs/server';
+'use client';
+
 import Link from 'next/link';
-import { AuthSetupNotice } from '../auth-setup-notice';
+import { useWorkspaceSession } from './workspace-shell';
 
-interface SessionBootstrap {
-  user: { id: string; displayName: string; email: string };
-  workspace: { id: string; name: string; role: string | null };
-}
+const modules = [
+  { title: 'Projects', detail: 'Plan work and keep the next steps together.', href: '/workspace/projects', icon: '▱' },
+  { title: 'Tasks', detail: 'Capture actions and make progress visible.', href: '/workspace/tasks', icon: '☑' },
+  { title: 'Documents', detail: 'Keep notes and plans close to your work.', href: '/workspace/documents', icon: '▤' },
+  { title: 'Calendar', detail: 'Bring deadlines and events into one view.', href: '/workspace/calendar', icon: '▦' },
+];
 
-export const dynamic = 'force-dynamic';
-
-export default async function WorkspacePage() {
-  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-    return <AuthSetupNotice />;
-  }
-
-  const { getToken } = await auth();
-  const token = await getToken();
-  if (!token) return <AuthSetupNotice />;
-
-  let session: SessionBootstrap | null = null;
-  let setupError = false;
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/session/bootstrap`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store',
-    });
-    if (response.ok) session = (await response.json()) as SessionBootstrap;
-    else setupError = true;
-  } catch {
-    setupError = true;
-  }
-
-  if (!session) {
-    return (
-      <main className="workspace-state">
-        <Link className="auth-brand__wordmark" href="/" aria-label="AVEN home">AVEN<span>.</span></Link>
-        <h1>Your account is ready.</h1>
-        <p>{setupError ? 'AVEN could not reach the API or database. Check your local setup and try again.' : 'Finish verifying your email, then return here.'}</p>
-        <Link className="workspace-action" href="/workspace">Try again</Link>
-        <a className="workspace-link" href="/prototype.html">Open the design preview</a>
-        <UserButton />
-      </main>
-    );
-  }
+export default function WorkspaceHomePage() {
+  const { user, workspace } = useWorkspaceSession();
+  const firstName = user.displayName.trim().split(/\s+/)[0] || 'there';
 
   return (
-    <main className="workspace-state">
-      <header className="workspace-state__header">
-        <Link className="auth-brand__wordmark" href="/" aria-label="AVEN home">AVEN<span>.</span></Link>
-        <UserButton />
-      </header>
-      <p className="auth-setup__eyebrow">YOUR WORKSPACE</p>
-      <h1>Welcome, {session.user.displayName}.</h1>
-      <p>Your personal workspace is set up and ready.</p>
-      <section className="workspace-summary" aria-label="Personal workspace">
-        <div className="workspace-summary__icon" aria-hidden="true">◈</div>
-        <div>
-          <h2>{session.workspace.name}</h2>
-          <p>{session.workspace.role?.toLowerCase() ?? 'Member'} · {session.user.email}</p>
+    <div className="workspace-dashboard">
+      <section className="workspace-hero">
+        <div className="workspace-hero__copy">
+          <p className="workspace-eyebrow">YOUR SPACE · {workspace.name}</p>
+          <h1>Good to see you, {firstName}.</h1>
+          <p>Your workspace is ready. Choose what you would like to organise first.</p>
+        </div>
+        <div className="workspace-hero__art" aria-hidden="true" />
+      </section>
+
+      <section className="workspace-onboarding" aria-labelledby="workspace-start-title">
+        <div className="workspace-section-heading">
+          <div>
+            <p className="workspace-eyebrow">A GOOD PLACE TO BEGIN</p>
+            <h2 id="workspace-start-title">Make this space yours</h2>
+          </div>
+          <span className="workspace-role-pill">{workspace.role?.toLowerCase() ?? 'member'}</span>
+        </div>
+        <p className="workspace-onboarding__intro">Your account and personal workspace are connected. The sections below are ready to explore as AVEN is built out.</p>
+        <div className="workspace-module-grid">
+          {modules.map((module) => (
+            <Link className="workspace-module-card" href={module.href} key={module.title}>
+              <span className="workspace-module-card__icon" aria-hidden="true">{module.icon}</span>
+              <span className="workspace-module-card__title">{module.title}<span aria-hidden="true">↗</span></span>
+              <span className="workspace-module-card__detail">{module.detail}</span>
+            </Link>
+          ))}
         </div>
       </section>
-      <a className="workspace-link" href="/prototype.html">View the AVEN design preview</a>
-    </main>
+
+      <div className="workspace-dashboard__lower">
+        <section className="workspace-empty-card" aria-labelledby="recent-title">
+          <div className="workspace-section-heading">
+            <div>
+              <p className="workspace-eyebrow">YOUR WORKSPACE</p>
+              <h2 id="recent-title">Recent activity</h2>
+            </div>
+          </div>
+          <div className="workspace-empty-state">
+            <span className="workspace-empty-state__icon" aria-hidden="true">✧</span>
+            <h3>A clear beginning</h3>
+            <p>Projects and activity will appear here when those features are connected.</p>
+          </div>
+        </section>
+
+        <section className="workspace-intelligence-card" aria-labelledby="intelligence-title">
+          <span className="workspace-intelligence-card__sparkle" aria-hidden="true">✧</span>
+          <p className="workspace-eyebrow">COMING LATER</p>
+          <h2 id="intelligence-title">AVEN Intelligence</h2>
+          <p>Once your workspace has content, AVEN can help you bring it together and find a good next step.</p>
+          <Link href="/workspace/intelligence">Explore this section <span aria-hidden="true">→</span></Link>
+        </section>
+      </div>
+
+      <footer className="workspace-dashboard__footer">
+        <span>Signed in as {user.email}</span>
+        <Link href="/prototype.html">Compare with the original design preview</Link>
+      </footer>
+    </div>
   );
 }

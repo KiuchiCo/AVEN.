@@ -118,7 +118,7 @@ Each row is an independent review and Git milestone. Keep each working tree focu
 - [x] Define the first API surface and authorization rule.
 - [x] Break Phase 1 into reviewable milestones.
 - [x] Record major technical risks and dependencies.
-- [ ] Reconcile the shared visual tokens with the master brand brief.
+- [x] Reconcile the shared visual tokens with the master brand brief.
 - [x] Create the monorepo scaffold and development tooling.
 - [x] Configure local PostgreSQL and schema migrations.
 - [x] Record the recommended authentication provider and security boundaries before login implementation.
