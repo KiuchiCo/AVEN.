@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 420" preserveAspectRatio="none" fill="none">
+  <defs>
+    <linearGradient id="ridge-back" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#d5c8b7" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#c6b49d" stop-opacity=".42"/>
+    </linearGradient>
+    <linearGradient id="ridge-front" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#e5d9ca" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#bda98f" stop-opacity=".38"/>
+    </linearGradient>
+    <linearGradient id="ridge-light" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fffdf8" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#e8ddcf" stop-opacity=".12"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#ridge-back)" d="M0 300 120 246l83 24 154-91 110 48 106-100 107 69 162-131 127 101 121-65 130 62 99-78 112 85 102-51 167 90v191H0z"/>
+  <path fill="url(#ridge-light)" d="m0 317 151-51 103 26 162-95 119 59 141-102 96 67 183-139 146 112 103-45 137 57 105-70 154 88v196H0z"/>
+  <path fill="url(#ridge-front)" d="m0 346 183-76 116 25 167-81 121 61 118-58 158 67 109-77 121 58 111-34 162 55 117-48 217 61v121H0z"/>
+  <path stroke="#a48766" stroke-opacity=".16" stroke-width="2" d="m0 317 151-51 103 26 162-95 119 59 141-102 96 67 183-139 146 112 103-45 137 57 105-70 154 88"/>
+</svg>

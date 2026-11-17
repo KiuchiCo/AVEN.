@@ -3,7 +3,7 @@
 **Status:** In progress  
 **Suggested commit:** `feat: add responsive AVEN application shell`
 
-**Visual direction:** Follow the shared [AVEN design system](../AVEN-DESIGN-SYSTEM.md), based on the warm ivory, sage, and spacious panel styling established in the product mockups.
+**Visual direction:** Follow the shared [AVEN design system](../AVEN-DESIGN-SYSTEM.md): warm ivory, charcoal controls, bronze details, Playfair Display headings, Inter interface text, and spacious panels.
 
 ## Goal
 

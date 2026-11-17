@@ -1,46 +1,69 @@
 # AVEN. · Design system
 
-AVEN's interface follows the same visual direction as the product mockups: a warm, editorial workspace with an ivory canvas, quiet sage accents, considered typography, and clear, spacious panels. New sections should extend these tokens and patterns rather than introducing a separate visual style.
+AVEN uses a premium editorial interface: warm ivory backgrounds, white paper-like surfaces, charcoal text, quiet bronze accents, elegant serif headings, and readable sans-serif controls. The supplied dashboard, document, database, calendar, project, and Intelligence concepts share this visual language. Build from that shared language without copying screenshot artifacts or fictional production data.
 
 ## Visual principles
 
-- Use warm ivory for the application canvas and soft white for working surfaces.
-- Use muted botanical greens for primary actions, selected navigation, and positive states.
-- Keep borders low contrast and use spacing to distinguish groups.
-- Give each page one clear heading and a small uppercase eyebrow for context.
-- Keep charts, tables, and project controls calm and legible; reserve stronger colour for meaningful status.
-- Use restrained shadows only where an element floats above the page, such as a menu or dialog.
+- Keep the canvas warm and the working surfaces light.
+- Use charcoal for primary actions and navigation emphasis; reserve bronze for brand details and selected emphasis.
+- Use green, amber, red, and blue as semantic status colours, paired with labels or icons.
+- Set page titles in an editorial serif and dense controls in a clear sans-serif.
+- Use spacious layouts, subtle borders, and restrained shadows instead of stacked decoration.
+- Use mountain-haze artwork as a quiet contextual accent on overview pages, not as a background behind dense data.
+- Keep the persistent navigation clear and let each module provide its own contextual navigation.
+- Label sample content as preview data and replace it with persisted records in functional views.
 
-## Core tokens
+## Colour tokens
 
 | Token | Value | Use |
 | --- | --- | --- |
-| Canvas | `#F6F4EE` | Main application background |
-| Sidebar | `#FCFBF7` | Primary navigation surface |
-| Surface | `#FFFEFA` | Cards, panels, menus |
-| Ink | `#30342F` | Main text |
-| Muted ink | `#898D84` | Supporting text and labels |
-| Sage | `#66816A` | Primary actions and selected states |
-| Deep sage | `#49664F` | Hover and emphasis |
-| Soft sage | `#EEF2E9` | Selected navigation and quiet highlights |
-| Border | `#EAE8E0` | Dividers and panel outlines |
-| Warm accent | `#B59A72` | Occasional secondary emphasis |
+| Ivory | `#F8F6F1` | Application canvas |
+| Paper | `#FFFFFF` | Cards and work surfaces |
+| Sand | `#E9E3D9` | Selected navigation and subtle grouping |
+| Taupe | `#D2C7B9` | Soft borders and neutral emphasis |
+| Bronze | `#A48766` | AVEN wordmark accent and warm highlights |
+| Umber | `#6B5746` | Secondary warm emphasis |
+| Charcoal | `#2B2A27` | Primary text and primary controls |
+| Ink | `#111111` | Strong text and display headings |
+| Muted text | `#77766E` | Supporting copy and metadata |
+| Border | `#DCD9D0` | Dividers and outlines |
+| Success | `#34765A` | Positive task and project status |
+| Warning | `#C18A42` | At-risk and approaching deadlines |
+| Error | `#B95353` | Errors and blocked status |
+| Information | `#567BA8` | Informational status |
 
-## Type and layout
+Use CSS custom properties for these values. Do not introduce one-off colours when a semantic token fits.
 
-- Use Manrope for page headings and compact display values.
-- Use DM Sans for navigation, labels, controls, and body copy.
-- Keep headings medium weight with slightly tight tracking; use uppercase, letter-spaced eyebrows sparingly.
-- Prefer generous page margins and consistent panel padding. On smaller screens, keep content readable and move navigation to a compact bottom bar.
+## Typography
+
+- **Display and page headings:** Playfair Display, with Georgia as a local fallback.
+- **Interface and body:** Inter, with system sans-serif fallbacks.
+- Use serif type selectively for page titles, editorial panels, and prominent briefing headings.
+- Use sans-serif type for navigation, forms, tables, buttons, and dense content.
+- Keep control text readable at 14–16px, metadata at 11–12px, and use uppercase letter-spaced labels sparingly.
+
+## Geometry and layout
+
+- Base spacing unit: 4px. Prefer 8, 12, 16, 24, and 32px increments.
+- Expanded sidebar: about 252px; collapsed sidebar: about 68px.
+- Top navigation: about 60px.
+- Standard cards: 12px radius; large panels: 18px radius.
+- Standard controls: 38–42px high with visible focus states.
+- Use soft, low-contrast outlines and shallow shadows for floating surfaces only.
 
 ## Shared patterns
 
-- **Navigation:** quiet labels, a soft sage selected state, and simple line-like symbols.
-- **Panels:** soft white surfaces, subtle warm borders, and clear internal spacing.
-- **Primary action:** deep sage fill, white text, compact rounded corners.
-- **Status:** use muted semantic colours and always pair colour with a label or icon.
-- **Empty states:** explain what belongs in the area and offer one clear next action.
+- **Primary action:** charcoal fill, white label, compact rounded corners.
+- **Selected navigation:** warm sand fill with charcoal text.
+- **Status:** semantic tint, concise label, and optional icon.
+- **AI panel:** bronze spark detail, restrained copy, clearly described actions, and visible context.
+- **Dashboard:** answer what needs attention today, then provide quick access to projects and recent work.
+- **Empty state:** explain what belongs in the area and give one clear next action.
+
+## Themes
+
+Light mode is the default. Define semantic tokens so a future dark theme can change surface and text values without changing component structure. Dark mode is not part of the current dashboard milestone.
 
 ## Current implementation
 
-The first dashboard shell uses these principles and the shared tokens in `styles.css`. Each new section brief should identify any additional component patterns while keeping the foundation palette and typography intact.
+The static dashboard is a visual prototype. It uses sample figures and names for layout exploration; those values are not live workspace data. Its palette and typography now follow these tokens; the framework migration will replace the static prototype with reusable application components.

@@ -1,6 +1,8 @@
 const pageNames = {
-  home: 'Home', inbox: 'Inbox', projects: 'Projects', documents: 'Documents',
-  databases: 'Databases', calendar: 'Calendar', intelligence: 'AVEN Intelligence', settings: 'Settings'
+  home: 'Home', inbox: 'Inbox', calendar: 'Calendar', 'my-tasks': 'My tasks', activity: 'Activity',
+  projects: 'Projects', documents: 'Documents', databases: 'Databases', knowledge: 'Knowledge',
+  whiteboards: 'Whiteboards', automations: 'Automations', intelligence: 'AVEN Intelligence',
+  people: 'People', settings: 'Settings'
 };
 
 const navItems = [...document.querySelectorAll('[data-page]')];
@@ -39,12 +41,7 @@ function getGreeting() {
   return 'Good evening';
 }
 
-function formatToday(date) {
-  return new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
-}
-
 const now = new Date();
-document.querySelector('#today-label').textContent = formatToday(now);
 document.querySelector('#welcome-date').textContent = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(now).toUpperCase();
 greeting.textContent = `${getGreeting()}.`;
 

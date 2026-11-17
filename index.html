@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#f7f7f3">
+    <meta name="theme-color" content="#f8f6f1">
     <meta name="description" content="AVEN brings your projects, documents, databases, calendar, and ideas into one organised workspace.">
     <title>AVEN. — Your entire world, organised.</title>
     <link rel="stylesheet" href="styles.css">
@@ -29,28 +29,38 @@
         </div>
 
         <div class="nav-group">
-          <span class="nav-label">WORKSPACE</span>
+          <span class="nav-label">YOUR SPACE</span>
           <nav class="nav-list">
             <button class="nav-item is-active" type="button" data-page="home"><span class="nav-icon">⌂</span>Home</button>
             <button class="nav-item" type="button" data-page="inbox"><span class="nav-icon">▱</span>Inbox<span class="nav-count">2</span></button>
+            <button class="nav-item" type="button" data-page="calendar"><span class="nav-icon icon-calendar">▣</span>Calendar</button>
+            <button class="nav-item" type="button" data-page="my-tasks"><span class="nav-icon">☑</span>My tasks</button>
+            <button class="nav-item" type="button" data-page="activity"><span class="nav-icon">◷</span>Activity</button>
           </nav>
         </div>
 
         <div class="nav-group">
-          <div class="nav-label-row"><span class="nav-label">YOUR TOOLS</span><button class="icon-button add-button" type="button" aria-label="Add a tool" data-toast="More tools will be added in upcoming sections.">+</button></div>
+          <div class="nav-label-row"><span class="nav-label">WORKSPACE</span><button class="icon-button add-button" type="button" aria-label="Add a tool" data-toast="More tools will be added in upcoming sections.">+</button></div>
           <nav class="nav-list">
             <button class="nav-item" type="button" data-page="projects"><span class="nav-icon icon-project">◫</span>Projects</button>
             <button class="nav-item" type="button" data-page="documents"><span class="nav-icon icon-document">▤</span>Documents</button>
             <button class="nav-item" type="button" data-page="databases"><span class="nav-icon icon-database">▦</span>Databases</button>
-            <button class="nav-item" type="button" data-page="calendar"><span class="nav-icon icon-calendar">▣</span>Calendar</button>
+            <button class="nav-item" type="button" data-page="knowledge"><span class="nav-icon">⌘</span>Knowledge</button>
+            <button class="nav-item" type="button" data-page="whiteboards"><span class="nav-icon">◇</span>Whiteboards</button>
+            <button class="nav-item" type="button" data-page="automations"><span class="nav-icon">♧</span>Automations</button>
+            <button class="nav-item" type="button" data-page="intelligence"><span class="nav-icon intelligence-icon">✳</span>Intelligence</button>
+            <button class="nav-item" type="button" data-page="people"><span class="nav-icon">♙</span>People</button>
           </nav>
         </div>
 
-        <button class="intelligence-card" type="button" data-page="intelligence">
-          <span class="sparkle" aria-hidden="true">✳</span>
-          <span><strong>AVEN Intelligence</strong><small>Your workspace assistant</small></span>
-          <span class="card-arrow" aria-hidden="true">↗</span>
-        </button>
+        <div class="nav-group favorites-group">
+          <div class="nav-label-row"><span class="nav-label">FAVOURITES</span><button class="icon-button add-button" type="button" aria-label="Manage favourites" data-toast="Favourite organisation will be added in a later section.">⌄</button></div>
+          <nav class="nav-list">
+            <button class="nav-item" type="button" data-toast="Favourites will connect to your workspace content in a later section."><span class="nav-icon">▱</span>Strategy</button>
+            <button class="nav-item" type="button" data-toast="Favourites will connect to your workspace content in a later section."><span class="nav-icon">▱</span>Product</button>
+            <button class="nav-item" type="button" data-toast="Favourites will connect to your workspace content in a later section."><span class="nav-icon">▱</span>Personal</button>
+          </nav>
+        </div>
 
         <div class="sidebar-bottom">
           <button class="nav-item" type="button" data-page="settings"><span class="nav-icon">⚙</span>Settings</button>
@@ -63,13 +73,13 @@
       <main class="main-area">
         <header class="topbar">
           <div class="breadcrumbs"><span>Personal space</span><span class="crumb-divider">/</span><strong id="breadcrumb-page">Home</strong></div>
-          <div class="top-actions"><span class="today-label" id="today-label"></span><button class="top-icon" type="button" aria-label="Search" data-toast="Search will be added in a later section.">⌕</button><button class="top-icon notification-button" type="button" aria-label="Notifications" data-toast="You have 2 updates in your inbox.">♧<i></i></button><button class="help-button" type="button" data-toast="Help and documentation are coming soon.">?</button></div>
+          <div class="top-actions"><button class="search-pill" type="button" data-toast="Search will be added in a later section."><span aria-hidden="true">⌕</span><span>Search or ask AVEN...</span><kbd>⌘ K</kbd></button><button class="top-icon notification-button" type="button" aria-label="Notifications" data-toast="You have 2 updates in your inbox.">♧<i></i></button><button class="primary-button top-create" type="button" id="quick-add"><span>+</span> Create</button></div>
         </header>
 
         <div class="page-content" id="page-content">
           <section class="welcome-row">
-            <div><p class="eyebrow" id="welcome-date"></p><h1 id="greeting">Good morning.</h1><p class="subheading">A little clarity for everything on your mind.</p></div>
-            <button class="primary-button" type="button" id="quick-add"><span>+</span> Quick add</button>
+            <div><p class="eyebrow" id="welcome-date"></p><h1 id="greeting">Good morning.</h1><p class="subheading">Here's your day at a glance.</p></div>
+            <span class="preview-chip">PREVIEW · SAMPLE DATA</span>
           </section>
 
           <section class="overview-grid" aria-label="Workspace overview">
