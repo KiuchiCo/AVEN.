@@ -27,6 +27,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.16 · Database gallery views](docs/sections/16-database-gallery-views.md) | Browse structured records as saved, scannable cards | Complete |
 | [1.17 · Relational database fields](docs/sections/17-database-relations.md) | Link records across databases with workspace-scoped references | Complete |
 | [1.18 · Database CSV import and export](docs/sections/18-database-csv.md) | Move scalar database records in and out as CSV | Complete |
+| [1.19 · Database calendar views](docs/sections/19-database-calendar.md) | Place dated records on a browsable month grid | Complete |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).

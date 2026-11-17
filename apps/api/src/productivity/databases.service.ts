@@ -112,8 +112,9 @@ export class DatabasesService {
     const filterQuery = optionalText(body.filterQuery, 'Filter', 200) ?? '';
     const sortPropertyId = body.sortPropertyId === undefined ? 'updatedAt' : textField(body.sortPropertyId, 'Sort property', 80);
     const sortDirection = enumValue(body.sortDirection, ['ASC', 'DESC'] as const, 'Sort direction', 'DESC');
-    const layout = enumValue(body.layout, ['TABLE', 'BOARD', 'GALLERY'] as const, 'View layout', 'TABLE');
+    const layout = enumValue(body.layout, ['TABLE', 'BOARD', 'GALLERY', 'CALENDAR'] as const, 'View layout', 'TABLE');
     const groupByPropertyId = body.groupByPropertyId === undefined ? 'status' : textField(body.groupByPropertyId, 'Group property', 80);
+    const datePropertyId = body.datePropertyId === undefined || body.datePropertyId === '' ? '' : textField(body.datePropertyId, 'Date property', 80);
     const database = await this.prisma.workspaceDatabase.findFirst({
       where: { id: databaseId, workspaceId },
       select: { id: true, properties: true },
@@ -125,11 +126,14 @@ export class DatabasesService {
     if (layout === 'BOARD' && !propertyList(database.properties).some((property) => property.id === groupByPropertyId && property.type === 'status')) {
       throw new BadRequestException('Board views must group by a status property in this database.');
     }
+    if (layout === 'CALENDAR' && !propertyList(database.properties).some((property) => property.id === datePropertyId && property.type === 'date')) {
+      throw new BadRequestException('Calendar views must use a date property in this database.');
+    }
     if (await this.prisma.databaseView.findFirst({ where: { databaseId, name }, select: { id: true } })) {
       throw new BadRequestException('A saved view with that name already exists.');
     }
     return this.prisma.databaseView.create({
-      data: { workspaceId, databaseId, name, filterQuery, sortPropertyId, sortDirection, layout, groupByPropertyId },
+      data: { workspaceId, databaseId, name, filterQuery, sortPropertyId, sortDirection, layout, groupByPropertyId, datePropertyId },
     });
   }
 

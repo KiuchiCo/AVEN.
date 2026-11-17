@@ -47,6 +47,7 @@ enum DatabaseViewLayout {
   TABLE
   BOARD
   GALLERY
+  CALENDAR
 }
 
 model User {
@@ -244,6 +245,7 @@ model DatabaseView {
   sortDirection   DatabaseSortDirection @default(DESC)
   layout          DatabaseViewLayout  @default(TABLE)
   groupByPropertyId String              @default("status") @db.VarChar(80)
+  datePropertyId    String              @default("") @db.VarChar(80)
   createdAt       DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
   workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
