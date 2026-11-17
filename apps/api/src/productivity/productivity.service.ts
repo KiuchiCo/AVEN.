@@ -453,6 +453,38 @@ export class ProductivityService {
     return event;
   }
 
+  async updateCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, eventId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const existing = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true, startsAt: true, endsAt: true } });
+    if (!existing) throw new NotFoundException('Calendar event not found in this workspace.');
+    const data: { title?: string; startsAt?: Date; endsAt?: Date | null; taskId?: string | null } = {};
+    if ('title' in body) data.title = textField(body.title, 'Event title', 200);
+    if ('startsAt' in body) data.startsAt = requiredDate(body.startsAt, 'Start time');
+    if ('endsAt' in body) data.endsAt = dateField(body.endsAt, 'End time');
+    if ('taskId' in body) {
+      data.taskId = optionalUuid(body.taskId, 'Task');
+      if (data.taskId && !await this.prisma.task.findFirst({ where: { id: data.taskId, workspaceId }, select: { id: true } })) throw new NotFoundException('Task not found in this workspace.');
+    }
+    const startsAt = data.startsAt ?? existing.startsAt;
+    const endsAt = 'endsAt' in data ? data.endsAt : existing.endsAt;
+    if (endsAt && endsAt <= startsAt) throw new BadRequestException('End time must be after the start time.');
+    const updated = await this.prisma.calendarEvent.update({ where: { id: eventId }, data, include: { task: { select: { id: true, title: true } } } });
+    await this.recordActivity(workspaceId, actorId, 'CALENDAR', eventId, `updated “${updated.title}”`);
+    return updated;
+  }
+
+  async deleteCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, eventId: string) {
+    const actorId = await this.requireMembership(identity, workspaceId);
+    const event = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true } });
+    if (!event) throw new NotFoundException('Calendar event not found in this workspace.');
+    await this.prisma.$transaction([
+      this.prisma.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'CALENDAR', entityId: eventId, message: `removed “${event.title}” from calendar` } }),
+      this.prisma.calendarEvent.delete({ where: { id: eventId } }),
+    ]);
+    return { id: eventId, deleted: true };
+  }
+
   private recordActivity(workspaceId: string, actorId: string, entityType: string, entityId: string, message: string) {
     return this.prisma.workspaceActivity.create({ data: { workspaceId, actorId, entityType, entityId, message } });
   }

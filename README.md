@@ -40,6 +40,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.29 · Task dependencies](docs/sections/29-task-dependencies.md) | Sequence project tasks with safe prerequisite links and completion checks | Complete |
 | [1.30 · Documents Studio](docs/sections/30-documents-studio.md) | Add structured block editing, autosave, outline, comments, history, and task creation | Complete |
 | [1.36 · Multi-workspace switcher and settings](docs/sections/36-workspace-switcher.md) | Switch, create, and rename personal and shared workspaces | Complete |
+| [1.37 · Calendar event management](docs/sections/37-calendar-event-management.md) | Edit and remove scheduled events and filter calendar items | Complete |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).
@@ -77,7 +78,7 @@ As of Section 1.35, AVEN has a Next.js and NestJS application with Clerk sign-in
 
 ## Local development
 
-Section 1.36 adds workspace switching, shared workspace creation, and owner-managed workspace names; see [the section notes](docs/sections/36-workspace-switcher.md) for behavior and commit instructions.
+Section 1.36 adds workspace switching, shared workspace creation, and owner-managed workspace names; Section 1.37 adds calendar event management and filters. See the [Section 1.37 notes](docs/sections/37-calendar-event-management.md) for verification and commit instructions.
 
 Requires Node.js 24.15.0 or newer and npm. From the repository root:
 
