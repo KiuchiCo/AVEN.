@@ -3,9 +3,11 @@ import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { ProjectsController } from './projects.controller.js';
 import { TasksController } from './tasks.controller.js';
 import { ProductivityService } from './productivity.service.js';
+import { DocumentsController } from './documents.controller.js';
+import { CalendarController } from './calendar.controller.js';
 
 @Module({
-  controllers: [ProjectsController, TasksController],
+  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController],
   providers: [ProductivityService, ClerkAuthGuard],
 })
 export class ProductivityModule {}

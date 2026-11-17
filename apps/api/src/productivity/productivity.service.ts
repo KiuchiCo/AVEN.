@@ -100,6 +100,66 @@ export class ProductivityService {
     });
   }
 
+  async listDocuments(identity: AuthenticatedIdentity, workspaceId: string) {
+    await this.requireMembership(identity, workspaceId);
+    return this.prisma.document.findMany({
+      where: { workspaceId },
+      orderBy: { updatedAt: 'desc' },
+      include: { project: { select: { id: true, name: true } } },
+    });
+  }
+
+  async createDocument(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const projectId = optionalUuid(body.projectId, 'Project');
+    if (projectId) {
+      const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
+      if (!project) throw new NotFoundException('Project not found in this workspace.');
+    }
+    return this.prisma.document.create({
+      data: {
+        workspaceId,
+        projectId,
+        title: textField(body.title, 'Document title', 200),
+        content: typeof body.content === 'string' && body.content.length <= 20000 ? body.content : invalidText('Document content must be 20,000 characters or fewer.'),
+      },
+      include: { project: { select: { id: true, name: true } } },
+    });
+  }
+
+  async listCalendarEvents(identity: AuthenticatedIdentity, workspaceId: string) {
+    await this.requireMembership(identity, workspaceId);
+    return this.prisma.calendarEvent.findMany({
+      where: { workspaceId },
+      orderBy: { startsAt: 'asc' },
+      include: { task: { select: { id: true, title: true } } },
+    });
+  }
+
+  async createCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const taskId = optionalUuid(body.taskId, 'Task');
+    if (taskId) {
+      const task = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { id: true, title: true } });
+      if (!task) throw new NotFoundException('Task not found in this workspace.');
+    }
+    const startsAt = requiredDate(body.startsAt, 'Start time');
+    const endsAt = dateField(body.endsAt, 'End time');
+    if (endsAt && endsAt <= startsAt) throw new BadRequestException('End time must be after the start time.');
+    return this.prisma.calendarEvent.create({
+      data: {
+        workspaceId,
+        taskId,
+        title: textField(body.title, 'Event title', 200),
+        startsAt,
+        endsAt,
+      },
+      include: { task: { select: { id: true, title: true } } },
+    });
+  }
+
   private async requireMembership(identity: AuthenticatedIdentity, workspaceId: string) {
     const user = await this.prisma.user.findUnique({
       where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } },
@@ -142,6 +202,16 @@ function dateField(value: unknown, label: string) {
   if (value === undefined || value === null || value === '') return null;
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) throw new BadRequestException(`${label} must be a valid date.`);
   return new Date(value);
+}
+
+function requiredDate(value: unknown, label: string) {
+  const date = dateField(value, label);
+  if (!date) throw new BadRequestException(`${label} is required.`);
+  return date;
+}
+
+function invalidText(message: string): never {
+  throw new BadRequestException(message);
 }
 
 function optionalUuid(value: unknown, label: string) {

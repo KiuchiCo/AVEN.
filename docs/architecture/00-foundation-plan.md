@@ -124,6 +124,8 @@ Each row is an independent review and Git milestone. Keep each working tree focu
 - [x] Record the recommended authentication provider and security boundaries before login implementation.
 - [x] Implement the first persistent project/task workflow with workspace-scoped API access.
 - [ ] Verify the project/task workflow with live Clerk and PostgreSQL services.
+- [x] Connect project documents and task-linked calendar events through the workspace API.
+- [ ] Verify connected records with live Clerk and PostgreSQL services.
 
 ## Review notes
 
