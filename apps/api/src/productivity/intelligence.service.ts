@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { PrismaService } from '../database/prisma.service.js';
 
@@ -65,4 +65,66 @@ export class IntelligenceService {
       upcomingProjects: dueProjects.slice(0, 5),
     };
   }
+
+  async createPlan(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const user = await this.prisma.user.findUnique({
+      where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } },
+      select: { id: true },
+    });
+    if (!user) throw new ForbiddenException('Your AVEN account is not connected to a workspace yet.');
+    const membership = await this.prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId, userId: user.id } }, select: { userId: true },
+    });
+    if (!membership) throw new NotFoundException('Workspace not found.');
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A project plan is required.');
+    const body = input as Record<string, unknown>;
+    const name = requiredText(body.name, 'Project name', 160);
+    const description = optionalText(body.description, 'Project goal', 5000);
+    const dueAt = optionalDate(body.dueAt, 'Project due date');
+    const tasks = titleList(body.tasks, 'Tasks', 30, 200);
+    const milestones = titleList(body.milestones, 'Milestones', 20, 160);
+    if (!tasks.length && !milestones.length) throw new BadRequestException('Add at least one task or milestone to the plan.');
+
+    return this.prisma.$transaction(async (transaction) => {
+      const project = await transaction.project.create({
+        data: { workspaceId, createdById: user.id, name, description, dueAt, status: 'PLANNING' },
+      });
+      if (tasks.length) await transaction.task.createMany({
+        data: tasks.map((title) => ({ workspaceId, projectId: project.id, createdById: user.id, title, status: 'TODO', priority: 'MEDIUM' })),
+      });
+      if (milestones.length) await transaction.projectMilestone.createMany({
+        data: milestones.map((title) => ({ workspaceId, projectId: project.id, title, dueAt: null })),
+      });
+      await transaction.workspaceActivity.create({
+        data: { workspaceId, actorId: user.id, entityType: 'PROJECT', entityId: project.id, message: `created project plan “${name}”` },
+      });
+      const created = await transaction.project.findUniqueOrThrow({ where: { id: project.id }, include: { tasks: { orderBy: { createdAt: 'asc' }, select: { id: true, title: true, status: true } }, milestones: { orderBy: { createdAt: 'asc' }, select: { id: true, title: true } } } });
+      return { project: created, tasksCreated: tasks.length, milestonesCreated: milestones.length };
+    });
+  }
+}
+
+function requiredText(value: unknown, label: string, max: number) {
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new BadRequestException(`${label} must be between 1 and ${max} characters.`);
+  return value.trim();
+}
+
+function optionalText(value: unknown, label: string, max: number): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || value.length > max) throw new BadRequestException(`${label} must be ${max} characters or fewer.`);
+  return value.trim() || null;
+}
+
+function optionalDate(value: unknown, label: string) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') throw new BadRequestException(`${label} is invalid.`);
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) throw new BadRequestException(`${label} is invalid.`);
+  return parsed;
+}
+
+function titleList(value: unknown, label: string, maxItems: number, maxLength: number) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > maxItems) throw new BadRequestException(`${label} must contain at most ${maxItems} items.`);
+  return value.map((item) => requiredText(item, `${label.slice(0, -1)} title`, maxLength));
 }

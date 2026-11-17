@@ -28,11 +28,19 @@ export function IntelligenceWorkspace() {
   const [loading, setLoading] = useState(true);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState('');
+  const [planName, setPlanName] = useState('');
+  const [planGoal, setPlanGoal] = useState('');
+  const [planDueAt, setPlanDueAt] = useState('');
+  const [planTaskLines, setPlanTaskLines] = useState('');
+  const [planMilestoneLines, setPlanMilestoneLines] = useState('');
+  const [reviewingPlan, setReviewingPlan] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [planNotice, setPlanNotice] = useState('');
 
-  const request = useCallback(async (path: string) => {
+  const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
     if (!token || !apiBase) throw new Error('AVEN could not connect to its API. Check your local API setup.');
-    const response = await fetch(`${apiBase}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch(`${apiBase}${path}`, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers } });
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string } | null;
       throw new Error(body?.message ?? 'AVEN could not load this workspace information.');
@@ -78,6 +86,31 @@ export function IntelligenceWorkspace() {
       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not answer from this workspace.'); }
     finally { setAsking(false); }
+  }
+
+  const planTasks = planTaskLines.split('\n').map((item) => item.trim()).filter(Boolean);
+  const planMilestones = planMilestoneLines.split('\n').map((item) => item.trim()).filter(Boolean);
+
+  async function submitPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPlanNotice(''); setError('');
+    if (!reviewingPlan) {
+      if (!planName.trim()) { setError('Add a project name before reviewing the plan.'); return; }
+      if (!planTasks.length && !planMilestones.length) { setError('Add at least one task or milestone to the plan.'); return; }
+      if (planTasks.length > 30 || planMilestones.length > 20) { setError('A plan can include up to 30 tasks and 20 milestones.'); return; }
+      setReviewingPlan(true);
+      return;
+    }
+    setSavingPlan(true);
+    try {
+      const created = await request(`/workspaces/${workspace.id}/intelligence/plans`, {
+        method: 'POST', body: JSON.stringify({ name: planName, description: planGoal, dueAt: planDueAt || null, tasks: planTasks, milestones: planMilestones }),
+      }) as { project: { id: string; name: string }; tasksCreated: number; milestonesCreated: number };
+      setPlanNotice(`Created ${created.project.name} with ${created.tasksCreated} tasks and ${created.milestonesCreated} milestones.`);
+      setPlanName(''); setPlanGoal(''); setPlanDueAt(''); setPlanTaskLines(''); setPlanMilestoneLines(''); setReviewingPlan(false);
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create the project plan.'); }
+    finally { setSavingPlan(false); }
   }
 
   const firstName = user.displayName.trim().split(/\s+/)[0] || 'there';
@@ -130,6 +163,23 @@ export function IntelligenceWorkspace() {
           <p className="intelligence-privacy-note">AVEN searches only information in {workspace.name}. No external AI provider is connected in this version.</p>
         </section>
       </div>
+
+      <section className="intelligence-plan-panel" aria-labelledby="intelligence-plan-title">
+        <div className="intelligence-plan-panel__intro"><span aria-hidden="true">✧</span><div><p className="workspace-eyebrow">TURN AN IDEA INTO ACTION</p><h2 id="intelligence-plan-title">Build a project plan</h2><p>Write a goal and outline the steps. Review everything before AVEN creates the project, tasks, and milestones.</p></div></div>
+        {planNotice && <p className="intelligence-plan-notice" role="status">{planNotice} <Link href="/workspace/projects">Open projects →</Link></p>}
+        <form className="intelligence-plan-form" onSubmit={(event) => void submitPlan(event)}>
+          <div className="intelligence-plan-form__fields">
+            <label>Project name<input value={planName} onChange={(event) => setPlanName(event.target.value)} maxLength={160} required placeholder="Website redesign" /></label>
+            <label>Target date <span>(optional)</span><input type="date" value={planDueAt} onChange={(event) => setPlanDueAt(event.target.value)} /></label>
+            <label className="intelligence-plan-form__wide">Goal<textarea value={planGoal} onChange={(event) => setPlanGoal(event.target.value)} maxLength={5000} rows={2} placeholder="What outcome should this project deliver?" /></label>
+            <label>Tasks <span>(one per line, up to 30)</span><textarea value={planTaskLines} onChange={(event) => setPlanTaskLines(event.target.value)} rows={5} placeholder={'Research current site\nCreate new wireframes\nReview and launch'} /></label>
+            <label>Milestones <span>(one per line, up to 20)</span><textarea value={planMilestoneLines} onChange={(event) => setPlanMilestoneLines(event.target.value)} rows={5} placeholder={'Research complete\nDesign approved\nLaunch'} /></label>
+          </div>
+          {reviewingPlan && <div className="intelligence-plan-review"><p className="workspace-eyebrow">REVIEW BEFORE SAVING</p><strong>{planName}</strong>{planGoal && <p>{planGoal}</p>}<div><span>{planTasks.length} tasks</span><span>{planMilestones.length} milestones</span>{planDueAt && <span>Target {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(`${planDueAt}T12:00:00`))}</span>}</div><ul>{planTasks.map((task, index) => <li key={`${task}-${index}`}>{task}</li>)}</ul></div>}
+          <div className="intelligence-plan-form__actions">{reviewingPlan && <button type="button" className="intelligence-plan-secondary" onClick={() => setReviewingPlan(false)}>Edit plan</button>}<button type="submit" disabled={savingPlan || loading || !planName.trim() || (!planTasks.length && !planMilestones.length)}>{savingPlan ? 'Creating…' : reviewingPlan ? 'Approve & create plan' : 'Review plan →'}</button></div>
+        </form>
+        <p className="intelligence-privacy-note">AVEN creates the project only after you approve this review. All records are saved together and attributed to you.</p>
+      </section>
     </>}
   </div>;
 }
