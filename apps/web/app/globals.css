@@ -510,6 +510,12 @@ body {
 .database-view-controls label { display: grid; flex: 1 1 145px; gap: 5px; color: #635b51; font-size: 10px; font-weight: 650; }
 .database-view-controls input, .database-view-controls select { min-width: 0; padding: 8px 9px; border: 1px solid #e2ddd5; border-radius: 8px; background: #fffdfa; color: #28251f; font: inherit; font-size: 11px; }
 .database-view-count { padding: 8px 4px; color: #8a8176; font-size: 10px; }
+.database-save-view { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: -3px 0 12px; }
+.database-save-view label { display: grid; flex: 1 1 190px; gap: 5px; color: #635b51; font-size: 10px; font-weight: 650; }
+.database-save-view input { min-width: 0; padding: 8px 9px; border: 1px solid #e2ddd5; border-radius: 8px; background: #fffdfa; color: #28251f; font: inherit; font-size: 11px; }
+.database-save-view button { min-height: 34px; padding: 7px 10px; border: 1px solid #e3dbd0; border-radius: 8px; background: #f6f1ea; color: #6c5842; cursor: pointer; font: inherit; font-size: 10px; font-weight: 650; }
+.database-save-view button:disabled { opacity: .6; cursor: wait; }
+.database-save-view input:focus { outline: 3px solid rgb(164 135 102 / 28%); border-color: #a48766; }
 .database-table-scroll { overflow-x: auto; border: 1px solid #e7e1d8; border-radius: 10px; }
 .database-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; text-align: left; }
 .database-table th, .database-table td { padding: 11px 12px; border-bottom: 1px solid #eee9e1; white-space: nowrap; }

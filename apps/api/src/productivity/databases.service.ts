@@ -12,7 +12,7 @@ export class DatabasesService {
     return this.prisma.workspaceDatabase.findMany({
       where: { workspaceId },
       orderBy: { updatedAt: 'desc' },
-      include: { records: { orderBy: { updatedAt: 'desc' } } },
+      include: { records: { orderBy: { updatedAt: 'desc' } }, views: { orderBy: { createdAt: 'asc' } } },
     });
   }
 
@@ -54,6 +54,36 @@ export class DatabasesService {
       where: { id: database.id },
       data: { properties: nextProperties as Prisma.InputJsonValue },
     });
+  }
+
+  async saveView(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const name = textField(body.name, 'View name', 80);
+    const filterQuery = optionalText(body.filterQuery, 'Filter', 200) ?? '';
+    const sortPropertyId = body.sortPropertyId === undefined ? 'updatedAt' : textField(body.sortPropertyId, 'Sort property', 80);
+    const sortDirection = enumValue(body.sortDirection, ['ASC', 'DESC'] as const, 'Sort direction', 'DESC');
+    const database = await this.prisma.workspaceDatabase.findFirst({
+      where: { id: databaseId, workspaceId },
+      select: { id: true, properties: true },
+    });
+    if (!database) throw new NotFoundException('Database not found in this workspace.');
+    if (sortPropertyId !== 'updatedAt' && !propertyList(database.properties).some((property) => property.id === sortPropertyId)) {
+      throw new BadRequestException('Sort property must belong to this database.');
+    }
+    if (await this.prisma.databaseView.findFirst({ where: { databaseId, name }, select: { id: true } })) {
+      throw new BadRequestException('A saved view with that name already exists.');
+    }
+    return this.prisma.databaseView.create({
+      data: { workspaceId, databaseId, name, filterQuery, sortPropertyId, sortDirection },
+    });
+  }
+
+  async deleteView(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, viewId: string) {
+    await this.requireMembership(identity, workspaceId);
+    const result = await this.prisma.databaseView.deleteMany({ where: { id: viewId, databaseId, workspaceId } });
+    if (result.count !== 1) throw new NotFoundException('Saved view not found in this database.');
+    return { deleted: true };
   }
 
   async updateRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, recordId: string, input: unknown) {
@@ -98,6 +128,12 @@ function textField(value: unknown, label: string, max: number) {
   return value.trim();
 }
 
+function optionalText(value: unknown, label: string, max: number) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || value.length > max) throw new BadRequestException(`${label} must be ${max} characters or fewer.`);
+  return value.trim();
+}
+
 function recordValues(propertiesValue: unknown, value: unknown): Record<string, string | number | boolean | null> {
   const values = objectInput(value);
   const properties = propertyList(propertiesValue);
@@ -122,8 +158,9 @@ function propertyList(value: unknown): Array<{ id: string; name: string; type: s
   });
 }
 
-function enumValue<const T extends readonly string[]>(value: unknown, allowed: T): T[number] {
-  if (typeof value !== 'string' || !allowed.includes(value)) throw new BadRequestException('Property type is invalid.');
+function enumValue<const T extends readonly string[]>(value: unknown, allowed: T, label = 'Property type', fallback?: T[number]): T[number] {
+  if (value === undefined && fallback) return fallback;
+  if (typeof value !== 'string' || !allowed.includes(value)) throw new BadRequestException(`${label} is invalid.`);
   return value as T[number];
 }
 

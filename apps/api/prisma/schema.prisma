@@ -38,6 +38,11 @@ enum TaskPriority {
   URGENT
 }
 
+enum DatabaseSortDirection {
+  ASC
+  DESC
+}
+
 model User {
   id                String            @id @default(uuid()) @db.Uuid
   email             String            @unique @db.VarChar(320)
@@ -73,6 +78,7 @@ model Workspace {
   events          CalendarEvent[]
   databases       WorkspaceDatabase[]
   databaseRecords DatabaseRecord[]
+  databaseViews   DatabaseView[]
 
   @@index([createdById])
   @@map("workspaces")
@@ -182,6 +188,7 @@ model WorkspaceDatabase {
   updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   records     DatabaseRecord[]
+  views       DatabaseView[]
 
   @@index([workspaceId, updatedAt])
   @@map("workspace_databases")
@@ -199,4 +206,22 @@ model DatabaseRecord {
 
   @@index([workspaceId, databaseId, updatedAt])
   @@map("database_records")
+}
+
+model DatabaseView {
+  id              String               @id @default(uuid()) @db.Uuid
+  workspaceId     String               @db.Uuid
+  databaseId      String               @db.Uuid
+  name            String               @db.VarChar(80)
+  filterQuery     String               @default("") @db.VarChar(200)
+  sortPropertyId  String               @default("updatedAt") @db.VarChar(80)
+  sortDirection   DatabaseSortDirection @default(DESC)
+  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  database        WorkspaceDatabase    @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+
+  @@unique([databaseId, name])
+  @@index([workspaceId, databaseId, createdAt])
+  @@map("database_views")
 }

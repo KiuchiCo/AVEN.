@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -41,6 +41,26 @@ export class DatabasesController {
     @Body() body: unknown,
   ) {
     return this.databases.addProperty(identity, workspaceId, databaseId, body);
+  }
+
+  @Post(':databaseId/views')
+  saveView(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Body() body: unknown,
+  ) {
+    return this.databases.saveView(identity, workspaceId, databaseId, body);
+  }
+
+  @Delete(':databaseId/views/:viewId')
+  deleteView(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Param('viewId', new ParseUUIDPipe()) viewId: string,
+  ) {
+    return this.databases.deleteView(identity, workspaceId, databaseId, viewId);
   }
 
   @Patch(':databaseId/records/:recordId')

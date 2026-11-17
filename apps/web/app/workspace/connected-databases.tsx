@@ -7,7 +7,8 @@ import { useWorkspaceSession } from './workspace-shell';
 type Property = { id: string; name: string; type: string };
 type RecordValues = Record<string, string | number | boolean | null>;
 type DatabaseRecord = { id: string; values: RecordValues; updatedAt: string };
-type WorkspaceDatabase = { id: string; name: string; description: string | null; properties: Property[]; records: DatabaseRecord[] };
+type SavedView = { id: string; name: string; filterQuery: string; sortPropertyId: string; sortDirection: 'ASC' | 'DESC' };
+type WorkspaceDatabase = { id: string; name: string; description: string | null; properties: Property[]; records: DatabaseRecord[]; views: SavedView[] };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const statuses = ['Planning', 'In progress', 'On track', 'At risk', 'Completed'];
@@ -29,6 +30,8 @@ export function DatabasesWorkspace() {
   const [filterQuery, setFilterQuery] = useState('');
   const [sortPropertyId, setSortPropertyId] = useState('updatedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [selectedViewId, setSelectedViewId] = useState('');
+  const [viewName, setViewName] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -64,6 +67,7 @@ export function DatabasesWorkspace() {
   }, [reload]);
 
   const selected = databases.find((database) => database.id === selectedId);
+  const selectedView = selected?.views.find((view) => view.id === selectedViewId);
   const visibleRecords = selected ? selected.records
     .filter((record) => {
       const query = filterQuery.trim().toLocaleLowerCase();
@@ -139,6 +143,48 @@ export function DatabasesWorkspace() {
     finally { setBusy(false); }
   }
 
+  function applyView(viewId: string) {
+    setSelectedViewId(viewId);
+    const view = selected?.views.find((candidate) => candidate.id === viewId);
+    if (!view) {
+      setFilterQuery('');
+      setSortPropertyId('updatedAt');
+      setSortDirection('desc');
+      return;
+    }
+    setFilterQuery(view.filterQuery);
+    setSortPropertyId(view.sortPropertyId);
+    setSortDirection(view.sortDirection.toLocaleLowerCase() as 'asc' | 'desc');
+  }
+
+  async function saveCurrentView(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    setBusy(true); setError('');
+    try {
+      const created = await request(`/workspaces/${workspace.id}/databases/${selected.id}/views`, {
+        method: 'POST',
+        body: JSON.stringify({ name: viewName, filterQuery, sortPropertyId, sortDirection: sortDirection.toLocaleUpperCase() }),
+      }) as SavedView;
+      setViewName('');
+      await reload();
+      setSelectedViewId(created.id);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save this view.'); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteSelectedView() {
+    if (!selected || !selectedView) return;
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/databases/${selected.id}/views/${selectedView.id}`, { method: 'DELETE' });
+      setSelectedViewId('');
+      setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc');
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete this view.'); }
+    finally { setBusy(false); }
+  }
+
   function startEdit(record: DatabaseRecord) {
     setEditingId(record.id);
     setDraft({ ...record.values });
@@ -165,7 +211,7 @@ export function DatabasesWorkspace() {
       <p className="workspace-section-page__description">Keep structured information beside the projects, notes, and plans it supports.</p>
       {error && <p className="productivity-error" role="alert">{error}</p>}
       <div className="database-toolbar">
-        <label>Workspace database<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); }} disabled={!databases.length}>
+        <label>Workspace database<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); }} disabled={!databases.length}>
           {databases.length ? databases.map((database) => <option key={database.id} value={database.id}>{database.name}</option>) : <option value="">Create your first database</option>}
         </select></label>
         <span>{selected ? `${selected.records.length} ${selected.records.length === 1 ? 'record' : 'records'}` : 'Start with a simple table'}</span>
@@ -192,14 +238,20 @@ export function DatabasesWorkspace() {
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add property'}</button>
             </form>
             <div className="database-view-controls" aria-label="Table view controls">
-              <label>Filter records<input type="search" value={filterQuery} onChange={(event) => setFilterQuery(event.target.value)} placeholder="Search record values" /></label>
-              <label>Sort by<select value={sortPropertyId} onChange={(event) => setSortPropertyId(event.target.value)}>
+              <label>Saved view<select value={selectedViewId} onChange={(event) => applyView(event.target.value)}><option value="">Custom view</option>{selected.views.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select></label>
+              <label>Filter records<input type="search" value={filterQuery} onChange={(event) => { setFilterQuery(event.target.value); setSelectedViewId(''); }} placeholder="Search record values" /></label>
+              <label>Sort by<select value={sortPropertyId} onChange={(event) => { setSortPropertyId(event.target.value); setSelectedViewId(''); }}>
                 <option value="updatedAt">Updated</option>
                 {selected.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
               </select></label>
-              <label>Order<select value={sortDirection} onChange={(event) => setSortDirection(event.target.value as 'asc' | 'desc')}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+              <label>Order<select value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as 'asc' | 'desc'); setSelectedViewId(''); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
               <span className="database-view-count">{filterQuery.trim() ? `${visibleRecords.length} of ${selected.records.length} records` : `${selected.records.length} records`}</span>
             </div>
+            <form className="database-save-view" onSubmit={saveCurrentView}>
+              <label>Save current filter and sort<input value={viewName} onChange={(event) => setViewName(event.target.value)} required maxLength={80} placeholder="e.g. Recently updated" /></label>
+              <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save view'}</button>
+              {selectedView && <button type="button" disabled={busy} onClick={() => void deleteSelectedView()}>Delete “{selectedView.name}”</button>}
+            </form>
             <div className="database-table-scroll"><table className="database-table"><thead><tr>{selected.properties.map((property) => <th key={property.id}>{property.name}</th>)}<th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {visibleRecords.map((record) => <tr key={record.id}>
