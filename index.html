@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f7f3">
+    <meta name="description" content="AVEN brings your projects, documents, databases, calendar, and ideas into one organised workspace.">
+    <title>AVEN. — Your entire world, organised.</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Main navigation">
+        <a class="brand" href="#home" aria-label="AVEN home">
+          <span class="brand-mark" aria-hidden="true">A</span>
+          <span class="brand-name">AVEN<span>.</span></span>
+        </a>
+
+        <button class="workspace-switcher" id="workspace-button" type="button" aria-expanded="false" aria-controls="workspace-menu">
+          <span class="workspace-avatar" aria-hidden="true">A</span>
+          <span class="workspace-copy"><strong>Personal space</strong><small>Free workspace</small></span>
+          <span class="chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div class="workspace-menu" id="workspace-menu" hidden>
+          <span class="menu-label">YOUR WORKSPACES</span>
+          <button class="workspace-option is-current" type="button"><span class="workspace-avatar small">A</span>Personal space <span class="check" aria-hidden="true">✓</span></button>
+          <button class="workspace-option" type="button" data-toast="Workspace creation is coming in a later section."><span class="add-workspace">+</span>Create a workspace</button>
+        </div>
+
+        <div class="nav-group">
+          <span class="nav-label">WORKSPACE</span>
+          <nav class="nav-list">
+            <button class="nav-item is-active" type="button" data-page="home"><span class="nav-icon">⌂</span>Home</button>
+            <button class="nav-item" type="button" data-page="inbox"><span class="nav-icon">▱</span>Inbox<span class="nav-count">2</span></button>
+          </nav>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label-row"><span class="nav-label">YOUR TOOLS</span><button class="icon-button add-button" type="button" aria-label="Add a tool" data-toast="More tools will be added in upcoming sections.">+</button></div>
+          <nav class="nav-list">
+            <button class="nav-item" type="button" data-page="projects"><span class="nav-icon icon-project">◫</span>Projects</button>
+            <button class="nav-item" type="button" data-page="documents"><span class="nav-icon icon-document">▤</span>Documents</button>
+            <button class="nav-item" type="button" data-page="databases"><span class="nav-icon icon-database">▦</span>Databases</button>
+            <button class="nav-item" type="button" data-page="calendar"><span class="nav-icon icon-calendar">▣</span>Calendar</button>
+          </nav>
+        </div>
+
+        <button class="intelligence-card" type="button" data-page="intelligence">
+          <span class="sparkle" aria-hidden="true">✳</span>
+          <span><strong>AVEN Intelligence</strong><small>Your workspace assistant</small></span>
+          <span class="card-arrow" aria-hidden="true">↗</span>
+        </button>
+
+        <div class="sidebar-bottom">
+          <button class="nav-item" type="button" data-page="settings"><span class="nav-icon">⚙</span>Settings</button>
+          <button class="profile-button" type="button" data-toast="Account settings will be available in the authentication section.">
+            <span class="profile-avatar">K</span><span class="profile-copy"><strong>Your account</strong><small>Personal workspace</small></span><span class="more">···</span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <div class="breadcrumbs"><span>Personal space</span><span class="crumb-divider">/</span><strong id="breadcrumb-page">Home</strong></div>
+          <div class="top-actions"><span class="today-label" id="today-label"></span><button class="top-icon" type="button" aria-label="Search" data-toast="Search will be added in a later section.">⌕</button><button class="top-icon notification-button" type="button" aria-label="Notifications" data-toast="You have 2 updates in your inbox.">♧<i></i></button><button class="help-button" type="button" data-toast="Help and documentation are coming soon.">?</button></div>
+        </header>
+
+        <div class="page-content" id="page-content">
+          <section class="welcome-row">
+            <div><p class="eyebrow" id="welcome-date"></p><h1 id="greeting">Good morning.</h1><p class="subheading">A little clarity for everything on your mind.</p></div>
+            <button class="primary-button" type="button" id="quick-add"><span>+</span> Quick add</button>
+          </section>
+
+          <section class="overview-grid" aria-label="Workspace overview">
+            <article class="stat-card"><div class="stat-heading"><span>Open tasks</span><span class="stat-icon task-icon">✓</span></div><div class="stat-value">08</div><div class="stat-foot"><span class="status-dot"></span>Across 3 projects</div></article>
+            <article class="stat-card"><div class="stat-heading"><span>Due today</span><span class="stat-icon today-icon">◷</span></div><div class="stat-value">03</div><div class="stat-foot">One needs your attention</div></article>
+            <article class="stat-card"><div class="stat-heading"><span>In progress</span><span class="stat-icon progress-icon">↗</span></div><div class="stat-value">05</div><div class="stat-foot">Across all your work</div></article>
+            <article class="focus-card"><div class="focus-top"><span class="focus-pill"><span></span> YOUR FOCUS</span><span class="focus-sparkle">✳</span></div><p>Small steps add up.</p><span class="focus-caption">Pick one thing and give it your attention.</span></article>
+          </section>
+
+          <section class="content-grid">
+            <article class="panel projects-panel">
+              <div class="panel-header"><div><p class="eyebrow">IN MOTION</p><h2>Your projects</h2></div><button class="text-button" type="button" data-page="projects">View all <span>↗</span></button></div>
+              <div class="project-list">
+                <button class="project-row" type="button" data-toast="Project details will arrive in the Projects section."><span class="project-symbol project-symbol-blue">W</span><span class="project-info"><strong>Website redesign</strong><small>Updated 2 hours ago</small></span><span class="progress-wrap"><span class="progress-label">68%</span><span class="progress-track"><i style="width:68%"></i></span></span><span class="project-people"><i>J</i><i>M</i><b>+2</b></span></button>
+                <button class="project-row" type="button" data-toast="Project details will arrive in the Projects section."><span class="project-symbol project-symbol-peach">L</span><span class="project-info"><strong>Launch campaign</strong><small>Updated yesterday</small></span><span class="progress-wrap"><span class="progress-label">42%</span><span class="progress-track peach-track"><i style="width:42%"></i></span></span><span class="project-people"><i class="person-lilac">S</i><i class="person-green">A</i></span></button>
+                <button class="project-row" type="button" data-toast="Project details will arrive in the Projects section."><span class="project-symbol project-symbol-green">P</span><span class="project-info"><strong>Personal goals</strong><small>Updated Monday</small></span><span class="progress-wrap"><span class="progress-label">25%</span><span class="progress-track green-track"><i style="width:25%"></i></span></span><span class="project-people"><i class="person-green">K</i></span></button>
+              </div>
+              <button class="new-project" type="button" data-page="projects"><span>+</span> Start a new project</button>
+            </article>
+
+            <article class="panel tasks-panel">
+              <div class="panel-header"><div><p class="eyebrow">YOUR DAY</p><h2>Today's priorities</h2></div><button class="more-button" type="button" aria-label="More task options" data-toast="Task options will be available in the Projects section.">···</button></div>
+              <div class="task-list">
+                <label class="task-row"><input type="checkbox"><span class="custom-check"></span><span class="task-copy"><strong>Review homepage concepts</strong><small><i class="priority-dot priority-high"></i>Website redesign <span>·</span> 10:30 AM</small></span><span class="task-tag tag-high">High</span></label>
+                <label class="task-row"><input type="checkbox"><span class="custom-check"></span><span class="task-copy"><strong>Send campaign brief</strong><small><i class="priority-dot priority-medium"></i>Launch campaign <span>·</span> 1:00 PM</small></span><span class="task-tag tag-medium">Medium</span></label>
+                <label class="task-row"><input type="checkbox"><span class="custom-check"></span><span class="task-copy"><strong>Plan the week ahead</strong><small><i class="priority-dot priority-low"></i>Personal goals <span>·</span> 4:00 PM</small></span><span class="task-tag tag-low">Low</span></label>
+              </div>
+              <button class="view-tasks" type="button" data-page="projects">See all tasks <span>→</span></button>
+            </article>
+          </section>
+
+          <section class="bottom-grid">
+            <article class="panel activity-panel"><div class="panel-header"><div><p class="eyebrow">THE LATEST</p><h2>Recent activity</h2></div><button class="more-button" type="button" aria-label="More activity options" data-toast="Activity filters are coming soon.">···</button></div><div class="activity-list"><div class="activity-item"><span class="activity-avatar avatar-lilac">M</span><p><strong>Mia Chen</strong> completed <b>Wireframe review</b><small>Website redesign <span>·</span> 24 min ago</small></p></div><div class="activity-item"><span class="activity-avatar avatar-blue">J</span><p><strong>Jordan Lee</strong> added a comment to <b>Campaign brief</b><small>Launch campaign <span>·</span> 2 hours ago</small></p></div></div></article>
+            <article class="quote-card"><span class="quote-mark">“</span><p>Clarity comes from knowing what matters next.</p><span class="quote-caption">A little room to breathe, built into your day.</span><span class="quote-decoration" aria-hidden="true">✳</span></article>
+          </section>
+          <footer class="page-footer"><span>Made for a more organised day.</span><span>AVEN<span class="footer-dot">.</span></span></footer>
+        </div>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <dialog class="quick-dialog" id="quick-dialog"><form method="dialog"><div class="dialog-heading"><div><p class="eyebrow">QUICK ADD</p><h2>What would you like to capture?</h2></div><button class="dialog-close" aria-label="Close">×</button></div><div class="quick-options"><button value="close" data-toast="Task capture will be available in the Projects section."><span class="quick-option-icon">✓</span><span><strong>A task</strong><small>Something to get done</small></span><span>→</span></button><button value="close" data-toast="Document creation will be available in the Documents section."><span class="quick-option-icon doc-option">▤</span><span><strong>A document</strong><small>An idea or a note to keep</small></span><span>→</span></button><button value="close" data-toast="Project creation will be available in the Projects section."><span class="quick-option-icon project-option">◫</span><span><strong>A project</strong><small>A bigger thing to organise</small></span><span>→</span></button></div></form></dialog>
+  </body>
+</html>
