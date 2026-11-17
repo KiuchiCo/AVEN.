@@ -4,7 +4,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from './workspace-shell';
 
-type Property = { id: string; name: string; type: string; relatedDatabaseId?: string };
+type Property = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string };
 type RecordValues = Record<string, string | number | boolean | null | string[]>;
 type DatabaseRecord = { id: string; values: RecordValues; updatedAt: string };
 type ViewLayout = 'TABLE' | 'BOARD' | 'GALLERY' | 'CALENDAR' | 'LIST' | 'TIMELINE' | 'CHART';
@@ -20,6 +20,7 @@ const propertyTypes = [
   { value: 'date', label: 'Date' },
   { value: 'status', label: 'Status' },
   { value: 'relation', label: 'Relation' },
+  { value: 'formula', label: 'Formula' },
 ];
 
 function parseCsv(text: string): string[][] {
@@ -79,6 +80,7 @@ export function DatabasesWorkspace() {
   const [selectedViewId, setSelectedViewId] = useState('');
   const [viewName, setViewName] = useState('');
   const [newPropertyType, setNewPropertyType] = useState('text');
+  const [showRelationMap, setShowRelationMap] = useState(false);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -120,7 +122,7 @@ export function DatabasesWorkspace() {
   const dateProperties = selected?.properties.filter((property) => property.type === 'date') ?? [];
   const boardPropertyId = statusProperties.some((property) => property.id === groupByPropertyId) ? groupByPropertyId : statusProperties[0]?.id ?? '';
   const calendarPropertyId = dateProperties.some((property) => property.id === calendarDatePropertyId) ? calendarDatePropertyId : dateProperties[0]?.id ?? '';
-  const numericProperties = selected?.properties.filter((property) => property.type === 'number') ?? [];
+  const numericProperties = selected?.properties.filter((property) => property.type === 'number' || property.type === 'formula') ?? [];
   const chartValuePropertyId = numericProperties.some((property) => property.id === chartPropertyId) ? chartPropertyId : '';
   const visibleRecords = selected ? selected.records
     .filter((record) => {
@@ -165,7 +167,7 @@ export function DatabasesWorkspace() {
     const properties = selected.properties.filter((property) => property.type !== 'relation');
     const lines = [properties.map((property) => csvCell(property.name)).join(',')];
     for (const record of visibleRecords) {
-      lines.push(properties.map((property) => csvCell(record.values[property.id] == null ? '' : String(record.values[property.id]), property.type === 'number')).join(','));
+      lines.push(properties.map((property) => csvCell(record.values[property.id] == null ? '' : String(record.values[property.id]), (property.type === 'number' || property.type === 'formula'))).join(','));
     }
     const file = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(file);
@@ -175,7 +177,7 @@ export function DatabasesWorkspace() {
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setError('');
-    setNotice(`Exported ${visibleRecords.length} visible records. Relation fields are omitted.`);
+    setNotice(`Exported ${visibleRecords.length} visible records. Relation fields are omitted; formulas are exported as calculated values.`);
   }
 
   async function importCsv(event: FormEvent<HTMLFormElement>) {
@@ -195,6 +197,7 @@ export function DatabasesWorkspace() {
         const property = selected.properties.find((item) => item.name.toLocaleLowerCase() === header.toLocaleLowerCase());
         if (!property) throw new Error(`“${header}” is not a property in this database.`);
         if (property.type === 'relation') throw new Error('Relation fields are not imported from CSV. Import those links after the records exist.');
+        if (property.type === 'formula') throw new Error('Formula columns are calculated automatically and cannot be imported.');
         return property;
       });
       if (dataRows.length > 500) throw new Error('Import at most 500 records at a time.');
@@ -256,6 +259,7 @@ export function DatabasesWorkspace() {
     try {
       const values = Object.fromEntries(selected.properties.map((property) => {
         const raw = form.get(property.id);
+        if (property.type === 'formula') return [property.id, undefined];
         if (property.type === 'relation') return [property.id, form.getAll(property.id).filter((value): value is string => typeof value === 'string')];
         if (property.type === 'checkbox') return [property.id, raw === 'on'];
         if (property.type === 'number') return [property.id, raw === null || raw === '' ? null : Number(raw)];
@@ -279,7 +283,7 @@ export function DatabasesWorkspace() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/databases/${selected.id}/properties`, {
-        method: 'PATCH', body: JSON.stringify({ name: form.get('propertyName'), type: form.get('propertyType'), relatedDatabaseId: form.get('relatedDatabaseId') }),
+        method: 'PATCH', body: JSON.stringify({ name: form.get('propertyName'), type: form.get('propertyType'), relatedDatabaseId: form.get('relatedDatabaseId'), formula: form.get('formula') }),
       });
       formElement.reset();
       await reload();
@@ -342,7 +346,7 @@ export function DatabasesWorkspace() {
 
   function startEdit(record: DatabaseRecord) {
     setEditingId(record.id);
-    setDraft({ ...record.values });
+    setDraft(Object.fromEntries(Object.entries(record.values).filter(([propertyId]) => selected?.properties.find((property) => property.id === propertyId)?.type !== 'formula')));
   }
 
   async function saveRecord(event: FormEvent<HTMLFormElement>) {
@@ -405,6 +409,7 @@ export function DatabasesWorkspace() {
               <label>New property<input name="propertyName" required maxLength={80} placeholder="Owner, budget, due date…" /></label>
               <label>Type<select name="propertyType" value={newPropertyType} onChange={(event) => setNewPropertyType(event.target.value)}>{propertyTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
               {newPropertyType === 'relation' && <label>Related database<select name="relatedDatabaseId" required defaultValue=""><option value="" disabled>Choose a database</option>{databases.filter((database) => database.id !== selected.id).map((database) => <option key={database.id} value={database.id}>{database.name}</option>)}</select></label>}
+              {newPropertyType === 'formula' && <label className="database-formula-input">Formula<input name="formula" required maxLength={500} placeholder="[Quantity] * [Unit price]" /><small>Use [Property name], arithmetic, parentheses, or SUM / MIN / MAX / ROUND / ABS.</small></label>}
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add property'}</button>
             </form>
             <div className="database-view-controls" aria-label="Table view controls">
@@ -420,7 +425,17 @@ export function DatabasesWorkspace() {
               </select></label>
               <label>Order<select value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as 'asc' | 'desc'); setSelectedViewId(''); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
               <span className="database-view-count">{filterQuery.trim() ? `${visibleRecords.length} of ${selected.records.length} records` : `${selected.records.length} records`}</span>
+              <button type="button" className={`database-relation-toggle${showRelationMap ? ' is-active' : ''}`} onClick={() => setShowRelationMap((current) => !current)}>↗ Relations</button>
             </div>
+            {showRelationMap && <section className="database-relation-map" aria-label="Database relationship map">
+              <div className="database-relation-map__node is-current"><span>THIS DATABASE</span><strong>{selected.name}</strong><small>{selected.records.length} records</small></div>
+              {selected.properties.filter((property) => property.type === 'relation').map((property) => {
+                const related = databases.find((database) => database.id === property.relatedDatabaseId);
+                const links = selected.records.reduce((total, record) => total + (Array.isArray(record.values[property.id]) ? (record.values[property.id] as string[]).length : 0), 0);
+                return <div className="database-relation-map__edge" key={property.id}><span aria-hidden="true">⟶</span><div><small>{property.name} · {links} links</small><div className="database-relation-map__node"><span>RELATED DATABASE</span><strong>{related?.name ?? 'Unavailable database'}</strong><small>{related?.records.length ?? 0} records</small></div></div></div>;
+              })}
+              {!selected.properties.some((property) => property.type === 'relation') && <p className="database-gallery-empty">Add a Relation property to connect this table to another workspace database.</p>}
+            </section>}
             {notice && <p className="database-import-notice" role="status">{notice}</p>}
             <form className="database-csv-tools" onSubmit={importCsv}>
               <label>Import CSV<input name="csvFile" type="file" accept=".csv,text/csv" required /></label>
@@ -521,7 +536,7 @@ export function DatabasesWorkspace() {
               <tbody>
                 {visibleRecords.map((record) => <tr key={record.id}>
                   {editingId === record.id ? <>
-                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'relation' ? <select aria-label={property.name} multiple size={3} value={Array.isArray(draft[property.id]) ? draft[property.id] as string[] : []} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: Array.from(event.target.selectedOptions, (option) => option.value) }))}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select aria-label={property.name} value={String(draft[property.id] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value || null }))}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input aria-label={property.name} type="checkbox" checked={Boolean(draft[property.id])} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.checked }))} /> : <input aria-label={property.name} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} value={draft[property.id] == null ? '' : String(draft[property.id])} maxLength={property.type === 'text' ? 2000 : undefined} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value === '' ? null : property.type === 'number' ? Number(event.target.value) : event.target.value }))} />}</td>)}
+                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'formula' ? <span className="database-formula-value">ƒ {propertyValueLabel(property, record.values[property.id])}</span> : property.type === 'relation' ? <select aria-label={property.name} multiple size={3} value={Array.isArray(draft[property.id]) ? draft[property.id] as string[] : []} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: Array.from(event.target.selectedOptions, (option) => option.value) }))}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select aria-label={property.name} value={String(draft[property.id] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value || null }))}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input aria-label={property.name} type="checkbox" checked={Boolean(draft[property.id])} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.checked }))} /> : <input aria-label={property.name} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} value={draft[property.id] == null ? '' : String(draft[property.id])} maxLength={property.type === 'text' ? 2000 : undefined} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value === '' ? null : property.type === 'number' ? Number(event.target.value) : event.target.value }))} />}</td>)}
                     <td>Editing</td><td><form className="database-row-actions" onSubmit={saveRecord}><button type="submit" disabled={busy}>Save</button><button type="button" onClick={() => setEditingId('')}>Cancel</button></form></td>
                   </> : <>
                     {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <span className="database-status">{String(record.values[property.id] ?? '—')}</span> : property.type === 'checkbox' ? (record.values[property.id] ? 'Yes' : 'No') : propertyValueLabel(property, record.values[property.id])}</td>)}
@@ -532,7 +547,7 @@ export function DatabasesWorkspace() {
                 {selected.records.length > 0 && !visibleRecords.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records match that search.</td></tr>}
               </tbody></table></div>}
             <form className="database-add-record" onSubmit={createRecord}>
-              {selected.properties.map((property) => <label key={property.id}>{property.name}{property.type === 'relation' ? <select name={property.id} multiple size={3}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? 'Website redesign' : undefined} required={property.id === 'name'} />}</label>)}
+              {selected.properties.filter((property) => property.type !== 'formula').map((property) => <label key={property.id}>{property.name}{property.type === 'relation' ? <select name={property.id} multiple size={3}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? 'Website redesign' : undefined} required={property.id === 'name'} />}</label>)}
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add record'}</button>
             </form>
           </>}

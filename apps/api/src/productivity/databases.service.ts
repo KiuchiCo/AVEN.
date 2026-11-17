@@ -80,7 +80,7 @@ export class DatabasesService {
     await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const name = textField(body.name, 'Property name', 80);
-    const type = enumValue(body.type, ['text', 'number', 'checkbox', 'date', 'status', 'relation'] as const);
+    const type = enumValue(body.type, ['text', 'number', 'checkbox', 'date', 'status', 'relation', 'formula'] as const);
     const database = await this.prisma.workspaceDatabase.findFirst({
       where: { id: databaseId, workspaceId },
       select: { id: true, properties: true },
@@ -98,7 +98,9 @@ export class DatabasesService {
       const relatedDatabase = await this.prisma.workspaceDatabase.findFirst({ where: { id: relatedDatabaseId, workspaceId }, select: { id: true } });
       if (!relatedDatabase) throw new BadRequestException('Related database must belong to this workspace.');
     }
-    const nextProperties = [...properties, { id, name, type, ...(relatedDatabaseId ? { relatedDatabaseId } : {}) }];
+    const formula = type === 'formula' ? textField(body.formula, 'Formula', 500) : undefined;
+    const nextProperties = [...properties, { id, name, type, ...(relatedDatabaseId ? { relatedDatabaseId } : {}), ...(formula ? { formula } : {}) }];
+    if (type === 'formula') validateFormulaSet(nextProperties);
     return this.prisma.workspaceDatabase.update({
       where: { id: database.id },
       data: { properties: nextProperties as Prisma.InputJsonValue },
@@ -136,8 +138,8 @@ export class DatabasesService {
     if (layout === 'CHART' && !propertyList(database.properties).some((property) => property.id === groupByPropertyId && property.type === 'status')) {
       throw new BadRequestException('Charts must group by a status property in this database.');
     }
-    if (chartPropertyId && !propertyList(database.properties).some((property) => property.id === chartPropertyId && property.type === 'number')) {
-      throw new BadRequestException('The chart measure must be a number property in this database.');
+    if (chartPropertyId && !propertyList(database.properties).some((property) => property.id === chartPropertyId && ['number', 'formula'].includes(property.type))) {
+      throw new BadRequestException('The chart measure must be a number or formula property in this database.');
     }
     if (await this.prisma.databaseView.findFirst({ where: { databaseId, name }, select: { id: true } })) {
       throw new BadRequestException('A saved view with that name already exists.');
@@ -205,9 +207,23 @@ export class DatabasesService {
     const values = record.values && typeof record.values === 'object' && !Array.isArray(record.values)
       ? { ...record.values as Record<string, Prisma.JsonValue> }
       : {};
-    for (const property of propertyList(propertiesValue).filter((item) => item.type === 'relation')) {
+    const properties = propertyList(propertiesValue);
+    for (const property of properties.filter((item) => item.type === 'relation')) {
       values[property.id] = outgoingLinks.filter((link) => link.propertyId === property.id).map((link) => link.targetRecordId);
     }
+    const formulas = new Map(properties.filter((item) => item.type === 'formula').map((item) => [item.id, item]));
+    const evaluateProperty = (id: string, stack = new Set<string>()): number | null => {
+      const property = formulas.get(id);
+      if (!property) {
+        const value = values[id];
+        return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+      }
+      if (stack.has(id)) return null;
+      stack.add(id);
+      const result = evaluateFormula(property.formula ?? '', properties, (referenceId) => evaluateProperty(referenceId, new Set(stack)), values);
+      return result;
+    };
+    for (const property of formulas.values()) values[property.id] = evaluateProperty(property.id);
     return { ...base, values };
   }
 
@@ -250,13 +266,16 @@ function recordValues(propertiesValue: unknown, value: unknown): Record<string, 
   for (const [key, item] of Object.entries(values)) {
     const property = properties.find((candidate) => candidate.id === key);
     if (!property) throw new BadRequestException('Record values can only use properties defined in this database.');
+    if (property.type === 'formula') throw new BadRequestException(`${property.name} is calculated automatically and cannot be edited.`);
     if (item !== null && !matchesType(item, property.type)) throw new BadRequestException(`${property.name} has an invalid value.`);
     if (typeof item === 'string' && item.length > 2000) throw new BadRequestException('Text values must be 2,000 characters or fewer.');
   }
   return values as Record<string, string | number | boolean | null>;
 }
 
-function propertyList(value: unknown): Array<{ id: string; name: string; type: string; relatedDatabaseId?: string }> {
+type DatabaseProperty = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string };
+
+function propertyList(value: unknown): DatabaseProperty[] {
   if (!Array.isArray(value)) throw new BadRequestException('This database has an invalid property definition.');
   return value.map((entry) => {
     if (!entry || typeof entry !== 'object' || !('id' in entry) || !('name' in entry) || !('type' in entry)
@@ -268,6 +287,7 @@ function propertyList(value: unknown): Array<{ id: string; name: string; type: s
       name: entry.name,
       type: entry.type,
       ...('relatedDatabaseId' in entry && typeof entry.relatedDatabaseId === 'string' ? { relatedDatabaseId: entry.relatedDatabaseId } : {}),
+      ...('formula' in entry && typeof entry.formula === 'string' ? { formula: entry.formula } : {}),
     };
   });
 }
@@ -286,6 +306,103 @@ function matchesType(value: unknown, type: string) {
     case 'text':
     case 'status': return typeof value === 'string';
     case 'relation': return Array.isArray(value) && value.every((item) => typeof item === 'string');
+    case 'formula': return false;
     default: return false;
   }
+}
+
+type FormulaNode = { kind: 'number'; value: number } | { kind: 'field'; id: string } | { kind: 'unary'; op: '+' | '-'; value: FormulaNode } | { kind: 'binary'; op: '+' | '-' | '*' | '/'; left: FormulaNode; right: FormulaNode } | { kind: 'call'; name: string; args: FormulaNode[] };
+
+function parseFormula(source: string, properties: DatabaseProperty[]): FormulaNode {
+  const tokens = source.match(/\[[^\]]+\]|(?:\d+(?:\.\d+)?|\.\d+)|[A-Za-z_][A-Za-z0-9_]*|[()+\-*/,]/g) ?? [];
+  if (!tokens.length || tokens.join('').replace(/\s/g, '') !== source.replace(/\s/g, '')) throw new BadRequestException('Formula contains unsupported characters or syntax.');
+  let cursor = 0;
+  const peek = () => tokens[cursor];
+  const take = () => tokens[cursor++];
+  const expect = (token: string) => { if (take() !== token) throw new BadRequestException(`Formula expected “${token}”.`); };
+  const expression = (): FormulaNode => {
+    let node = term();
+    while (peek() === '+' || peek() === '-') { const op = take() as '+' | '-'; node = { kind: 'binary', op, left: node, right: term() }; }
+    return node;
+  };
+  const term = (): FormulaNode => {
+    let node = factor();
+    while (peek() === '*' || peek() === '/') { const op = take() as '*' | '/'; node = { kind: 'binary', op, left: node, right: factor() }; }
+    return node;
+  };
+  const factor = (): FormulaNode => {
+    if (peek() === '+' || peek() === '-') return { kind: 'unary', op: take() as '+' | '-', value: factor() };
+    if (peek() === '(') { take(); const node = expression(); expect(')'); return node; }
+    const token = take();
+    if (!token) throw new BadRequestException('Formula is incomplete.');
+    if (/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(token)) return { kind: 'number', value: Number(token) };
+    if (token.startsWith('[')) {
+      const name = token.slice(1, -1).trim();
+      const property = properties.find((item) => item.id === name || item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+      if (!property || !['number', 'formula'].includes(property.type)) throw new BadRequestException(`Formula field “[${name}]” must be a number or another formula in this database.`);
+      return { kind: 'field', id: property.id };
+    }
+    if (/^[A-Za-z_]/.test(token)) {
+      const name = token.toUpperCase();
+      if (!['SUM', 'MIN', 'MAX', 'ROUND', 'ABS'].includes(name)) throw new BadRequestException(`Formula function “${token}” is not supported.`);
+      expect('(');
+      const args: FormulaNode[] = [];
+      if (peek() !== ')') { args.push(expression()); while (peek() === ',') { take(); args.push(expression()); } }
+      expect(')');
+      const valid = name === 'ABS' ? args.length === 1 : name === 'ROUND' ? args.length >= 1 && args.length <= 2 : args.length >= 1;
+      if (!valid) throw new BadRequestException(`Formula function ${name} has the wrong number of arguments.`);
+      return { kind: 'call', name, args };
+    }
+    throw new BadRequestException(`Formula token “${token}” is invalid.`);
+  };
+  const node = expression();
+  if (cursor !== tokens.length) throw new BadRequestException(`Unexpected formula token “${peek()}”.`);
+  return node;
+}
+
+function formulaReferences(node: FormulaNode): string[] {
+  if (node.kind === 'field') return [node.id];
+  if (node.kind === 'number') return [];
+  if (node.kind === 'unary') return formulaReferences(node.value);
+  if (node.kind === 'binary') return [...formulaReferences(node.left), ...formulaReferences(node.right)];
+  return node.args.flatMap(formulaReferences);
+}
+
+function validateFormulaSet(properties: DatabaseProperty[]) {
+  const nodes = new Map(properties.filter((item) => item.type === 'formula').map((item) => [item.id, parseFormula(item.formula ?? '', properties)]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (id: string) => {
+    if (visiting.has(id)) throw new BadRequestException('Formula fields cannot depend on themselves or form a circular calculation.');
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const dependency of formulaReferences(nodes.get(id)!)) if (nodes.has(dependency)) visit(dependency);
+    visiting.delete(id); visited.add(id);
+  };
+  for (const id of nodes.keys()) visit(id);
+}
+
+function evaluateFormula(source: string, properties: DatabaseProperty[], resolve: (id: string) => number | null, values: Record<string, Prisma.JsonValue>): number | null {
+  const node = parseFormula(source, properties);
+  const evaluate = (part: FormulaNode): number | null => {
+    if (part.kind === 'number') return part.value;
+    if (part.kind === 'field') return properties.find((property) => property.id === part.id)?.type === 'formula' ? resolve(part.id) : typeof values[part.id] === 'number' ? values[part.id] as number : 0;
+    if (part.kind === 'unary') { const value = evaluate(part.value); return value === null ? null : part.op === '-' ? -value : value; }
+    const args = part.kind === 'binary' ? [evaluate(part.left), evaluate(part.right)] : part.args.map(evaluate);
+    if (args.some((value) => value === null || !Number.isFinite(value))) return null;
+    const numbers = args as number[];
+    if (part.kind === 'binary') {
+      const [left, right] = numbers;
+      const result = part.op === '+' ? left + right : part.op === '-' ? left - right : part.op === '*' ? left * right : right === 0 ? null : left / right;
+      return result === null || Number.isFinite(result) ? result : null;
+    }
+    if (part.name === 'SUM') return numbers.reduce((sum, value) => sum + value, 0);
+    if (part.name === 'MIN') return Math.min(...numbers);
+    if (part.name === 'MAX') return Math.max(...numbers);
+    if (part.name === 'ABS') return Math.abs(numbers[0]);
+    const digits = Math.max(-6, Math.min(6, Math.trunc(numbers[1] ?? 0)));
+    const factor = 10 ** digits;
+    return Math.round((numbers[0] + Number.EPSILON) * factor) / factor;
+  };
+  return evaluate(node);
 }
