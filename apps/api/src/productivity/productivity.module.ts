@@ -10,9 +10,10 @@ import { DatabasesService } from './databases.service.js';
 import { MilestonesController } from './milestones.controller.js';
 import { SearchController } from './search.controller.js';
 import { MembersController } from './members.controller.js';
+import { ActivityController } from './activity.controller.js';
 
 @Module({
-  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController],
+  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController],
   providers: [ProductivityService, DatabasesService, ClerkAuthGuard],
 })
 export class ProductivityModule {}

@@ -32,6 +32,14 @@ export class ProductivityService {
     return members.map(({ user, ...membership }) => ({ ...membership, displayName: user.displayName }));
   }
 
+  async listWorkspaceActivity(identity: AuthenticatedIdentity, workspaceId: string) {
+    await this.requireMembership(identity, workspaceId);
+    return this.prisma.workspaceActivity.findMany({
+      where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 100,
+      include: { actor: { select: { displayName: true } } },
+    });
+  }
+
   async createProject(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const userId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
@@ -39,13 +47,15 @@ export class ProductivityService {
     const description = optionalText(body.description, 'Project description', 5000);
     const status = enumField(body.status, projectStatuses, 'Project status', 'PLANNING');
     const dueAt = dateField(body.dueAt, 'Due date');
-    return this.prisma.project.create({
+    const project = await this.prisma.project.create({
       data: { workspaceId, createdById: userId, name, description, status, dueAt },
     });
+    await this.recordActivity(workspaceId, userId, 'PROJECT', project.id, `created project “${project.name}”`);
+    return project;
   }
 
   async updateProject(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const data: { name?: string; description?: string | null; status?: ProjectStatus; dueAt?: Date | null } = {};
     if ('name' in body) data.name = textField(body.name, 'Project name', 160);
@@ -55,7 +65,9 @@ export class ProductivityService {
     if (!Object.keys(data).length) throw new BadRequestException('Provide at least one project field to update.');
     const result = await this.prisma.project.updateMany({ where: { id: projectId, workspaceId }, data });
     if (result.count !== 1) throw new NotFoundException('Project not found in this workspace.');
-    return this.prisma.project.findFirstOrThrow({ where: { id: projectId, workspaceId } });
+    const project = await this.prisma.project.findFirstOrThrow({ where: { id: projectId, workspaceId } });
+    await this.recordActivity(workspaceId, actorId, 'PROJECT', project.id, `updated project “${project.name}”`);
+    return project;
   }
 
   async listProjectMilestones(identity: AuthenticatedIdentity, workspaceId: string, projectId: string) {
@@ -69,17 +81,19 @@ export class ProductivityService {
   }
 
   async createProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId);
     const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
     if (!project) throw new NotFoundException('Project not found in this workspace.');
     const body = objectInput(input);
-    return this.prisma.projectMilestone.create({
+    const milestone = await this.prisma.projectMilestone.create({
       data: { workspaceId, projectId, title: textField(body.title, 'Milestone title', 160), dueAt: dateField(body.dueAt, 'Due date') },
     });
+    await this.recordActivity(workspaceId, actorId, 'MILESTONE', milestone.id, `added milestone “${milestone.title}”`);
+    return milestone;
   }
 
   async updateProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, milestoneId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const data: { title?: string; dueAt?: Date | null; completedAt?: Date | null } = {};
     if ('title' in body) data.title = textField(body.title, 'Milestone title', 160);
@@ -91,7 +105,10 @@ export class ProductivityService {
     if (!Object.keys(data).length) throw new BadRequestException('Provide a milestone field to update.');
     const result = await this.prisma.projectMilestone.updateMany({ where: { id: milestoneId, projectId, workspaceId }, data });
     if (result.count !== 1) throw new NotFoundException('Milestone not found in this project.');
-    return this.prisma.projectMilestone.findFirstOrThrow({ where: { id: milestoneId, projectId, workspaceId } });
+    const milestone = await this.prisma.projectMilestone.findFirstOrThrow({ where: { id: milestoneId, projectId, workspaceId } });
+    const action = typeof body.completed === 'boolean' ? (body.completed ? 'completed' : 'reopened') : 'updated';
+    await this.recordActivity(workspaceId, actorId, 'MILESTONE', milestone.id, `${action} milestone “${milestone.title}”`);
+    return milestone;
   }
 
   async listTasks(identity: AuthenticatedIdentity, workspaceId: string) {
@@ -122,7 +139,7 @@ export class ProductivityService {
     }
     const status = enumField(body.status, taskStatuses, 'Task status', 'TODO');
     const priority = enumField(body.priority, taskPriorities, 'Task priority', 'MEDIUM');
-    return this.prisma.task.create({
+    const task = await this.prisma.task.create({
       data: {
         workspaceId,
         createdById: userId,
@@ -137,10 +154,12 @@ export class ProductivityService {
       },
       include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
     });
+    await this.recordActivity(workspaceId, userId, 'TASK', task.id, `created task “${task.title}”`);
+    return task;
   }
 
   async updateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const data: {
       title?: string;
@@ -172,10 +191,12 @@ export class ProductivityService {
 
     const result = await this.prisma.task.updateMany({ where: { id: taskId, workspaceId }, data });
     if (result.count !== 1) throw new NotFoundException('Task not found in this workspace.');
-    return this.prisma.task.findFirstOrThrow({
+    const task = await this.prisma.task.findFirstOrThrow({
       where: { id: taskId, workspaceId },
       include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
     });
+    await this.recordActivity(workspaceId, actorId, 'TASK', task.id, `updated task “${task.title}”`);
+    return task;
   }
 
   async listDocuments(identity: AuthenticatedIdentity, workspaceId: string) {
@@ -188,14 +209,14 @@ export class ProductivityService {
   }
 
   async createDocument(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const projectId = optionalUuid(body.projectId, 'Project');
     if (projectId) {
       const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
       if (!project) throw new NotFoundException('Project not found in this workspace.');
     }
-    return this.prisma.document.create({
+    const document = await this.prisma.document.create({
       data: {
         workspaceId,
         projectId,
@@ -204,10 +225,12 @@ export class ProductivityService {
       },
       include: { project: { select: { id: true, name: true } } },
     });
+    await this.recordActivity(workspaceId, actorId, 'DOCUMENT', document.id, `created document “${document.title}”`);
+    return document;
   }
 
   async updateDocument(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const data: { title?: string; content?: string } = {};
     if ('title' in body) data.title = textField(body.title, 'Document title', 200);
@@ -220,10 +243,12 @@ export class ProductivityService {
     if (!Object.keys(data).length) throw new BadRequestException('Provide a title or content to update.');
     const result = await this.prisma.document.updateMany({ where: { id: documentId, workspaceId }, data });
     if (result.count !== 1) throw new NotFoundException('Document not found in this workspace.');
-    return this.prisma.document.findFirstOrThrow({
+    const document = await this.prisma.document.findFirstOrThrow({
       where: { id: documentId, workspaceId },
       include: { project: { select: { id: true, name: true } } },
     });
+    await this.recordActivity(workspaceId, actorId, 'DOCUMENT', document.id, `updated document “${document.title}”`);
+    return document;
   }
 
   async listCalendarEvents(identity: AuthenticatedIdentity, workspaceId: string) {
@@ -261,7 +286,7 @@ export class ProductivityService {
   }
 
   async createCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    const actorId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const taskId = optionalUuid(body.taskId, 'Task');
     if (taskId) {
@@ -271,7 +296,7 @@ export class ProductivityService {
     const startsAt = requiredDate(body.startsAt, 'Start time');
     const endsAt = dateField(body.endsAt, 'End time');
     if (endsAt && endsAt <= startsAt) throw new BadRequestException('End time must be after the start time.');
-    return this.prisma.calendarEvent.create({
+    const event = await this.prisma.calendarEvent.create({
       data: {
         workspaceId,
         taskId,
@@ -281,6 +306,12 @@ export class ProductivityService {
       },
       include: { task: { select: { id: true, title: true } } },
     });
+    await this.recordActivity(workspaceId, actorId, 'CALENDAR', event.id, `scheduled “${event.title}”`);
+    return event;
+  }
+
+  private recordActivity(workspaceId: string, actorId: string, entityType: string, entityId: string, message: string) {
+    return this.prisma.workspaceActivity.create({ data: { workspaceId, actorId, entityType, entityId, message } });
   }
 
   private async requireMembership(identity: AuthenticatedIdentity, workspaceId: string) {
