@@ -119,6 +119,11 @@ function localDayKey(date: Date) {
 
 export function InboxWorkspace() {
   const { tasks, projects, loading, savingId, error, updateStatus } = useWorkspaceProductivity();
+  const { getToken } = useAuth();
+  const { workspace } = useWorkspaceSession();
+  const [updates, setUpdates] = useState<{ id: string; entityType: string; entityId: string; message: string; createdAt: string; isRead: boolean; actor: { displayName: string } }[]>([]);
+  const [updatesError, setUpdatesError] = useState('');
+  const [updatesBusy, setUpdatesBusy] = useState(false);
   const [filter, setFilter] = useState<InboxFilter>('ATTENTION');
   const todayKey = localDayKey(new Date());
   const weekEnd = new Date(); weekEnd.setHours(12, 0, 0, 0); weekEnd.setDate(weekEnd.getDate() + 7);
@@ -143,6 +148,56 @@ export function InboxWorkspace() {
     { key: 'ALL_OPEN', label: 'All open', count: openTasks.length },
   ];
 
+  const reloadUpdates = useCallback(async () => {
+    const token = await getToken();
+    if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+    const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/inbox`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+    if (!response.ok) throw new Error('Could not load workspace updates.');
+    setUpdates(await response.json());
+  }, [getToken, workspace.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void reloadUpdates().catch((reason) => { if (!cancelled) setUpdatesError(reason instanceof Error ? reason.message : 'Could not load workspace updates.'); });
+    return () => { cancelled = true; };
+  }, [reloadUpdates]);
+
+  async function updateReadState(activityId: string, read: boolean) {
+    setUpdatesBusy(true); setUpdatesError('');
+    try {
+      const token = await getToken();
+      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/read`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ read }) });
+      if (!response.ok) throw new Error('Could not update this notification.');
+      await reloadUpdates();
+    } catch (reason) { setUpdatesError(reason instanceof Error ? reason.message : 'Could not update this notification.'); }
+    finally { setUpdatesBusy(false); }
+  }
+
+  async function markAllUpdatesRead() {
+    setUpdatesBusy(true); setUpdatesError('');
+    try {
+      const token = await getToken();
+      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/read-all`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('Could not mark updates as read.');
+      await reloadUpdates();
+    } catch (reason) { setUpdatesError(reason instanceof Error ? reason.message : 'Could not mark updates as read.'); }
+    finally { setUpdatesBusy(false); }
+  }
+
+  async function dismissUpdate(activityId: string) {
+    setUpdatesBusy(true); setUpdatesError('');
+    try {
+      const token = await getToken();
+      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/dismiss`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('Could not dismiss this notification.');
+      await reloadUpdates();
+    } catch (reason) { setUpdatesError(reason instanceof Error ? reason.message : 'Could not dismiss this notification.'); }
+    finally { setUpdatesBusy(false); }
+  }
+
+  const unreadUpdates = updates.filter((entry) => !entry.isRead).length;
+  const updateLinks: Record<string, string> = { PROJECT: '/workspace/projects', TASK: '/workspace/tasks', MILESTONE: '/workspace/projects', DOCUMENT: '/workspace/documents', CALENDAR: '/workspace/calendar', WORKSPACE: '/workspace/settings' };
+
   function dueLabel(dueAt: string | null) {
     if (!dueAt) return 'No due date';
     const dateKey = dueAt.slice(0, 10);
@@ -155,8 +210,20 @@ export function InboxWorkspace() {
     <div className="workspace-section-page inbox-page">
       <p className="workspace-eyebrow">YOUR WORKSPACE · ACTION CENTER</p>
       <h1>Inbox</h1>
-      <p className="workspace-section-page__description">A focused queue for overdue work, upcoming deadlines, and high-priority tasks.</p>
+      <p className="workspace-section-page__description">A focused place for teammate updates, overdue work, upcoming deadlines, and high-priority tasks.</p>
       {error && <p className="productivity-error" role="alert">{error}</p>}
+      <section className="inbox-notifications" aria-labelledby="inbox-updates-title">
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">FROM YOUR TEAM</p><h2 id="inbox-updates-title">Workspace updates <span className="inbox-unread-count">{unreadUpdates}</span></h2></div><button type="button" disabled={updatesBusy || unreadUpdates === 0} onClick={() => void markAllUpdatesRead()}>Mark all read</button></div>
+        {updatesError && <p className="productivity-error" role="alert">{updatesError}</p>}
+        {updates.length === 0 ? <p className="productivity-message">Teammate activity will show up here when someone else updates this workspace.</p> : <div className="inbox-notifications__list">{updates.slice(0, 8).map((entry) => <article className={!entry.isRead ? 'is-unread' : ''} key={entry.id}>
+          <span className="inbox-notifications__dot" aria-hidden="true" />
+          <div><p><strong>{entry.actor.displayName}</strong> {entry.message}</p><small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.createdAt))} · {entry.entityType.toLowerCase()}</small></div>
+          <Link href={updateLinks[entry.entityType] ?? '/workspace/activity'} aria-label={`Open related ${entry.entityType.toLowerCase()} update`}>→</Link>
+          <button type="button" disabled={updatesBusy} onClick={() => void updateReadState(entry.id, !entry.isRead)}>{entry.isRead ? 'Unread' : 'Read'}</button>
+          <button type="button" disabled={updatesBusy} onClick={() => void dismissUpdate(entry.id)}>Dismiss</button>
+        </article>)}</div>}
+        {updates.length > 8 && <Link className="inbox-updates-more" href="/workspace/activity">See all workspace activity →</Link>}
+      </section>
       <div className="inbox-summary" aria-label="Work needing attention">
         <div><span>Needs attention</span><strong>{loading ? '—' : attentionTasks.length}</strong></div>
         <div><span>Overdue</span><strong>{loading ? '—' : overdueTasks.length}</strong></div>

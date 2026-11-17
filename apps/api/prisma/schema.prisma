@@ -77,6 +77,7 @@ model User {
   documentVersions DocumentVersion[] @relation("DocumentVersionCreator")
   documentComments DocumentComment[] @relation("DocumentCommentCreator")
   sentWorkspaceInvites WorkspaceInvite[] @relation("WorkspaceInviteCreator")
+  activityReceipts    ActivityReceipt[]
 
   @@unique([identityIssuer, identitySubject])
   @@map("users")
@@ -222,10 +223,27 @@ model WorkspaceActivity {
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   actor       User      @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
+  receipts    ActivityReceipt[]
 
   @@index([workspaceId, createdAt])
   @@index([entityType, entityId])
   @@map("workspace_activity")
+}
+
+model ActivityReceipt {
+  id         String           @id @default(uuid()) @db.Uuid
+  activityId String           @db.Uuid
+  userId     String           @db.Uuid
+  readAt     DateTime?        @db.Timestamptz(3)
+  dismissedAt DateTime?       @db.Timestamptz(3)
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime         @updatedAt @db.Timestamptz(3)
+  activity   WorkspaceActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, userId])
+  @@index([userId, readAt, dismissedAt])
+  @@map("activity_receipts")
 }
 
 model Document {

@@ -33,11 +33,56 @@ export class ProductivityService {
   }
 
   async listWorkspaceActivity(identity: AuthenticatedIdentity, workspaceId: string) {
-    await this.requireMembership(identity, workspaceId);
-    return this.prisma.workspaceActivity.findMany({
+    const userId = await this.requireMembership(identity, workspaceId);
+    const entries = await this.prisma.workspaceActivity.findMany({
       where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 100,
-      include: { actor: { select: { displayName: true } } },
+      include: { actor: { select: { displayName: true } }, receipts: { where: { userId }, select: { readAt: true } } },
     });
+    return entries.map(({ receipts, ...entry }) => ({ ...entry, isRead: Boolean(receipts[0]?.readAt) }));
+  }
+
+  async listWorkspaceNotifications(identity: AuthenticatedIdentity, workspaceId: string) {
+    const userId = await this.requireMembership(identity, workspaceId);
+    const rows = await this.prisma.workspaceActivity.findMany({
+      where: { workspaceId, actorId: { not: userId } }, orderBy: { createdAt: 'desc' }, take: 50,
+      include: { actor: { select: { displayName: true } }, receipts: { where: { userId }, select: { readAt: true, dismissedAt: true } } },
+    });
+    return rows.filter((row) => !row.receipts[0]?.dismissedAt).map(({ receipts, ...row }) => ({ ...row, isRead: Boolean(receipts[0]?.readAt) }));
+  }
+
+  async markWorkspaceActivityRead(identity: AuthenticatedIdentity, workspaceId: string, activityId: string, read: boolean) {
+    const userId = await this.requireMembership(identity, workspaceId);
+    const activity = await this.prisma.workspaceActivity.findFirst({ where: { id: activityId, workspaceId }, select: { id: true } });
+    if (!activity) throw new NotFoundException('Workspace activity not found.');
+    await this.prisma.activityReceipt.upsert({
+      where: { activityId_userId: { activityId, userId } },
+      create: { activityId, userId, readAt: read ? new Date() : null },
+      update: { readAt: read ? new Date() : null, dismissedAt: null },
+    });
+    return { id: activityId, isRead: read };
+  }
+
+  async dismissWorkspaceActivity(identity: AuthenticatedIdentity, workspaceId: string, activityId: string) {
+    const userId = await this.requireMembership(identity, workspaceId);
+    const activity = await this.prisma.workspaceActivity.findFirst({ where: { id: activityId, workspaceId }, select: { id: true } });
+    if (!activity) throw new NotFoundException('Workspace activity not found.');
+    await this.prisma.activityReceipt.upsert({
+      where: { activityId_userId: { activityId, userId } },
+      create: { activityId, userId, readAt: new Date(), dismissedAt: new Date() },
+      update: { readAt: new Date(), dismissedAt: new Date() },
+    });
+    return { id: activityId, dismissed: true };
+  }
+
+  async markAllWorkspaceActivityRead(identity: AuthenticatedIdentity, workspaceId: string) {
+    const userId = await this.requireMembership(identity, workspaceId);
+    const activities = await this.prisma.workspaceActivity.findMany({ where: { workspaceId, actorId: { not: userId } }, select: { id: true } });
+    const now = new Date();
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.activityReceipt.createMany({ data: activities.map(({ id }) => ({ activityId: id, userId, readAt: now })), skipDuplicates: true });
+      await transaction.activityReceipt.updateMany({ where: { userId, activityId: { in: activities.map(({ id }) => id) } }, data: { readAt: now } });
+    });
+    return { markedRead: activities.length };
   }
 
   async createProject(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
