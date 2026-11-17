@@ -68,6 +68,8 @@ model User {
   assignedTasks     Task[]            @relation("TaskAssignee")
   createdTasks      Task[]            @relation("TaskCreator")
   activityEntries   WorkspaceActivity[] @relation("ActivityActor")
+  documentVersions DocumentVersion[] @relation("DocumentVersionCreator")
+  documentComments DocumentComment[] @relation("DocumentCommentCreator")
 
   @@unique([identityIssuer, identitySubject])
   @@map("users")
@@ -93,6 +95,8 @@ model Workspace {
   recordLinks     DatabaseRecordLink[]
   milestones      ProjectMilestone[]
   activity        WorkspaceActivity[]
+  documentVersions DocumentVersion[]
+  documentComments DocumentComment[]
 
   @@index([createdById])
   @@map("workspaces")
@@ -206,10 +210,46 @@ model Document {
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  versions    DocumentVersion[]
+  comments    DocumentComment[]
 
   @@index([workspaceId, updatedAt])
   @@index([projectId])
   @@map("documents")
+}
+
+model DocumentVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  documentId  String   @db.Uuid
+  createdById String   @db.Uuid
+  title       String   @db.VarChar(200)
+  content     String   @db.Text
+  label       String?  @db.VarChar(120)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document    Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("DocumentVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, documentId, createdAt])
+  @@map("document_versions")
+}
+
+model DocumentComment {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  documentId  String    @db.Uuid
+  createdById String    @db.Uuid
+  body        String    @db.VarChar(2000)
+  resolvedAt  DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document    Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("DocumentCommentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, documentId, resolvedAt, createdAt])
+  @@map("document_comments")
 }
 
 model CalendarEvent {

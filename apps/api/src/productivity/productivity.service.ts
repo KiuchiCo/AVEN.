@@ -277,7 +277,7 @@ export class ProductivityService {
         workspaceId,
         projectId,
         title: textField(body.title, 'Document title', 200),
-        content: typeof body.content === 'string' && body.content.length <= 20000 ? body.content : invalidText('Document content must be 20,000 characters or fewer.'),
+        content: typeof body.content === 'string' && body.content.length <= 100000 ? body.content : invalidText('Document content must be 100,000 characters or fewer.'),
       },
       include: { project: { select: { id: true, name: true } } },
     });
@@ -291,11 +291,12 @@ export class ProductivityService {
     const data: { title?: string; content?: string } = {};
     if ('title' in body) data.title = textField(body.title, 'Document title', 200);
     if ('content' in body) {
-      if (typeof body.content !== 'string' || body.content.length > 20000) {
-        throw new BadRequestException('Document content must be 20,000 characters or fewer.');
+      if (typeof body.content !== 'string' || body.content.length > 100000) {
+        throw new BadRequestException('Document content must be 100,000 characters or fewer.');
       }
       data.content = body.content;
     }
+    if ('silent' in body && typeof body.silent !== 'boolean') throw new BadRequestException('silent must be a boolean.');
     if (!Object.keys(data).length) throw new BadRequestException('Provide a title or content to update.');
     const result = await this.prisma.document.updateMany({ where: { id: documentId, workspaceId }, data });
     if (result.count !== 1) throw new NotFoundException('Document not found in this workspace.');
@@ -303,7 +304,90 @@ export class ProductivityService {
       where: { id: documentId, workspaceId },
       include: { project: { select: { id: true, name: true } } },
     });
-    await this.recordActivity(workspaceId, actorId, 'DOCUMENT', document.id, `updated document “${document.title}”`);
+    if (body.silent !== true) await this.recordActivity(workspaceId, actorId, 'DOCUMENT', document.id, `updated document “${document.title}”`);
+    return document;
+  }
+
+  async getDocument(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
+    await this.requireMembership(identity, workspaceId);
+    const document = await this.prisma.document.findFirst({ where: { id: documentId, workspaceId }, include: { project: { select: { id: true, name: true } } } });
+    if (!document) throw new NotFoundException('Document not found in this workspace.');
+    return document;
+  }
+
+  async listDocumentVersions(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
+    await this.requireMembership(identity, workspaceId);
+    await this.requireDocument(workspaceId, documentId);
+    return this.prisma.documentVersion.findMany({
+      where: { workspaceId, documentId }, orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, title: true, label: true, createdAt: true, createdBy: { select: { displayName: true } } },
+    });
+  }
+
+  async createDocumentVersion(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const label = optionalText(body.label, 'Version label', 120);
+    const document = await this.requireDocument(workspaceId, documentId);
+    const version = await this.prisma.documentVersion.create({
+      data: { workspaceId, documentId, createdById: actorId, title: document.title, content: document.content, label },
+      select: { id: true, title: true, label: true, createdAt: true, createdBy: { select: { displayName: true } } },
+    });
+    await this.recordActivity(workspaceId, actorId, 'DOCUMENT', documentId, `saved version of “${document.title}”`);
+    return version;
+  }
+
+  async restoreDocumentVersion(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, versionId: string) {
+    const actorId = await this.requireMembership(identity, workspaceId);
+    const [document, version] = await Promise.all([
+      this.requireDocument(workspaceId, documentId),
+      this.prisma.documentVersion.findFirst({ where: { id: versionId, workspaceId, documentId } }),
+    ]);
+    if (!version) throw new NotFoundException('Version not found for this document.');
+    const restored = await this.prisma.$transaction(async (transaction) => {
+      await transaction.documentVersion.create({ data: { workspaceId, documentId, createdById: actorId, title: document.title, content: document.content, label: 'Before restore' } });
+      return transaction.document.update({ where: { id: documentId }, data: { title: version.title, content: version.content }, include: { project: { select: { id: true, name: true } } } });
+    });
+    await this.recordActivity(workspaceId, actorId, 'DOCUMENT', documentId, `restored a version of “${restored.title}”`);
+    return restored;
+  }
+
+  async listDocumentComments(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
+    await this.requireMembership(identity, workspaceId);
+    await this.requireDocument(workspaceId, documentId);
+    return this.prisma.documentComment.findMany({
+      where: { workspaceId, documentId }, orderBy: [{ resolvedAt: 'asc' }, { createdAt: 'desc' }],
+      include: { createdBy: { select: { id: true, displayName: true } } },
+    });
+  }
+
+  async createDocumentComment(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const message = textField(body.body, 'Comment', 2000);
+    const document = await this.requireDocument(workspaceId, documentId);
+    const comment = await this.prisma.documentComment.create({ data: { workspaceId, documentId, createdById: actorId, body: message }, include: { createdBy: { select: { id: true, displayName: true } } } });
+    await this.recordActivity(workspaceId, actorId, 'DOCUMENT', documentId, `commented on “${document.title}”`);
+    return comment;
+  }
+
+  async resolveDocumentComment(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, commentId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    if (typeof body.resolved !== 'boolean') throw new BadRequestException('resolved must be a boolean.');
+    const result = await this.prisma.documentComment.updateMany({
+      where: { id: commentId, documentId, workspaceId },
+      data: { resolvedAt: body.resolved ? new Date() : null },
+    });
+    if (result.count !== 1) throw new NotFoundException('Comment not found for this document.');
+    const comment = await this.prisma.documentComment.findFirstOrThrow({ where: { id: commentId, documentId, workspaceId }, include: { createdBy: { select: { id: true, displayName: true } } } });
+    await this.recordActivity(workspaceId, actorId, 'DOCUMENT', documentId, `${body.resolved ? 'resolved' : 'reopened'} a comment on “${comment.body.slice(0, 60)}”`);
+    return comment;
+  }
+
+  private async requireDocument(workspaceId: string, documentId: string) {
+    const document = await this.prisma.document.findFirst({ where: { id: documentId, workspaceId } });
+    if (!document) throw new NotFoundException('Document not found in this workspace.');
     return document;
   }
 
@@ -334,7 +418,10 @@ export class ProductivityService {
     const results = [
       ...projects.map((item) => ({ id: item.id, type: 'Project', title: item.name, detail: item.description ?? 'Project', href: '/workspace/projects', updatedAt: item.updatedAt })),
       ...tasks.map((item) => ({ id: item.id, type: 'Task', title: item.title, detail: item.project?.name ?? item.description ?? 'Workspace task', href: '/workspace/tasks', updatedAt: item.updatedAt })),
-      ...documents.map((item) => ({ id: item.id, type: 'Document', title: item.title, detail: item.content.toLocaleLowerCase().includes(needle) ? excerpt(item.content, needle) : 'Workspace document', href: '/workspace/documents', updatedAt: item.updatedAt })),
+      ...documents.map((item) => {
+        const content = documentPlainText(item.content);
+        return { id: item.id, type: 'Document', title: item.title, detail: content.toLocaleLowerCase().includes(needle) ? excerpt(content, needle) : 'Workspace document', href: `/workspace/documents/${item.id}`, updatedAt: item.updatedAt };
+      }),
       ...databases.map((item) => ({ id: item.id, type: 'Database', title: item.name, detail: item.description ?? 'Workspace database', href: '/workspace/databases', updatedAt: item.updatedAt })),
       ...records.filter((item) => JSON.stringify(item.values).toLocaleLowerCase().includes(needle)).slice(0, 12).map((item) => ({ id: item.id, type: 'Record', title: recordTitle(item.values), detail: item.database.name, href: '/workspace/databases', updatedAt: item.updatedAt })),
     ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 40);
@@ -432,6 +519,14 @@ function requiredDate(value: unknown, label: string) {
 
 function invalidText(message: string): never {
   throw new BadRequestException(message);
+}
+
+function documentPlainText(value: string) {
+  try {
+    const parsed = JSON.parse(value) as { format?: string; blocks?: { text?: string }[] };
+    if (parsed.format === 'aven-doc-v1' && Array.isArray(parsed.blocks)) return parsed.blocks.map((block) => block.text ?? '').filter(Boolean).join(' ');
+  } catch { /* Older documents store plain text. */ }
+  return value;
 }
 
 function excerpt(content: string, needle: string) {
