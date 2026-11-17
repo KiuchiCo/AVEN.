@@ -39,6 +39,8 @@ The identity provider recommendation is documented in [Section 1.4 · Identity d
 The first Clerk sign-in and personal workspace slice is in [Section 1.5 · Sign-in and personal workspace](docs/sections/05-auth-workspace.md).
 The authenticated product shell is documented in [Section 1.6 · Product shell](docs/sections/06-product-shell.md).
 
+The first persistent productivity slice is documented in [Section 1.7 · Projects and tasks](docs/sections/07-projects-and-tasks.md).
+
 ## Current state
 
 The design preview is preserved in the web app's `public` folder. The product is being moved into a TypeScript monorepo with a Next.js web app and NestJS API. PostgreSQL local configuration and the first schema migration are included; authentication and database-backed product flows remain separate milestones. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
