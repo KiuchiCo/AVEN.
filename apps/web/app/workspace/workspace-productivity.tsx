@@ -196,7 +196,7 @@ export function InboxWorkspace() {
   }
 
   const unreadUpdates = updates.filter((entry) => !entry.isRead).length;
-  const updateLinks: Record<string, string> = { PROJECT: '/workspace/projects', TASK: '/workspace/tasks', MILESTONE: '/workspace/projects', DOCUMENT: '/workspace/documents', CALENDAR: '/workspace/calendar', WORKSPACE: '/workspace/settings' };
+  const updateLinks: Record<string, string> = { PROJECT: '/workspace/projects', TASK: '/workspace/tasks', MILESTONE: '/workspace/projects', DOCUMENT: '/workspace/documents', KNOWLEDGE: '/workspace/knowledge', CALENDAR: '/workspace/calendar', WORKSPACE: '/workspace/settings' };
 
   function dueLabel(dueAt: string | null) {
     if (!dueAt) return 'No due date';

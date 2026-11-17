@@ -15,9 +15,11 @@ import { IntelligenceController } from './intelligence.controller.js';
 import { IntelligenceService } from './intelligence.service.js';
 import { InvitationsController } from './invitations.controller.js';
 import { WorkspaceInvitationsService } from './workspace-invitations.service.js';
+import { KnowledgeController } from './knowledge.controller.js';
+import { KnowledgeService } from './knowledge.service.js';
 
 @Module({
-  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController, IntelligenceController, InvitationsController],
-  providers: [ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, ClerkAuthGuard],
+  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController, IntelligenceController, InvitationsController, KnowledgeController],
+  providers: [ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, KnowledgeService, ClerkAuthGuard],
 })
 export class ProductivityModule {}

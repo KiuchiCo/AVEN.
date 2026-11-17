@@ -7,7 +7,7 @@ import { useWorkspaceSession } from '../workspace-shell';
 
 type Briefing = {
   generatedAt: string;
-  summary: { openTasks: number; overdueTasks: number; dueThisWeek: number; activeProjects: number; eventsThisWeek: number; documents: number; databases: number };
+  summary: { openTasks: number; overdueTasks: number; dueThisWeek: number; activeProjects: number; eventsThisWeek: number; documents: number; databases: number; knowledge: number };
   insights: Array<{ id: string; tone: string; title: string; detail: string; href: string; action: string }>;
   focusTasks: Array<{ id: string; title: string; status: string; priority: string; dueAt: string | null; projectName: string | null }>;
   events: Array<{ id: string; title: string; startsAt: string; endsAt: string | null; taskTitle: string | null }>;
@@ -82,7 +82,7 @@ export function IntelligenceWorkspace() {
       } else {
         const found = await request(`/workspaces/${workspace.id}/search?q=${encodeURIComponent(query)}`) as { results: SearchResult[] };
         setResults(found.results);
-        setAnswer(found.results.length ? `I found ${found.results.length} workspace ${found.results.length === 1 ? 'item' : 'items'} matching “${query}”.` : `I couldn't find anything matching “${query}”. Try a project, task, or document name.`);
+        setAnswer(found.results.length ? `I found ${found.results.length} workspace ${found.results.length === 1 ? 'item' : 'items'} matching “${query}”.` : `I couldn't find anything matching “${query}”. Try a project, task, document, or Knowledge item name.`);
       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not answer from this workspace.'); }
     finally { setAsking(false); }
@@ -159,7 +159,7 @@ export function IntelligenceWorkspace() {
           {briefing.events.length ? <ul className="intelligence-event-list">{briefing.events.slice(0, 6).map((event) => <li key={event.id}><time>{new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(event.startsAt))}<strong>{new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(event.startsAt))}</strong></time><div><strong>{event.title}</strong>{event.taskTitle && <small>Linked task · {event.taskTitle}</small>}</div></li>)}</ul> : <div className="intelligence-blank"><strong>Nothing scheduled this week</strong><p>Your new events will appear here.</p></div>}
         </section>
         <section className="intelligence-panel intelligence-panel--context" aria-labelledby="intelligence-context-title"><header><div><p className="workspace-eyebrow">YOUR WORKSPACE</p><h2 id="intelligence-context-title">Context AVEN can use</h2></div></header>
-          <div className="intelligence-context-grid"><Link href="/workspace/projects"><strong>{briefing.summary.activeProjects}</strong><span>Projects</span></Link><Link href="/workspace/documents"><strong>{briefing.summary.documents}</strong><span>Documents</span></Link><Link href="/workspace/databases"><strong>{briefing.summary.databases}</strong><span>Databases</span></Link><Link href="/workspace/calendar"><strong>{briefing.summary.eventsThisWeek}</strong><span>Events this week</span></Link></div>
+          <div className="intelligence-context-grid"><Link href="/workspace/projects"><strong>{briefing.summary.activeProjects}</strong><span>Projects</span></Link><Link href="/workspace/documents"><strong>{briefing.summary.documents}</strong><span>Documents</span></Link><Link href="/workspace/knowledge"><strong>{briefing.summary.knowledge}</strong><span>Knowledge items</span></Link><Link href="/workspace/databases"><strong>{briefing.summary.databases}</strong><span>Databases</span></Link><Link href="/workspace/calendar"><strong>{briefing.summary.eventsThisWeek}</strong><span>Events this week</span></Link></div>
           <p className="intelligence-privacy-note">AVEN searches only information in {workspace.name}. No external AI provider is connected in this version.</p>
         </section>
       </div>

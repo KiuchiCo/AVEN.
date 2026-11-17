@@ -20,7 +20,7 @@ export class IntelligenceService {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const [tasks, projects, events, documentCount, databaseCount] = await Promise.all([
+    const [tasks, projects, events, documentCount, databaseCount, knowledgeCount] = await Promise.all([
       this.prisma.task.findMany({
         where: { workspaceId }, orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }], take: 500,
         select: { id: true, title: true, status: true, priority: true, dueAt: true, project: { select: { name: true } } },
@@ -35,6 +35,7 @@ export class IntelligenceService {
       }),
       this.prisma.document.count({ where: { workspaceId } }),
       this.prisma.workspaceDatabase.count({ where: { workspaceId } }),
+      this.prisma.knowledgeItem.count({ where: { workspaceId, archivedAt: null } }),
     ]);
     const open = tasks.filter((task) => !['COMPLETED', 'CANCELLED'].includes(task.status));
     const overdue = open.filter((task) => task.dueAt && task.dueAt < start);
@@ -58,7 +59,7 @@ export class IntelligenceService {
     return {
       generatedAt: now,
       horizonEndsAt: end,
-      summary: { openTasks: open.length, overdueTasks: overdue.length, dueThisWeek: dueThisWeek.length + dueProjects.length, activeProjects: activeProjects.length, eventsThisWeek: events.length, documents: documentCount, databases: databaseCount },
+      summary: { openTasks: open.length, overdueTasks: overdue.length, dueThisWeek: dueThisWeek.length + dueProjects.length, activeProjects: activeProjects.length, eventsThisWeek: events.length, documents: documentCount, databases: databaseCount, knowledge: knowledgeCount },
       insights: insights.slice(0, 4),
       focusTasks,
       events: events.map((event) => ({ ...event, taskTitle: event.task?.title ?? null })),

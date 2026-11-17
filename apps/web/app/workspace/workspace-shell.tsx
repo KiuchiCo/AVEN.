@@ -136,7 +136,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
   );
 }
 
-type IconName = 'home' | 'inbox' | 'tasks' | 'projects' | 'documents' | 'calendar' | 'databases' | 'intelligence' | 'activity' | 'people' | 'menu' | 'search';
+type IconName = 'home' | 'inbox' | 'tasks' | 'projects' | 'documents' | 'knowledge' | 'calendar' | 'databases' | 'intelligence' | 'activity' | 'people' | 'menu' | 'search';
 
 function NavIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -145,6 +145,7 @@ function NavIcon({ name }: { name: IconName }) {
     tasks: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="m8 12 2.5 2.5L16 9" /></>,
     projects: <><path d="M3 7.5h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h6" /></>,
     documents: <><path d="M6 3h8l5 5v13H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M14 3v6h5M8 13h8M8 17h8" /></>,
+    knowledge: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 1 4 17.5z" /><path d="M4 17.5A2.5 2.5 0 0 1 6.5 15H20M8 7h8M8 10h6" /></>,
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4M17 3v4M3 10h18" /></>,
     databases: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></>,
     intelligence: <><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z" /><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" /></>,

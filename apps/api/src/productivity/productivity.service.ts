@@ -452,12 +452,13 @@ export class ProductivityService {
     }
     const query = rawQuery.trim();
     const contains = { contains: query, mode: 'insensitive' as const };
-    const [projects, tasks, documents, databases, records] = await Promise.all([
+    const [projects, tasks, documents, databases, records, knowledge] = await Promise.all([
       this.prisma.project.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, name: true, description: true, updatedAt: true } }),
       this.prisma.task.findMany({ where: { workspaceId, OR: [{ title: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, updatedAt: true, project: { select: { name: true } } } }),
       this.prisma.document.findMany({ where: { workspaceId, OR: [{ title: contains }, { content: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, content: true, updatedAt: true } }),
       this.prisma.workspaceDatabase.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 8, select: { id: true, name: true, description: true, updatedAt: true } }),
       this.prisma.databaseRecord.findMany({ where: { workspaceId }, orderBy: { updatedAt: 'desc' }, take: 300, select: { id: true, values: true, updatedAt: true, database: { select: { id: true, name: true } } } }),
+      this.prisma.knowledgeItem.findMany({ where: { workspaceId, archivedAt: null, OR: [{ title: contains }, { content: contains }, { tags: { has: query.toLocaleLowerCase() } }] }, orderBy: [{ isPinned: 'desc' }, { updatedAt: 'desc' }], take: 12, select: { id: true, title: true, content: true, tags: true, updatedAt: true } }),
     ]);
     const needle = query.toLocaleLowerCase();
     const results = [
@@ -469,6 +470,7 @@ export class ProductivityService {
       }),
       ...databases.map((item) => ({ id: item.id, type: 'Database', title: item.name, detail: item.description ?? 'Workspace database', href: '/workspace/databases', updatedAt: item.updatedAt })),
       ...records.filter((item) => JSON.stringify(item.values).toLocaleLowerCase().includes(needle)).slice(0, 12).map((item) => ({ id: item.id, type: 'Record', title: recordTitle(item.values), detail: item.database.name, href: '/workspace/databases', updatedAt: item.updatedAt })),
+      ...knowledge.map((item) => ({ id: item.id, type: 'Knowledge', title: item.title, detail: item.content.toLocaleLowerCase().includes(needle) ? excerpt(item.content, needle) : item.tags.join(' · ') || 'Workspace reference', href: '/workspace/knowledge', updatedAt: item.updatedAt })),
     ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 40);
     return { query, results };
   }
