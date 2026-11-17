@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { useWorkspaceSession } from '../workspace-shell';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
-type Task = { id: string; title: string; description: string | null; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null };
+type Member = { userId: string; displayName: string; role: string };
+type Task = { id: string; title: string; description: string | null; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
 
 const columns = [
@@ -21,6 +22,7 @@ export default function ProjectsPage() {
   const { workspace } = useWorkspaceSession();
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [loading, setLoading] = useState(true);
@@ -43,12 +45,14 @@ export default function ProjectsPage() {
   }, [getToken]);
 
   const reload = useCallback(async () => {
-    const [projectRows, taskRows] = await Promise.all([
+    const [projectRows, taskRows, memberRows] = await Promise.all([
       request(`/workspaces/${workspace.id}/projects`),
       request(`/workspaces/${workspace.id}/tasks`),
-    ]) as [Project[], Task[]];
+      request(`/workspaces/${workspace.id}/members`),
+    ]) as [Project[], Task[], Member[]];
     setProjects(projectRows);
     setTasks(taskRows);
+    setMembers(memberRows);
     setSelectedProject((current) => current || projectRows[0]?.id || '');
   }, [request, workspace.id]);
 
@@ -105,7 +109,7 @@ export default function ProjectsPage() {
     try {
       await request(`/workspaces/${workspace.id}/tasks`, {
         method: 'POST',
-        body: JSON.stringify({ title: form.get('title'), projectId: form.get('projectId') || undefined, priority: form.get('priority'), dueAt: form.get('dueAt') || undefined }),
+        body: JSON.stringify({ title: form.get('title'), projectId: form.get('projectId') || undefined, assigneeId: form.get('assigneeId') || undefined, priority: form.get('priority'), dueAt: form.get('dueAt') || undefined }),
       });
       formElement.reset();
       await reload();
@@ -134,7 +138,7 @@ export default function ProjectsPage() {
     } finally { setBusy(false); }
   }
 
-  async function updateTask(task: Task, field: 'priority' | 'dueAt', value: string) {
+  async function updateTask(task: Task, field: 'priority' | 'dueAt' | 'assigneeId', value: string) {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: value || null }) });
@@ -199,6 +203,7 @@ export default function ProjectsPage() {
             <label>Project<select name="projectId" value={selectedProject} onChange={(event) => setSelectedProject(event.target.value)}><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
             <label>Priority<select name="priority" defaultValue="MEDIUM"><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label>
           </div>
+          <label>Assign to <span>(optional)</span><select name="assigneeId" defaultValue=""><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
           <label>Due date <span>(optional)</span><input name="dueAt" type="date" /></label>
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create task'}</button>
         </form>
@@ -230,6 +235,15 @@ export default function ProjectsPage() {
         </div>
       </section>}
 
+      <section className="project-workload-panel" aria-labelledby="project-workload-title">
+        <div className="project-milestones__heading"><h2 id="project-workload-title">Workspace workload</h2><span>{tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length} open tasks</span></div>
+        {members.length === 0 ? <p className="productivity-message">Workspace members will appear here when they join.</p> : <div className="project-workload-list">{members.map((member) => {
+          const openCount = tasks.filter((task) => task.assignee?.id === member.userId && task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length;
+          const totalOpen = tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length;
+          return <div className="project-workload-row" key={member.userId}><span className="project-workload-row__name"><strong>{member.displayName}</strong><small>{member.role.toLowerCase()}</small></span><span className="project-workload-row__track"><span style={{ width: `${totalOpen ? Math.max((openCount / totalOpen) * 100, openCount ? 5 : 0) : 0}%` }} /></span><strong>{openCount}</strong></div>;
+        })}<p className="project-workload-unassigned">Unassigned · {tasks.filter((task) => !task.assignee && task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length}</p></div>}
+      </section>
+
       <section className="productivity-board" aria-labelledby="task-board-title">
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div><label className="productivity-board__filter">Priority <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label></div>
         {loading ? <p className="productivity-message">Loading tasks…</p> : (
@@ -240,6 +254,7 @@ export default function ProjectsPage() {
               {records.length === 0 ? <p className="productivity-column__empty">Nothing here yet</p> : records.map((task) => <article className="productivity-task" key={task.id}>
                 <strong>{task.title}</strong>
                 {task.project && <span className="productivity-task__project">{task.project.name}</span>}
+                <label className="productivity-task__assignee">Assignee<select aria-label={`Assignee for ${task.title}`} value={task.assignee?.id ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'assigneeId', event.target.value)}><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
                 <div className="productivity-task__footer"><label className="visually-hidden" htmlFor={`priority-${task.id}`}>Priority for {task.title}</label><select className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`} id={`priority-${task.id}`} value={task.priority} disabled={busy} onChange={(event) => void updateTask(task, 'priority', event.target.value)}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select><label className="visually-hidden" htmlFor={`status-${task.id}`}>Status for {task.title}</label><select id={`status-${task.id}`} value={task.status} disabled={busy} onChange={(event) => void changeStatus(task, event.target.value)}>{columns.map((option) => <option key={option.status} value={option.status}>{option.title}</option>)}</select></div>
                 <div className="productivity-task__due"><label htmlFor={`due-${task.id}`}>Due date</label><input id={`due-${task.id}`} type="date" value={task.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'dueAt', event.target.value)} /><span className={task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'productivity-task__overdue' : ''}>{task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'Overdue' : ''}</span></div>
               </article>)}

@@ -23,6 +23,15 @@ export class ProductivityService {
     }).then((projects) => projects.map(({ _count, ...project }) => ({ ...project, taskCount: _count.tasks })));
   }
 
+  async listWorkspaceMembers(identity: AuthenticatedIdentity, workspaceId: string) {
+    await this.requireMembership(identity, workspaceId);
+    const members = await this.prisma.workspaceMember.findMany({
+      where: { workspaceId }, orderBy: { createdAt: 'asc' },
+      select: { userId: true, role: true, user: { select: { displayName: true } } },
+    });
+    return members.map(({ user, ...membership }) => ({ ...membership, displayName: user.displayName }));
+  }
+
   async createProject(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const userId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
@@ -92,6 +101,7 @@ export class ProductivityService {
       orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
       include: {
         project: { select: { id: true, name: true } },
+        assignee: { select: { id: true, displayName: true } },
         events: { select: { id: true, title: true, startsAt: true } },
       },
     });
@@ -101,9 +111,14 @@ export class ProductivityService {
     const userId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const projectId = optionalUuid(body.projectId, 'Project');
+    const assigneeId = optionalUuid(body.assigneeId, 'Assignee');
     if (projectId) {
       const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
       if (!project) throw new NotFoundException('Project not found in this workspace.');
+    }
+    if (assigneeId) {
+      const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: assigneeId } }, select: { userId: true } });
+      if (!member) throw new BadRequestException('Assignee must be a member of this workspace.');
     }
     const status = enumField(body.status, taskStatuses, 'Task status', 'TODO');
     const priority = enumField(body.priority, taskPriorities, 'Task priority', 'MEDIUM');
@@ -112,6 +127,7 @@ export class ProductivityService {
         workspaceId,
         createdById: userId,
         projectId,
+        assigneeId,
         title: textField(body.title, 'Task title', 200),
         description: optionalText(body.description, 'Task description', 5000),
         status,
@@ -119,7 +135,7 @@ export class ProductivityService {
         dueAt: dateField(body.dueAt, 'Due date'),
         completedAt: status === 'COMPLETED' ? new Date() : null,
       },
-      include: { project: { select: { id: true, name: true } } },
+      include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
     });
   }
 
@@ -133,6 +149,7 @@ export class ProductivityService {
       priority?: TaskPriority;
       dueAt?: Date | null;
       completedAt?: Date | null;
+      assigneeId?: string | null;
     } = {};
 
     if ('title' in body) data.title = textField(body.title, 'Task title', 200);
@@ -143,13 +160,21 @@ export class ProductivityService {
     }
     if ('priority' in body) data.priority = enumField(body.priority, taskPriorities, 'Task priority');
     if ('dueAt' in body) data.dueAt = dateField(body.dueAt, 'Due date');
+    if ('assigneeId' in body) {
+      const assigneeId = optionalUuid(body.assigneeId, 'Assignee');
+      if (assigneeId) {
+        const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: assigneeId } }, select: { userId: true } });
+        if (!member) throw new BadRequestException('Assignee must be a member of this workspace.');
+      }
+      data.assigneeId = assigneeId;
+    }
     if (!Object.keys(data).length) throw new BadRequestException('Provide at least one task field to update.');
 
     const result = await this.prisma.task.updateMany({ where: { id: taskId, workspaceId }, data });
     if (result.count !== 1) throw new NotFoundException('Task not found in this workspace.');
     return this.prisma.task.findFirstOrThrow({
       where: { id: taskId, workspaceId },
-      include: { project: { select: { id: true, name: true } } },
+      include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
     });
   }
 

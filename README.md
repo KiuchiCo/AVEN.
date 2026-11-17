@@ -32,6 +32,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.21 · Project schedules and task controls](docs/sections/21-project-schedules-task-controls.md) | Manage project lifecycle, due dates, task priorities, and overdue work | Complete |
 | [1.22 · Project milestones and progress](docs/sections/22-project-milestones-progress.md) | Track dated project checkpoints and completion progress | Complete |
 | [1.23 · Workspace search](docs/sections/23-workspace-search.md) | Search saved workspace content across core modules | Complete |
+| [1.24 · Task ownership and workload](docs/sections/24-task-ownership-workload.md) | Assign tasks to workspace members and view open workload | Complete |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).
@@ -65,7 +66,7 @@ Persistent document editing is documented in [Section 1.10 · Document editing](
 
 ## Current state
 
-As of Section 1.23, AVEN has a Next.js and NestJS application with Clerk sign-in, personal workspaces, workspace-scoped projects and tasks, editable documents, calendar events, and databases with Table, List, Board, Gallery, Calendar, Timeline, and Chart layouts. Database records support custom typed properties, relation fields, saved views, filtering, sorting, and CSV import/export. Projects and tasks support editable lifecycle, due dates, priority controls, priority filtering, and overdue cues; projects also show task completion progress and support dated milestones. Workspace search covers project and task names/descriptions, document titles/content, database names, and recent database records. This is still an early Phase 2 product: the broader brief's real-time collaboration, full document editor, integrations, AI system, mobile/desktop apps, offline sync, and several advanced workflows remain future work. The original design preview is preserved in the web app's `public` folder. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
+As of Section 1.24, AVEN has a Next.js and NestJS application with Clerk sign-in, personal workspaces, workspace-scoped projects and tasks, editable documents, calendar events, and databases with Table, List, Board, Gallery, Calendar, Timeline, and Chart layouts. Database records support custom typed properties, relation fields, saved views, filtering, sorting, and CSV import/export. Projects and tasks support editable lifecycle, due dates, priority controls, priority filtering, and overdue cues; projects also show task completion progress and support dated milestones. Workspace search covers project and task names/descriptions, document titles/content, database names, and recent database records. Tasks can be assigned to workspace members, with an open workload summary by assignee. This is still an early Phase 2 product: the broader brief's real-time collaboration, full document editor, integrations, AI system, mobile/desktop apps, offline sync, and several advanced workflows remain future work. The original design preview is preserved in the web app's `public` folder. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
 
 ## Local development
 

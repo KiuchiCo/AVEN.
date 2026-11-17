@@ -493,6 +493,18 @@ body {
 .project-milestone-form input { min-width: 0; padding: 9px 10px; border: 1px solid #e2ddd5; border-radius: 8px; background: #fffdfa; color: #28251f; font: inherit; font-size: 12px; }
 .project-milestone-form button { padding: 9px 12px; border: 0; border-radius: 8px; background: #2b2a27; color: white; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; }
 .project-milestone-form button:disabled { opacity: .6; cursor: wait; }
+.project-workload-panel { margin: 16px 0; padding: 20px; border: 1px solid rgb(87 73 58 / 12%); border-radius: 16px; background: rgb(255 255 255 / 70%); box-shadow: 0 8px 26px rgb(55 43 30 / 5%); }
+.project-workload-panel h2 { margin: 0; color: #302c26; font-family: var(--aven-display-font); font-size: 19px; font-weight: 500; }
+.project-workload-list { display: grid; gap: 12px; margin-top: 15px; }
+.project-workload-row { display: grid; grid-template-columns: minmax(100px, 180px) minmax(70px, 1fr) 26px; align-items: center; gap: 12px; }
+.project-workload-row__name { display: grid; gap: 2px; }
+.project-workload-row__name strong { color: #38332d; font-size: 11px; }
+.project-workload-row__name small { color: #827a70; font-size: 9px; }
+.project-workload-row__track { height: 7px; overflow: hidden; border-radius: 99px; background: #ece6df; }
+.project-workload-row__track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #789073, #a0b396); }
+.project-workload-row > strong { color: #5f574e; font-size: 11px; text-align: right; }
+.project-workload-unassigned { margin: 4px 0 0; color: #827a70; font-size: 10px; }
+.productivity-task__assignee { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #777168; font-size: 10px; }
 .productivity-priority { padding: 4px 7px; border-radius: 999px; background: #efebe6; color: #655c52; font-size: 10px; }
 .productivity-priority--high, .productivity-priority--urgent { background: #fae9df; color: #9d5431; }
 .productivity-priority--low { background: #e8eee7; color: #527352; }
