@@ -46,6 +46,7 @@ enum DatabaseSortDirection {
 enum DatabaseViewLayout {
   TABLE
   BOARD
+  GALLERY
 }
 
 model User {

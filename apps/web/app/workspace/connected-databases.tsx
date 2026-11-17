@@ -7,7 +7,8 @@ import { useWorkspaceSession } from './workspace-shell';
 type Property = { id: string; name: string; type: string };
 type RecordValues = Record<string, string | number | boolean | null>;
 type DatabaseRecord = { id: string; values: RecordValues; updatedAt: string };
-type SavedView = { id: string; name: string; filterQuery: string; sortPropertyId: string; sortDirection: 'ASC' | 'DESC'; layout: 'TABLE' | 'BOARD'; groupByPropertyId: string };
+type ViewLayout = 'TABLE' | 'BOARD' | 'GALLERY';
+type SavedView = { id: string; name: string; filterQuery: string; sortPropertyId: string; sortDirection: 'ASC' | 'DESC'; layout: ViewLayout; groupByPropertyId: string };
 type WorkspaceDatabase = { id: string; name: string; description: string | null; properties: Property[]; records: DatabaseRecord[]; views: SavedView[] };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
@@ -30,7 +31,7 @@ export function DatabasesWorkspace() {
   const [filterQuery, setFilterQuery] = useState('');
   const [sortPropertyId, setSortPropertyId] = useState('updatedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [viewLayout, setViewLayout] = useState<'TABLE' | 'BOARD'>('TABLE');
+  const [viewLayout, setViewLayout] = useState<ViewLayout>('TABLE');
   const [groupByPropertyId, setGroupByPropertyId] = useState('status');
   const [selectedViewId, setSelectedViewId] = useState('');
   const [viewName, setViewName] = useState('');
@@ -263,7 +264,7 @@ export function DatabasesWorkspace() {
             </form>
             <div className="database-view-controls" aria-label="Table view controls">
               <label>Saved view<select value={selectedViewId} onChange={(event) => applyView(event.target.value)}><option value="">Custom view</option>{selected.views.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select></label>
-              <label>Layout<select value={viewLayout} onChange={(event) => { setViewLayout(event.target.value as 'TABLE' | 'BOARD'); setSelectedViewId(''); }}><option value="TABLE">Table</option><option value="BOARD" disabled={!statusProperties.length}>Status board</option></select></label>
+              <label>Layout<select value={viewLayout} onChange={(event) => { setViewLayout(event.target.value as ViewLayout); setSelectedViewId(''); }}><option value="TABLE">Table</option><option value="BOARD" disabled={!statusProperties.length}>Status board</option><option value="GALLERY">Gallery</option></select></label>
               {viewLayout === 'BOARD' && <label>Group by<select value={boardPropertyId} onChange={(event) => { setGroupByPropertyId(event.target.value); setSelectedViewId(''); }}>{statusProperties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>}
               <label>Filter records<input type="search" value={filterQuery} onChange={(event) => { setFilterQuery(event.target.value); setSelectedViewId(''); }} placeholder="Search record values" /></label>
               <label>Sort by<select value={sortPropertyId} onChange={(event) => { setSortPropertyId(event.target.value); setSelectedViewId(''); }}>
@@ -278,7 +279,20 @@ export function DatabasesWorkspace() {
               <button type="submit" disabled={busy || (viewLayout === 'BOARD' && !boardPropertyId)}>{busy ? 'Saving…' : 'Save view'}</button>
               {selectedView && <button type="button" disabled={busy} onClick={() => void deleteSelectedView()}>Delete “{selectedView.name}”</button>}
             </form>
-            {viewLayout === 'BOARD' && boardPropertyId ? <div className="database-board" aria-label="Records grouped by status">
+            {viewLayout === 'GALLERY' ? <div className="database-gallery" aria-label="Database record gallery">
+              {visibleRecords.map((record) => {
+                const titleProperty = selected.properties.find((property) => property.id === 'name') ?? selected.properties.find((property) => property.type === 'text') ?? selected.properties[0];
+                return <article className="database-gallery-card" key={record.id}>
+                  <div className="database-gallery-card__cover" aria-hidden="true"><span>AVEN</span></div>
+                  <div className="database-gallery-card__content">
+                    <h3>{String(record.values[titleProperty?.id ?? ''] ?? 'Untitled record')}</h3>
+                    <div className="database-gallery-card__fields">{selected.properties.filter((property) => property.id !== titleProperty?.id).slice(0, 4).map((property) => <p key={property.id}><span>{property.name}</span>{property.type === 'checkbox' ? (record.values[property.id] ? 'Yes' : 'No') : String(record.values[property.id] ?? '—')}</p>)}</div>
+                    <small>Updated {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</small>
+                  </div>
+                </article>;
+              })}
+              {!visibleRecords.length && <p className="database-gallery-empty">{selected.records.length ? 'No records match that search.' : 'Add a record to see it here.'}</p>}
+            </div> : viewLayout === 'BOARD' && boardPropertyId ? <div className="database-board" aria-label="Records grouped by status">
               {boardGroups.map((group) => {
                 const groupRecords = visibleRecords.filter((record) => String(record.values[boardPropertyId] ?? 'No status') === group);
                 return <section className="database-board-column" key={group} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const recordId = event.dataTransfer.getData('text/plain'); if (recordId) void moveBoardRecord(recordId, group); }}>

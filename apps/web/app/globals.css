@@ -527,6 +527,16 @@ body {
 .database-board-card > strong { display: block; color: #302b25; font-size: 11px; }
 .database-board-card > p { display: flex; justify-content: space-between; gap: 8px; margin: 7px 0 0; color: #635b51; font-size: 10px; }
 .database-board-card > p > span { color: #91877b; }
+.database-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); align-items: start; gap: 12px; }
+.database-gallery-card { overflow: hidden; border: 1px solid #e9e2d8; border-radius: 12px; background: #fffdfa; box-shadow: 0 4px 14px rgb(55 43 30 / 5%); }
+.database-gallery-card__cover { display: grid; min-height: 84px; place-items: center; background: linear-gradient(140deg, #e5d8c8, #f3ece2 55%, #cbbba7); color: rgb(83 66 48 / 43%); font-family: var(--aven-display-font); font-size: 24px; letter-spacing: .12em; }
+.database-gallery-card__content { padding: 12px; }
+.database-gallery-card h3 { overflow: hidden; margin: 0 0 10px; color: #302b25; font-family: var(--aven-display-font); font-size: 17px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.database-gallery-card__fields { display: grid; gap: 6px; }
+.database-gallery-card__fields p { display: flex; justify-content: space-between; gap: 8px; margin: 0; color: #51483d; font-size: 10px; }
+.database-gallery-card__fields p span { color: #91877b; }
+.database-gallery-card > div > small { display: block; margin-top: 12px; color: #999187; font-size: 9px; }
+.database-gallery-empty { grid-column: 1 / -1; margin: 0; padding: 36px 16px; border: 1px dashed #ded5c9; border-radius: 10px; color: #8a8176; font-size: 12px; text-align: center; }
 .database-table-scroll { overflow-x: auto; border: 1px solid #e7e1d8; border-radius: 10px; }
 .database-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; text-align: left; }
 .database-table th, .database-table td { padding: 11px 12px; border-bottom: 1px solid #eee9e1; white-space: nowrap; }

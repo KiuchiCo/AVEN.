@@ -63,7 +63,7 @@ export class DatabasesService {
     const filterQuery = optionalText(body.filterQuery, 'Filter', 200) ?? '';
     const sortPropertyId = body.sortPropertyId === undefined ? 'updatedAt' : textField(body.sortPropertyId, 'Sort property', 80);
     const sortDirection = enumValue(body.sortDirection, ['ASC', 'DESC'] as const, 'Sort direction', 'DESC');
-    const layout = enumValue(body.layout, ['TABLE', 'BOARD'] as const, 'View layout', 'TABLE');
+    const layout = enumValue(body.layout, ['TABLE', 'BOARD', 'GALLERY'] as const, 'View layout', 'TABLE');
     const groupByPropertyId = body.groupByPropertyId === undefined ? 'status' : textField(body.groupByPropertyId, 'Group property', 80);
     const database = await this.prisma.workspaceDatabase.findFirst({
       where: { id: databaseId, workspaceId },
