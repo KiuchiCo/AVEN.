@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 
@@ -92,7 +93,7 @@ export default function ProjectsPage() {
     try {
       await request(`/workspaces/${workspace.id}/projects`, {
         method: 'POST',
-        body: JSON.stringify({ name: form.get('name'), description: form.get('description') || undefined, status: form.get('status'), dueAt: form.get('dueAt') || undefined }),
+        body: JSON.stringify({ name: form.get('name'), description: form.get('description') || undefined, status: form.get('status'), dueAt: form.get('dueAt') || undefined, budgetTotal: form.get('budgetTotal') || undefined }),
       });
       formElement.reset();
       await reload();
@@ -194,6 +195,7 @@ export default function ProjectsPage() {
           <label>Project name<input name="name" maxLength={160} required placeholder="Website redesign" /></label>
           <label>Description <span>(optional)</span><input name="description" maxLength={5000} placeholder="What is this project for?" /></label>
           <div className="productivity-form__row"><label>Status<select name="status" defaultValue="PLANNING"><option value="PLANNING">Planning</option><option value="IN_PROGRESS">In progress</option><option value="ON_HOLD">On hold</option><option value="COMPLETED">Completed</option></select></label><label>Due date <span>(optional)</span><input name="dueAt" type="date" /></label></div>
+          <label>Budget <span>(optional, AUD)</span><input name="budgetTotal" type="number" min="0" step="0.01" placeholder="25000.00" /></label>
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create project'}</button>
         </form>
         <form className="productivity-form" onSubmit={submitTask}>
@@ -220,6 +222,7 @@ export default function ProjectsPage() {
                 <span><strong>{project.name}</strong><small>{project.description || 'A new AVEN project'}</small></span><span className="productivity-project__count">{project.taskCount} tasks</span>
               </button>
               <div className="productivity-project__controls"><label>Status <select value={project.status} disabled={busy} onChange={(event) => void updateProject(project, 'status', event.target.value)}><option value="PLANNING">Planning</option><option value="IN_PROGRESS">In progress</option><option value="ON_HOLD">On hold</option><option value="COMPLETED">Completed</option><option value="ARCHIVED">Archived</option></select></label><label>Due <input aria-label={`Due date for ${project.name}`} type="date" value={project.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateProject(project, 'dueAt', event.target.value)} /></label></div>
+              <Link className="productivity-project__open" href={`/workspace/projects/${project.id}`}>Open project workspace <span aria-hidden="true">→</span></Link>
             </article>
           ))}</div>
         )}

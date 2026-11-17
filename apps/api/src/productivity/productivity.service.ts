@@ -47,8 +47,9 @@ export class ProductivityService {
     const description = optionalText(body.description, 'Project description', 5000);
     const status = enumField(body.status, projectStatuses, 'Project status', 'PLANNING');
     const dueAt = dateField(body.dueAt, 'Due date');
+    const budgetTotalCents = moneyCentsField(body.budgetTotal, 'Project budget', true);
     const project = await this.prisma.project.create({
-      data: { workspaceId, createdById: userId, name, description, status, dueAt },
+      data: { workspaceId, createdById: userId, name, description, status, dueAt, budgetTotalCents },
     });
     await this.recordActivity(workspaceId, userId, 'PROJECT', project.id, `created project “${project.name}”`);
     return project;
@@ -57,11 +58,17 @@ export class ProductivityService {
   async updateProject(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
-    const data: { name?: string; description?: string | null; status?: ProjectStatus; dueAt?: Date | null } = {};
+    const data: { name?: string; description?: string | null; status?: ProjectStatus; dueAt?: Date | null; budgetTotalCents?: number | null; budgetSpentCents?: number } = {};
     if ('name' in body) data.name = textField(body.name, 'Project name', 160);
     if ('description' in body) data.description = optionalText(body.description, 'Project description', 5000);
     if ('status' in body) data.status = enumField(body.status, projectStatuses, 'Project status');
     if ('dueAt' in body) data.dueAt = dateField(body.dueAt, 'Due date');
+    if ('budgetTotal' in body) data.budgetTotalCents = moneyCentsField(body.budgetTotal, 'Project budget', true);
+    if ('budgetSpent' in body) {
+      const value = moneyCentsField(body.budgetSpent, 'Spent amount', false);
+      if (value === null) throw new BadRequestException('Spent amount cannot be empty.');
+      data.budgetSpentCents = value;
+    }
     if (!Object.keys(data).length) throw new BadRequestException('Provide at least one project field to update.');
     const result = await this.prisma.project.updateMany({ where: { id: projectId, workspaceId }, data });
     if (result.count !== 1) throw new NotFoundException('Project not found in this workspace.');
@@ -356,6 +363,16 @@ function dateField(value: unknown, label: string) {
   if (value === undefined || value === null || value === '') return null;
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) throw new BadRequestException(`${label} must be a valid date.`);
   return new Date(value);
+}
+
+function moneyCentsField(value: unknown, label: string, nullable: boolean) {
+  if ((value === undefined || value === null || value === '') && nullable) return null;
+  if (typeof value !== 'string' && typeof value !== 'number') throw new BadRequestException(`${label} must be a non-negative amount.`);
+  const amount = String(value).trim();
+  if (!/^\d{1,10}(?:\.\d{1,2})?$/.test(amount)) throw new BadRequestException(`${label} must be a non-negative amount with up to two decimals.`);
+  const cents = Math.round(Number(amount) * 100);
+  if (!Number.isSafeInteger(cents)) throw new BadRequestException(`${label} is too large.`);
+  return cents;
 }
 
 function requiredDate(value: unknown, label: string) {

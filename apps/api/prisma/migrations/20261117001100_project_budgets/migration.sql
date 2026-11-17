@@ -1,0 +1,3 @@
+ALTER TABLE "projects"
+ADD COLUMN "budgetTotalCents" INTEGER,
+ADD COLUMN "budgetSpentCents" INTEGER NOT NULL DEFAULT 0;
