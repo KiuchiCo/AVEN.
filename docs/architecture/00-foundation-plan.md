@@ -99,6 +99,7 @@ Each row is an independent review and Git milestone. Keep each working tree focu
 | 1.6 · Product shell | Move the current visual prototype into accessible, reusable Next.js components and functional navigation | Real app shell with no fake data presented as live |
 | 1.7 · First productivity slice | Projects and tasks persisted through the API with an initial board | Create, update, and view project work after refresh |
 | 1.8 · Connected records | Project-linked documents and tasks scheduled as calendar events | First cross-module information flow |
+| 1.9 · Live workspace overview | Real project/task metrics on Home and a workspace-wide My Tasks list | Shared task data appears across Home, Projects, Tasks, and Calendar |
 
 ## Technical risks and dependencies
 
@@ -126,6 +127,8 @@ Each row is an independent review and Git milestone. Keep each working tree focu
 - [ ] Verify the project/task workflow with live Clerk and PostgreSQL services.
 - [x] Connect project documents and task-linked calendar events through the workspace API.
 - [ ] Verify connected records with live Clerk and PostgreSQL services.
+- [x] Show saved projects, tasks, and scheduled work on Home and in My Tasks.
+- [ ] Verify the first usable release workflow with live Clerk and PostgreSQL services.
 
 ## Review notes
 

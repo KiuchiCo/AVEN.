@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useWorkspaceSession } from './workspace-shell';
+import { WorkspaceHighlights } from './workspace-productivity';
 
 const modules = [
   { title: 'Projects', detail: 'Plan work and keep the next steps together.', href: '/workspace/projects', icon: '▱' },
@@ -20,7 +21,7 @@ export default function WorkspaceHomePage() {
         <div className="workspace-hero__copy">
           <p className="workspace-eyebrow">YOUR SPACE · {workspace.name}</p>
           <h1>Good to see you, {firstName}.</h1>
-          <p>Your workspace is ready. Choose what you would like to organise first.</p>
+          <p>Your projects, tasks, documents and calendar come together in one workspace.</p>
         </div>
         <div className="workspace-hero__art" aria-hidden="true" />
       </section>
@@ -33,7 +34,7 @@ export default function WorkspaceHomePage() {
           </div>
           <span className="workspace-role-pill">{workspace.role?.toLowerCase() ?? 'member'}</span>
         </div>
-        <p className="workspace-onboarding__intro">Your account and personal workspace are connected. The sections below are ready to explore as AVEN is built out.</p>
+        <p className="workspace-onboarding__intro">Start with a project or go straight to any part of your work. New records are saved to this workspace.</p>
         <div className="workspace-module-grid">
           {modules.map((module) => (
             <Link className="workspace-module-card" href={module.href} key={module.title}>
@@ -46,19 +47,7 @@ export default function WorkspaceHomePage() {
       </section>
 
       <div className="workspace-dashboard__lower">
-        <section className="workspace-empty-card" aria-labelledby="recent-title">
-          <div className="workspace-section-heading">
-            <div>
-              <p className="workspace-eyebrow">YOUR WORKSPACE</p>
-              <h2 id="recent-title">Recent activity</h2>
-            </div>
-          </div>
-          <div className="workspace-empty-state">
-            <span className="workspace-empty-state__icon" aria-hidden="true">✧</span>
-            <h3>A clear beginning</h3>
-            <p>Projects and activity will appear here when those features are connected.</p>
-          </div>
-        </section>
+        <WorkspaceHighlights />
 
         <section className="workspace-intelligence-card" aria-labelledby="intelligence-title">
           <span className="workspace-intelligence-card__sparkle" aria-hidden="true">✧</span>

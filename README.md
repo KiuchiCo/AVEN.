@@ -43,6 +43,8 @@ The first persistent productivity slice is documented in [Section 1.7 · Project
 
 Documents and task-linked calendar events are documented in [Section 1.8 · Connected records](docs/sections/08-connected-records.md).
 
+The live workspace dashboard and My Tasks flow are documented in [Section 1.9 · Live Home and My Tasks](docs/sections/09-live-home-and-my-tasks.md).
+
 ## Current state
 
 The design preview is preserved in the web app's `public` folder. The product is being moved into a TypeScript monorepo with a Next.js web app and NestJS API. PostgreSQL local configuration and the first schema migration are included; authentication and database-backed product flows remain separate milestones. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.

@@ -40,7 +40,10 @@ export class ProductivityService {
     return this.prisma.task.findMany({
       where: { workspaceId },
       orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
-      include: { project: { select: { id: true, name: true } } },
+      include: {
+        project: { select: { id: true, name: true } },
+        events: { select: { id: true, title: true, startsAt: true } },
+      },
     });
   }
 
