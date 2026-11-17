@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -31,5 +31,15 @@ export class TasksController {
     @Body() body: unknown,
   ) {
     return this.productivity.updateTask(identity, workspaceId, taskId, body);
+  }
+
+  @Put(':taskId/dependencies')
+  setDependencies(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('taskId', new ParseUUIDPipe()) taskId: string,
+    @Body() body: unknown,
+  ) {
+    return this.productivity.setTaskDependencies(identity, workspaceId, taskId, body);
   }
 }

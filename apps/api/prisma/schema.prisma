@@ -155,6 +155,8 @@ model Task {
   createdBy   User            @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
   assignee    User?           @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   events      CalendarEvent[]
+  dependsOn   Task[]           @relation("TaskDependencies")
+  blocks      Task[]           @relation("TaskDependencies")
 
   @@index([workspaceId, status, dueAt])
   @@index([projectId, status])

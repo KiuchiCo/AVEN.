@@ -127,6 +127,8 @@ export class ProductivityService {
         project: { select: { id: true, name: true } },
         assignee: { select: { id: true, displayName: true } },
         events: { select: { id: true, title: true, startsAt: true } },
+        dependsOn: { select: { id: true, title: true, status: true } },
+        blocks: { select: { id: true, title: true, status: true } },
       },
     });
   }
@@ -182,6 +184,14 @@ export class ProductivityService {
     if ('description' in body) data.description = optionalText(body.description, 'Task description', 5000);
     if ('status' in body) {
       data.status = enumField(body.status, taskStatuses, 'Task status');
+      if (data.status === 'COMPLETED') {
+        const blockers = await this.prisma.task.findFirst({
+          where: { id: taskId, workspaceId },
+          select: { dependsOn: { where: { status: { not: 'COMPLETED' } }, select: { title: true } } },
+        });
+        if (!blockers) throw new NotFoundException('Task not found in this workspace.');
+        if (blockers.dependsOn.length) throw new BadRequestException(`Complete prerequisite tasks first: ${blockers.dependsOn.map((task) => task.title).join(', ')}.`);
+      }
       data.completedAt = data.status === 'COMPLETED' ? new Date() : null;
     }
     if ('priority' in body) data.priority = enumField(body.priority, taskPriorities, 'Task priority');
@@ -203,6 +213,45 @@ export class ProductivityService {
       include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
     });
     await this.recordActivity(workspaceId, actorId, 'TASK', task.id, `updated task “${task.title}”`);
+    return task;
+  }
+
+  async setTaskDependencies(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    if (!Array.isArray(body.dependsOnTaskIds) || body.dependsOnTaskIds.length > 100) {
+      throw new BadRequestException('dependsOnTaskIds must be an array of up to 100 task IDs.');
+    }
+    const ids = body.dependsOnTaskIds.map((value) => {
+      const id = optionalUuid(value, 'Prerequisite task');
+      if (!id) throw new BadRequestException('Prerequisite task ID is required.');
+      return id;
+    });
+    if (new Set(ids).size !== ids.length) throw new BadRequestException('A prerequisite task can only be selected once.');
+    const target = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { id: true, projectId: true, status: true } });
+    if (!target) throw new NotFoundException('Task not found in this workspace.');
+    if (ids.includes(taskId)) throw new BadRequestException('A task cannot depend on itself.');
+    const candidates = await this.prisma.task.findMany({
+      where: { workspaceId, projectId: target.projectId },
+      select: { id: true, dependsOn: { select: { id: true } } },
+    });
+    const candidateIds = new Set(candidates.map((task) => task.id));
+    if (ids.some((id) => !candidateIds.has(id))) throw new BadRequestException('Prerequisites must be tasks in the same project.');
+    if (target.status === 'COMPLETED' && ids.length) throw new BadRequestException('Reopen this task before adding prerequisites.');
+    const graph = new Map(candidates.map((task) => [task.id, task.id === taskId ? ids : task.dependsOn.map((dependency) => dependency.id)]));
+    const reachesTarget = (current: string, visited = new Set<string>()): boolean => {
+      if (current === taskId) return true;
+      if (visited.has(current)) return false;
+      visited.add(current);
+      return (graph.get(current) ?? []).some((dependency) => reachesTarget(dependency, visited));
+    };
+    if (ids.some((id) => reachesTarget(id))) throw new BadRequestException('This dependency would create a task cycle.');
+    const task = await this.prisma.task.update({
+      where: { id: taskId },
+      data: { dependsOn: { set: ids.map((id) => ({ id })) } },
+      include: { dependsOn: { select: { id: true, title: true, status: true } }, blocks: { select: { id: true, title: true, status: true } } },
+    });
+    await this.recordActivity(workspaceId, actorId, 'TASK', task.id, `updated dependencies for task “${task.title}”`);
     return task;
   }
 

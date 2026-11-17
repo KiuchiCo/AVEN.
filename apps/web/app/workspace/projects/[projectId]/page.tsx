@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { useWorkspaceSession } from '../../workspace-shell';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; budgetTotalCents: number | null; budgetSpentCents: number };
-type ProjectTask = { id: string; title: string; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; events: { id: string }[] };
+type ProjectTask = { id: string; title: string; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; events: { id: string }[]; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
 type ProjectDocument = { id: string; title: string; updatedAt: string; project: { id: string; name: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
 type ActivityEntry = { id: string; entityType: string; entityId: string; message: string; createdAt: string; actor: { displayName: string } };
@@ -102,6 +102,13 @@ export default function ProjectWorkspacePage() {
     finally { setSaving(false); }
   }
 
+  async function updateDependencies(taskId: string, selectedIds: string[]) {
+    setSaving(true); setError('');
+    try { await request(`/workspaces/${workspace.id}/tasks/${taskId}/dependencies`, { method: 'PUT', body: JSON.stringify({ dependsOnTaskIds: selectedIds }) }); await reload(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update task prerequisites.'); }
+    finally { setSaving(false); }
+  }
+
   const tabs = [
     { key: 'OVERVIEW', label: 'Overview' }, { key: 'TIMELINE', label: 'Timeline' },
     { key: 'DOCUMENTS', label: `Documents${documents.length ? ` · ${documents.length}` : ''}` },
@@ -124,8 +131,8 @@ export default function ProjectWorkspacePage() {
             <article><span>Deadline</span><strong className="project-hub__date">{formatDate(project.dueAt)}</strong><small>Project target</small></article>
           </section>
           <div className="project-hub__overview-grid">
-            <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DELIVERY</p><h2>Next tasks</h2></div><button type="button" onClick={() => setTab('TIMELINE')}>View timeline →</button></div>
-              {tasks.length === 0 ? <p className="productivity-message">Create tasks from the Projects page to start tracking delivery.</p> : <div className="project-hub__task-list">{tasks.slice().sort((a, b) => (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999')).slice(0, 6).map((task) => <article key={task.id}><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><div><strong>{task.title}</strong><small>{task.assignee?.displayName ?? 'Unassigned'} · {formatDate(task.dueAt)}</small></div><label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={saving} onChange={(event) => void updateTaskStatus(task.id, event.target.value)}>{taskStatuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select></label></article>)}</div>}
+            <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DELIVERY · SEQUENCING</p><h2>Project tasks</h2></div><button type="button" onClick={() => setTab('TIMELINE')}>View timeline →</button></div>
+              {tasks.length === 0 ? <p className="productivity-message">Create tasks from the Projects page to start tracking delivery.</p> : <div className="project-hub__task-list">{tasks.slice().sort((a, b) => (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999')).map((task) => <article key={task.id}><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><div><strong>{task.title}</strong><small>{task.assignee?.displayName ?? 'Unassigned'} · {formatDate(task.dueAt)}{task.dependsOn.length ? ` · ${task.dependsOn.filter((item) => item.status !== 'COMPLETED').length} open prerequisite(s)` : ''}</small></div><label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={saving} onChange={(event) => void updateTaskStatus(task.id, event.target.value)}>{taskStatuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select></label><details className="project-hub__dependency"><summary>Prerequisites · {task.dependsOn.length}</summary><div>{tasks.filter((candidate) => candidate.id !== task.id).map((candidate) => <label key={candidate.id}><input type="checkbox" checked={task.dependsOn.some((item) => item.id === candidate.id)} disabled={saving || task.status === 'COMPLETED'} onChange={(event) => void updateDependencies(task.id, event.currentTarget.checked ? [...task.dependsOn.map((item) => item.id), candidate.id] : task.dependsOn.filter((item) => item.id !== candidate.id).map((item) => item.id))} /><span>{candidate.title}{candidate.status === 'COMPLETED' ? ' · done' : ''}</span></label>)}</div></details></article>)}</div>}
             </section>
             <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">PROJECT RECORDS</p><h2>Documents & milestones</h2></div></div>
               <div className="project-hub__quick-list"><button type="button" onClick={() => setTab('DOCUMENTS')}><span>▤</span><strong>{documents.length} linked documents</strong><small>Briefs, plans, and notes</small></button><button type="button" onClick={() => setTab('TIMELINE')}><span>◆</span><strong>{milestones.length} milestones</strong><small>Dated project checkpoints</small></button><button type="button" onClick={() => setTab('ACTIVITY')}><span>◷</span><strong>{activity.length} recent updates</strong><small>Project history</small></button></div>
