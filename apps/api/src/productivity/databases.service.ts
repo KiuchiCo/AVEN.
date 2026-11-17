@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '../generated/prisma/client.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { PrismaService } from '../database/prisma.service.js';
 
@@ -27,15 +28,42 @@ export class DatabasesService {
 
   async createRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
     await this.requireMembership(identity, workspaceId);
-    const database = await this.prisma.workspaceDatabase.findFirst({ where: { id: databaseId, workspaceId }, select: { id: true } });
+    const database = await this.prisma.workspaceDatabase.findFirst({ where: { id: databaseId, workspaceId }, select: { id: true, properties: true } });
     if (!database) throw new NotFoundException('Database not found in this workspace.');
-    const values = recordValues(objectInput(input).values);
+    const values = recordValues(database.properties, objectInput(input).values);
     return this.prisma.databaseRecord.create({ data: { workspaceId, databaseId, values } });
+  }
+
+  async addProperty(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const name = textField(body.name, 'Property name', 80);
+    const type = enumValue(body.type, ['text', 'number', 'checkbox', 'date', 'status'] as const);
+    const database = await this.prisma.workspaceDatabase.findFirst({
+      where: { id: databaseId, workspaceId },
+      select: { id: true, properties: true },
+    });
+    if (!database) throw new NotFoundException('Database not found in this workspace.');
+    const properties = propertyList(database.properties);
+    if (properties.some((property) => property.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      throw new BadRequestException('A property with that name already exists.');
+    }
+    const id = `field_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const nextProperties = [...properties, { id, name, type }];
+    return this.prisma.workspaceDatabase.update({
+      where: { id: database.id },
+      data: { properties: nextProperties as Prisma.InputJsonValue },
+    });
   }
 
   async updateRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, recordId: string, input: unknown) {
     await this.requireMembership(identity, workspaceId);
-    const values = recordValues(objectInput(input).values);
+    const database = await this.prisma.workspaceDatabase.findFirst({
+      where: { id: databaseId, workspaceId },
+      select: { id: true, properties: true },
+    });
+    if (!database) throw new NotFoundException('Database not found in this workspace.');
+    const values = recordValues(database.properties, objectInput(input).values);
     const result = await this.prisma.databaseRecord.updateMany({
       where: { id: recordId, databaseId, workspaceId },
       data: { values },
@@ -70,16 +98,42 @@ function textField(value: unknown, label: string, max: number) {
   return value.trim();
 }
 
-function recordValues(value: unknown): Record<string, string | number | boolean | null> {
+function recordValues(propertiesValue: unknown, value: unknown): Record<string, string | number | boolean | null> {
   const values = objectInput(value);
-  if (Object.keys(values).length > 50) throw new BadRequestException('A record can contain at most 50 properties.');
+  const properties = propertyList(propertiesValue);
+  if (Object.keys(values).length > properties.length) throw new BadRequestException('Record values can only use properties defined in this database.');
   for (const [key, item] of Object.entries(values)) {
-    if (!key.trim() || key.length > 80) throw new BadRequestException('Property names must be between 1 and 80 characters.');
-    if (item !== null && typeof item !== 'string' && typeof item !== 'number' && typeof item !== 'boolean') {
-      throw new BadRequestException('Record values must be text, numbers, booleans, or null.');
-    }
+    const property = properties.find((candidate) => candidate.id === key);
+    if (!property) throw new BadRequestException('Record values can only use properties defined in this database.');
+    if (item !== null && !matchesType(item, property.type)) throw new BadRequestException(`${property.name} has an invalid value.`);
     if (typeof item === 'string' && item.length > 2000) throw new BadRequestException('Text values must be 2,000 characters or fewer.');
-    if (typeof item === 'number' && !Number.isFinite(item)) throw new BadRequestException('Numeric values must be finite.');
   }
   return values as Record<string, string | number | boolean | null>;
+}
+
+function propertyList(value: unknown): Array<{ id: string; name: string; type: string }> {
+  if (!Array.isArray(value)) throw new BadRequestException('This database has an invalid property definition.');
+  return value.map((entry) => {
+    if (!entry || typeof entry !== 'object' || !('id' in entry) || !('name' in entry) || !('type' in entry)
+      || typeof entry.id !== 'string' || typeof entry.name !== 'string' || typeof entry.type !== 'string') {
+      throw new BadRequestException('This database has an invalid property definition.');
+    }
+    return { id: entry.id, name: entry.name, type: entry.type };
+  });
+}
+
+function enumValue<const T extends readonly string[]>(value: unknown, allowed: T): T[number] {
+  if (typeof value !== 'string' || !allowed.includes(value)) throw new BadRequestException('Property type is invalid.');
+  return value as T[number];
+}
+
+function matchesType(value: unknown, type: string) {
+  switch (type) {
+    case 'number': return typeof value === 'number' && Number.isFinite(value);
+    case 'checkbox': return typeof value === 'boolean';
+    case 'date': return typeof value === 'string' && Number.isFinite(Date.parse(value));
+    case 'text':
+    case 'status': return typeof value === 'string';
+    default: return false;
+  }
 }

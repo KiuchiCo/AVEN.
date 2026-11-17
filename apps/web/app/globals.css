@@ -502,6 +502,10 @@ body {
 .database-empty p, .database-table-heading > div > p:last-child { margin: 0; color: #777168; font-size: 12px; line-height: 1.6; }
 .database-table-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
 .database-table-heading > span { flex: none; color: #8a8176; font-size: 11px; }
+.database-add-property { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; margin: 18px 0 12px; }
+.database-add-property label { display: grid; flex: 1 1 150px; gap: 6px; color: #635b51; font-size: 10px; font-weight: 650; }
+.database-add-property input, .database-add-property select { min-width: 0; padding: 8px 10px; border: 1px solid #e2ddd5; border-radius: 8px; background: #fffdfa; color: #28251f; font: inherit; font-size: 11px; }
+.database-add-property button { min-height: 34px; padding: 7px 10px; border: 1px solid #e3dbd0; border-radius: 8px; background: #f6f1ea; color: #6c5842; cursor: pointer; font: inherit; font-size: 10px; font-weight: 650; }
 .database-table-scroll { overflow-x: auto; border: 1px solid #e7e1d8; border-radius: 10px; }
 .database-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; text-align: left; }
 .database-table th, .database-table td { padding: 11px 12px; border-bottom: 1px solid #eee9e1; white-space: nowrap; }
@@ -516,6 +520,7 @@ body {
 .database-add-record label:first-child { flex: 1 1 180px; }
 .database-add-record button { min-height: 36px; padding: 8px 12px; border: 0; border-radius: 8px; background: #2b2a27; color: #fff; cursor: pointer; font: inherit; font-size: 11px; font-weight: 650; }
 .database-table input:focus, .database-table select:focus, .database-add-record input:focus, .database-add-record select:focus { outline: 3px solid rgb(164 135 102 / 28%); border-color: #a48766; }
+.database-add-property input:focus, .database-add-property select:focus { outline: 3px solid rgb(164 135 102 / 28%); border-color: #a48766; }
 .connected-event { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: start; gap: 14px; padding: 15px; border: 1px solid #e8e3db; border-radius: 12px; background: #fffdfa; }
 .connected-event > time { display: grid; justify-items: center; align-content: center; min-height: 56px; border-radius: 10px; background: #f1eae1; color: #826647; }
 .connected-event > time span { font-size: 9px; font-weight: 700; letter-spacing: .08em; }

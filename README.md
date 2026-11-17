@@ -19,7 +19,8 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.8 · Connected records](docs/sections/08-connected-records.md) | Project documents and task-linked calendar | Complete |
 | [1.9 · Live Home and My Tasks](docs/sections/09-live-home-and-my-tasks.md) | Workspace metrics and task list | Complete |
 | [1.10 · Document editing](docs/sections/10-document-editing.md) | Persistent document editing | Complete |
-| [1.11 · Basic databases](docs/sections/11-basic-databases.md) | Workspace tables and structured records | Ready for review |
+| [1.11 · Basic databases](docs/sections/11-basic-databases.md) | Workspace tables and structured records | Complete |
+| [1.12 · Custom database properties](docs/sections/12-custom-database-properties.md) | Add typed columns to workspace databases | In progress |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).

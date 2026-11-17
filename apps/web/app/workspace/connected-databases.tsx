@@ -11,6 +11,13 @@ type WorkspaceDatabase = { id: string; name: string; description: string | null;
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const statuses = ['Planning', 'In progress', 'On track', 'At risk', 'Completed'];
+const propertyTypes = [
+  { value: 'text', label: 'Text' },
+  { value: 'number', label: 'Number' },
+  { value: 'checkbox', label: 'Checkbox' },
+  { value: 'date', label: 'Date' },
+  { value: 'status', label: 'Status' },
+];
 
 export function DatabasesWorkspace() {
   const { getToken } = useAuth();
@@ -79,13 +86,35 @@ export function DatabasesWorkspace() {
     const form = new FormData(formElement);
     setBusy(true); setError('');
     try {
+      const values = Object.fromEntries(selected.properties.map((property) => {
+        const raw = form.get(property.id);
+        if (property.type === 'checkbox') return [property.id, raw === 'on'];
+        if (property.type === 'number') return [property.id, raw === null || raw === '' ? null : Number(raw)];
+        return [property.id, raw ? String(raw) : null];
+      }));
       await request(`/workspaces/${workspace.id}/databases/${selected.id}/records`, {
         method: 'POST',
-        body: JSON.stringify({ values: { name: form.get('name'), status: form.get('status') } }),
+        body: JSON.stringify({ values }),
       });
       formElement.reset();
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not add the record.'); }
+    finally { setBusy(false); }
+  }
+
+  async function createProperty(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/databases/${selected.id}/properties`, {
+        method: 'PATCH', body: JSON.stringify({ name: form.get('propertyName'), type: form.get('propertyType') }),
+      });
+      formElement.reset();
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not add the property.'); }
     finally { setBusy(false); }
   }
 
@@ -136,22 +165,26 @@ export function DatabasesWorkspace() {
             <div className="database-empty"><span aria-hidden="true">▤</span><h2>Your first table starts here</h2><p>Create a workspace database, then add records as your work takes shape.</p></div>
           ) : <>
             <div className="database-table-heading"><div><p className="workspace-eyebrow">TABLE VIEW</p><h2>{selected.name}</h2><p>{selected.description || 'A structured view of your workspace information.'}</p></div><span>{selected.records.length} records</span></div>
+            <form className="database-add-property" onSubmit={createProperty}>
+              <label>New property<input name="propertyName" required maxLength={80} placeholder="Owner, budget, due date…" /></label>
+              <label>Type<select name="propertyType" defaultValue="text">{propertyTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
+              <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add property'}</button>
+            </form>
             <div className="database-table-scroll"><table className="database-table"><thead><tr>{selected.properties.map((property) => <th key={property.id}>{property.name}</th>)}<th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {selected.records.map((record) => <tr key={record.id}>
                   {editingId === record.id ? <>
-                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <select aria-label={property.name} value={String(draft[property.id] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value }))}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : <input aria-label={property.name} value={String(draft[property.id] ?? '')} maxLength={2000} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value }))} />}</td>)}
+                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <select aria-label={property.name} value={String(draft[property.id] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value || null }))}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input aria-label={property.name} type="checkbox" checked={Boolean(draft[property.id])} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.checked }))} /> : <input aria-label={property.name} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} value={draft[property.id] == null ? '' : String(draft[property.id])} maxLength={property.type === 'text' ? 2000 : undefined} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value === '' ? null : property.type === 'number' ? Number(event.target.value) : event.target.value }))} />}</td>)}
                     <td>Editing</td><td><form className="database-row-actions" onSubmit={saveRecord}><button type="submit" disabled={busy}>Save</button><button type="button" onClick={() => setEditingId('')}>Cancel</button></form></td>
                   </> : <>
-                    {selected.properties.map((property) => <td key={property.id}>{property.id === 'status' ? <span className="database-status">{String(record.values[property.id] ?? '—')}</span> : String(record.values[property.id] ?? '—')}</td>)}
+                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <span className="database-status">{String(record.values[property.id] ?? '—')}</span> : property.type === 'checkbox' ? (record.values[property.id] ? 'Yes' : 'No') : String(record.values[property.id] ?? '—')}</td>)}
                     <td>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</td><td><button className="database-row-edit" type="button" onClick={() => startEdit(record)}>Edit</button></td>
                   </>}
                 </tr>)}
                 {!selected.records.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records yet. Add the first one below.</td></tr>}
               </tbody></table></div>
             <form className="database-add-record" onSubmit={createRecord}>
-              <label>Name<input name="name" required maxLength={200} placeholder="Website redesign" /></label>
-              <label>Status<select name="status" defaultValue="Planning">{statuses.map((status) => <option key={status}>{status}</option>)}</select></label>
+              {selected.properties.map((property) => <label key={property.id}>{property.name}{property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? 'Website redesign' : undefined} required={property.id === 'name'} />}</label>)}
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add record'}</button>
             </form>
           </>}
