@@ -131,6 +131,26 @@ export class ProductivityService {
     });
   }
 
+  async updateDocument(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const data: { title?: string; content?: string } = {};
+    if ('title' in body) data.title = textField(body.title, 'Document title', 200);
+    if ('content' in body) {
+      if (typeof body.content !== 'string' || body.content.length > 20000) {
+        throw new BadRequestException('Document content must be 20,000 characters or fewer.');
+      }
+      data.content = body.content;
+    }
+    if (!Object.keys(data).length) throw new BadRequestException('Provide a title or content to update.');
+    const result = await this.prisma.document.updateMany({ where: { id: documentId, workspaceId }, data });
+    if (result.count !== 1) throw new NotFoundException('Document not found in this workspace.');
+    return this.prisma.document.findFirstOrThrow({
+      where: { id: documentId, workspaceId },
+      include: { project: { select: { id: true, name: true } } },
+    });
+  }
+
   async listCalendarEvents(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.requireMembership(identity, workspaceId);
     return this.prisma.calendarEvent.findMany({

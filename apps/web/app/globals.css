@@ -477,6 +477,15 @@ body {
 .connected-record-stack { display: grid; gap: 10px; }
 .connected-record { padding: 16px; border: 1px solid #e8e3db; border-radius: 12px; background: #fffdfa; }
 .connected-record__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; color: #9a8770; font-size: 9px; font-weight: 750; letter-spacing: .1em; }
+.connected-record__edit { margin-left: auto; padding: 5px 9px; border: 1px solid #e3dbd0; border-radius: 7px; background: #fffdfa; color: #6c5842; cursor: pointer; font: inherit; font-size: 10px; font-weight: 650; letter-spacing: 0; }
+.connected-record__edit:focus-visible, .document-edit-form button:focus-visible { outline: 3px solid rgb(164 135 102 / 45%); outline-offset: 2px; }
+.document-edit-form { display: grid; gap: 10px; margin-top: 14px; }
+.document-edit-form label { display: grid; gap: 5px; color: #6f675d; font-size: 11px; font-weight: 600; }
+.document-edit-form input, .document-edit-form textarea { width: 100%; padding: 10px; border: 1px solid #e2ddd5; border-radius: 8px; background: #fffdfa; color: #28251f; font: inherit; font-size: 12px; }
+.document-edit-form textarea { min-height: 160px; resize: vertical; line-height: 1.6; }
+.document-edit-form input:focus, .document-edit-form textarea:focus { outline: 3px solid rgb(164 135 102 / 25%); border-color: #a48766; }
+.document-edit-form button { justify-self: start; padding: 9px 13px; border: 0; border-radius: 8px; background: #2b2a27; color: white; cursor: pointer; font: inherit; font-size: 11px; font-weight: 650; }
+.document-edit-form button:disabled { opacity: .6; cursor: wait; }
 .connected-link-pill { display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 99px; background: #f0e8de; color: #725e48; font-size: 10px; font-weight: 600; letter-spacing: 0; }
 .connected-record h3, .connected-event h3 { margin: 12px 0 7px; color: #28251f; font-family: var(--aven-display-font); font-size: 20px; font-weight: 500; }
 .connected-record > p { margin: 0; color: #70695f; font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }

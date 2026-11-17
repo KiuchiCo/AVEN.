@@ -16,6 +16,9 @@ export function DocumentsWorkspace() {
   const { workspace } = useWorkspaceSession();
   const [projects, setProjects] = useState<Project[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [editingId, setEditingId] = useState('');
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftContent, setDraftContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -69,6 +72,28 @@ export function DocumentsWorkspace() {
     finally { setBusy(false); }
   }
 
+  function editDocument(document: DocumentRecord) {
+    setEditingId(document.id);
+    setDraftTitle(document.title);
+    setDraftContent(document.content);
+    setError('');
+  }
+
+  async function saveDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingId) return;
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/documents/${editingId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: draftTitle, content: draftContent }),
+      });
+      setEditingId('');
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the document.'); }
+    finally { setBusy(false); }
+  }
+
   return (
     <div className="workspace-section-page connected-page">
       <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
@@ -88,9 +113,14 @@ export function DocumentsWorkspace() {
           {loading ? <p className="productivity-message">Loading documents…</p> : documents.length === 0 ? <p className="productivity-message">No documents yet. Create your first note and optionally link it to a project.</p> : (
             <div className="connected-record-stack">{documents.map((document) => (
               <article className="connected-record" key={document.id}>
-                <div className="connected-record__meta"><span>DOCUMENT</span>{document.project && <span className="connected-link-pill">{document.project.name}</span>}</div>
-                <h3>{document.title}</h3>
-                <p>{document.content || 'This document is empty.'}</p>
+                <div className="connected-record__meta"><span>DOCUMENT</span>{document.project && <span className="connected-link-pill">{document.project.name}</span>}<button type="button" className="connected-record__edit" onClick={() => editingId === document.id ? setEditingId('') : editDocument(document)}>{editingId === document.id ? 'Cancel' : 'Edit'}</button></div>
+                {editingId === document.id ? (
+                  <form className="document-edit-form" onSubmit={saveDocument}>
+                    <label>Title<input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} maxLength={200} required /></label>
+                    <label>Content<textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} maxLength={20000} rows={8} /></label>
+                    <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
+                  </form>
+                ) : <><h3>{document.title}</h3><p>{document.content || 'This document is empty.'}</p></>}
                 <small>Updated {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(document.updatedAt))}</small>
               </article>
             ))}</div>
