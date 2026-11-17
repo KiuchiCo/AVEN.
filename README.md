@@ -28,6 +28,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.17 · Relational database fields](docs/sections/17-database-relations.md) | Link records across databases with workspace-scoped references | Complete |
 | [1.18 · Database CSV import and export](docs/sections/18-database-csv.md) | Move scalar database records in and out as CSV | Complete |
 | [1.19 · Database calendar views](docs/sections/19-database-calendar.md) | Place dated records on a browsable month grid | Complete |
+| [1.20 · Advanced database views](docs/sections/20-advanced-database-views.md) | Add compact List, dated Timeline, and grouped Chart layouts | Complete |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).
@@ -61,7 +62,7 @@ Persistent document editing is documented in [Section 1.10 · Document editing](
 
 ## Current state
 
-The design preview is preserved in the web app's `public` folder. The product is being moved into a TypeScript monorepo with a Next.js web app and NestJS API. PostgreSQL local configuration and the first schema migration are included; authentication and database-backed product flows remain separate milestones. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
+As of Section 1.20, AVEN has a Next.js and NestJS application with Clerk sign-in, personal workspaces, workspace-scoped projects and tasks, editable documents, calendar events, and databases with Table, List, Board, Gallery, Calendar, Timeline, and Chart layouts. Database records support custom typed properties, relation fields, saved views, filtering, sorting, and CSV import/export. This is still an early Phase 2 product: the broader brief's real-time collaboration, full document editor, integrations, AI system, mobile/desktop apps, offline sync, and several advanced workflows remain future work. The original design preview is preserved in the web app's `public` folder. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
 
 ## Local development
 

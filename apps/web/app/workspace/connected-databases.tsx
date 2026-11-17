@@ -7,8 +7,8 @@ import { useWorkspaceSession } from './workspace-shell';
 type Property = { id: string; name: string; type: string; relatedDatabaseId?: string };
 type RecordValues = Record<string, string | number | boolean | null | string[]>;
 type DatabaseRecord = { id: string; values: RecordValues; updatedAt: string };
-type ViewLayout = 'TABLE' | 'BOARD' | 'GALLERY' | 'CALENDAR';
-type SavedView = { id: string; name: string; filterQuery: string; sortPropertyId: string; sortDirection: 'ASC' | 'DESC'; layout: ViewLayout; groupByPropertyId: string; datePropertyId: string };
+type ViewLayout = 'TABLE' | 'BOARD' | 'GALLERY' | 'CALENDAR' | 'LIST' | 'TIMELINE' | 'CHART';
+type SavedView = { id: string; name: string; filterQuery: string; sortPropertyId: string; sortDirection: 'ASC' | 'DESC'; layout: ViewLayout; groupByPropertyId: string; datePropertyId: string; chartPropertyId: string };
 type WorkspaceDatabase = { id: string; name: string; description: string | null; properties: Property[]; records: DatabaseRecord[]; views: SavedView[] };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
@@ -74,6 +74,7 @@ export function DatabasesWorkspace() {
   const [viewLayout, setViewLayout] = useState<ViewLayout>('TABLE');
   const [groupByPropertyId, setGroupByPropertyId] = useState('status');
   const [calendarDatePropertyId, setCalendarDatePropertyId] = useState('');
+  const [chartPropertyId, setChartPropertyId] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedViewId, setSelectedViewId] = useState('');
   const [viewName, setViewName] = useState('');
@@ -119,6 +120,8 @@ export function DatabasesWorkspace() {
   const dateProperties = selected?.properties.filter((property) => property.type === 'date') ?? [];
   const boardPropertyId = statusProperties.some((property) => property.id === groupByPropertyId) ? groupByPropertyId : statusProperties[0]?.id ?? '';
   const calendarPropertyId = dateProperties.some((property) => property.id === calendarDatePropertyId) ? calendarDatePropertyId : dateProperties[0]?.id ?? '';
+  const numericProperties = selected?.properties.filter((property) => property.type === 'number') ?? [];
+  const chartValuePropertyId = numericProperties.some((property) => property.id === chartPropertyId) ? chartPropertyId : '';
   const visibleRecords = selected ? selected.records
     .filter((record) => {
       const query = filterQuery.trim().toLocaleLowerCase();
@@ -138,6 +141,13 @@ export function DatabasesWorkspace() {
       return sortDirection === 'asc' ? comparison : -comparison;
     }) : [];
   const boardGroups = statusProperties.length ? [...new Set([...statuses, ...visibleRecords.map((record) => String(record.values[boardPropertyId] ?? 'No status'))])] : [];
+  const chartGroups = statusProperties.length ? [...new Set([...statuses, ...visibleRecords.map((record) => String(record.values[boardPropertyId] ?? 'No status'))])] : [];
+  const chartValues = chartGroups.map((group) => {
+    const items = visibleRecords.filter((record) => String(record.values[boardPropertyId] ?? 'No status') === group);
+    const value = chartValuePropertyId ? items.reduce((sum, record) => sum + (typeof record.values[chartValuePropertyId] === 'number' ? record.values[chartValuePropertyId] as number : 0), 0) : items.length;
+    return { group, count: items.length, value };
+  });
+  const maxChartValue = Math.max(1, ...chartValues.map((item) => item.value));
   const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
   const calendarGridStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1 - monthStart.getDay());
   const calendarDays = Array.from({ length: 42 }, (_, index) => new Date(calendarGridStart.getFullYear(), calendarGridStart.getMonth(), calendarGridStart.getDate() + index));
@@ -287,6 +297,7 @@ export function DatabasesWorkspace() {
       setViewLayout('TABLE');
       setGroupByPropertyId(statusProperties[0]?.id ?? 'status');
       setCalendarDatePropertyId(dateProperties[0]?.id ?? '');
+      setChartPropertyId('');
       return;
     }
     setFilterQuery(view.filterQuery);
@@ -295,6 +306,7 @@ export function DatabasesWorkspace() {
     setViewLayout(view.layout);
     setGroupByPropertyId(view.groupByPropertyId);
     setCalendarDatePropertyId(view.datePropertyId);
+    setChartPropertyId(view.chartPropertyId);
   }
 
   async function saveCurrentView(event: FormEvent<HTMLFormElement>) {
@@ -304,7 +316,7 @@ export function DatabasesWorkspace() {
     try {
       const created = await request(`/workspaces/${workspace.id}/databases/${selected.id}/views`, {
         method: 'POST',
-        body: JSON.stringify({ name: viewName, filterQuery, sortPropertyId, sortDirection: sortDirection.toLocaleUpperCase(), layout: viewLayout, groupByPropertyId: boardPropertyId, datePropertyId: calendarPropertyId }),
+        body: JSON.stringify({ name: viewName, filterQuery, sortPropertyId, sortDirection: sortDirection.toLocaleUpperCase(), layout: viewLayout, groupByPropertyId: boardPropertyId, datePropertyId: calendarPropertyId, chartPropertyId: chartValuePropertyId }),
       }) as SavedView;
       setViewName('');
       await reload();
@@ -322,6 +334,7 @@ export function DatabasesWorkspace() {
       setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc');
       setViewLayout('TABLE'); setGroupByPropertyId(statusProperties[0]?.id ?? 'status');
       setCalendarDatePropertyId(dateProperties[0]?.id ?? '');
+      setChartPropertyId('');
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete this view.'); }
     finally { setBusy(false); }
@@ -367,7 +380,7 @@ export function DatabasesWorkspace() {
       <p className="workspace-section-page__description">Keep structured information beside the projects, notes, and plans it supports.</p>
       {error && <p className="productivity-error" role="alert">{error}</p>}
       <div className="database-toolbar">
-        <label>Workspace database<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); setViewLayout('TABLE'); setGroupByPropertyId('status'); setCalendarDatePropertyId(''); }} disabled={!databases.length}>
+        <label>Workspace database<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); setViewLayout('TABLE'); setGroupByPropertyId('status'); setCalendarDatePropertyId(''); setChartPropertyId(''); }} disabled={!databases.length}>
           {databases.length ? databases.map((database) => <option key={database.id} value={database.id}>{database.name}</option>) : <option value="">Create your first database</option>}
         </select></label>
         <span>{selected ? `${selected.records.length} ${selected.records.length === 1 ? 'record' : 'records'}` : 'Start with a simple table'}</span>
@@ -387,7 +400,7 @@ export function DatabasesWorkspace() {
           {loading ? <p className="productivity-message">Loading databases…</p> : !selected ? (
             <div className="database-empty"><span aria-hidden="true">▤</span><h2>Your first table starts here</h2><p>Create a workspace database, then add records as your work takes shape.</p></div>
           ) : <>
-            <div className="database-table-heading"><div><p className="workspace-eyebrow">TABLE VIEW</p><h2>{selected.name}</h2><p>{selected.description || 'A structured view of your workspace information.'}</p></div><span>{selected.records.length} records</span></div>
+            <div className="database-table-heading"><div><p className="workspace-eyebrow">{viewLayout} VIEW</p><h2>{selected.name}</h2><p>{selected.description || 'A structured view of your workspace information.'}</p></div><span>{selected.records.length} records</span></div>
             <form className="database-add-property" onSubmit={createProperty}>
               <label>New property<input name="propertyName" required maxLength={80} placeholder="Owner, budget, due date…" /></label>
               <label>Type<select name="propertyType" value={newPropertyType} onChange={(event) => setNewPropertyType(event.target.value)}>{propertyTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
@@ -396,9 +409,10 @@ export function DatabasesWorkspace() {
             </form>
             <div className="database-view-controls" aria-label="Table view controls">
               <label>Saved view<select value={selectedViewId} onChange={(event) => applyView(event.target.value)}><option value="">Custom view</option>{selected.views.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select></label>
-              <label>Layout<select value={viewLayout} onChange={(event) => { const layout = event.target.value as ViewLayout; setViewLayout(layout); setSelectedViewId(''); if (layout === 'CALENDAR' && !calendarDatePropertyId) setCalendarDatePropertyId(dateProperties[0]?.id ?? ''); }}><option value="TABLE">Table</option><option value="BOARD" disabled={!statusProperties.length}>Status board</option><option value="GALLERY">Gallery</option><option value="CALENDAR" disabled={!dateProperties.length}>Calendar</option></select></label>
-              {viewLayout === 'BOARD' && <label>Group by<select value={boardPropertyId} onChange={(event) => { setGroupByPropertyId(event.target.value); setSelectedViewId(''); }}>{statusProperties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>}
-              {viewLayout === 'CALENDAR' && <label>Calendar date<select value={calendarPropertyId} onChange={(event) => { setCalendarDatePropertyId(event.target.value); setSelectedViewId(''); }}>{dateProperties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>}
+              <label>Layout<select value={viewLayout} onChange={(event) => { const layout = event.target.value as ViewLayout; setViewLayout(layout); setSelectedViewId(''); if ((layout === 'CALENDAR' || layout === 'TIMELINE') && !calendarDatePropertyId) setCalendarDatePropertyId(dateProperties[0]?.id ?? ''); }}><option value="TABLE">Table</option><option value="LIST">List</option><option value="BOARD" disabled={!statusProperties.length}>Status board</option><option value="GALLERY">Gallery</option><option value="CALENDAR" disabled={!dateProperties.length}>Calendar</option><option value="TIMELINE" disabled={!dateProperties.length}>Timeline</option><option value="CHART" disabled={!statusProperties.length}>Chart</option></select></label>
+              {(viewLayout === 'BOARD' || viewLayout === 'CHART') && <label>Group by<select value={boardPropertyId} onChange={(event) => { setGroupByPropertyId(event.target.value); setSelectedViewId(''); }}>{statusProperties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>}
+              {(viewLayout === 'CALENDAR' || viewLayout === 'TIMELINE') && <label>Calendar date<select value={calendarPropertyId} onChange={(event) => { setCalendarDatePropertyId(event.target.value); setSelectedViewId(''); }}>{dateProperties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>}
+              {viewLayout === 'CHART' && <label>Measure<select value={chartValuePropertyId} onChange={(event) => { setChartPropertyId(event.target.value); setSelectedViewId(''); }}><option value="">Record count</option>{numericProperties.map((property) => <option key={property.id} value={property.id}>Sum of {property.name}</option>)}</select></label>}
               <label>Filter records<input type="search" value={filterQuery} onChange={(event) => { setFilterQuery(event.target.value); setSelectedViewId(''); }} placeholder="Search record values" /></label>
               <label>Sort by<select value={sortPropertyId} onChange={(event) => { setSortPropertyId(event.target.value); setSelectedViewId(''); }}>
                 <option value="updatedAt">Updated</option>
@@ -415,11 +429,52 @@ export function DatabasesWorkspace() {
               <small>CSV uses property names as headers. Relations are left out.</small>
             </form>
             <form className="database-save-view" onSubmit={saveCurrentView}>
-              <label>Save current filter and sort<input value={viewName} onChange={(event) => setViewName(event.target.value)} required maxLength={80} placeholder="e.g. Recently updated" /></label>
-              <button type="submit" disabled={busy || (viewLayout === 'BOARD' && !boardPropertyId) || (viewLayout === 'CALENDAR' && !calendarPropertyId)}>{busy ? 'Saving…' : 'Save view'}</button>
+              <label>Save current view<input value={viewName} onChange={(event) => setViewName(event.target.value)} required maxLength={80} placeholder="e.g. Recently updated" /></label>
+              <button type="submit" disabled={busy || ((viewLayout === 'BOARD' || viewLayout === 'CHART') && !boardPropertyId) || ((viewLayout === 'CALENDAR' || viewLayout === 'TIMELINE') && !calendarPropertyId)}>{busy ? 'Saving…' : 'Save view'}</button>
               {selectedView && <button type="button" disabled={busy} onClick={() => void deleteSelectedView()}>Delete “{selectedView.name}”</button>}
             </form>
-            {viewLayout === 'GALLERY' ? <div className="database-gallery" aria-label="Database record gallery">
+            {viewLayout === 'LIST' ? <div className="database-list" aria-label="Database record list">
+              {visibleRecords.map((record) => {
+                const titleProperty = selected.properties.find((property) => property.id === 'name') ?? selected.properties.find((property) => property.type === 'text') ?? selected.properties[0];
+                return <article className="database-list__row" key={record.id}>
+                  <div><h3>{String(record.values[titleProperty?.id ?? ''] ?? 'Untitled record')}</h3><p>{selected.properties.filter((property) => property.id !== titleProperty?.id).slice(0, 3).map((property) => `${property.name}: ${propertyValueLabel(property, record.values[property.id])}`).join(' · ')}</p></div>
+                  <time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</time>
+                </article>;
+              })}
+              {!visibleRecords.length && <p className="database-gallery-empty">{selected.records.length ? 'No records match that search.' : 'Add a record to see it here.'}</p>}
+            </div> : viewLayout === 'CHART' && boardPropertyId ? <section className="database-chart" aria-label="Database status chart">
+              <div className="database-chart__heading"><h3>{chartValuePropertyId ? `Sum of ${numericProperties.find((property) => property.id === chartValuePropertyId)?.name}` : 'Record count'}</h3><span>by {statusProperties.find((property) => property.id === boardPropertyId)?.name}</span></div>
+              <div className="database-chart__rows">{chartValues.map((item) => <div className="database-chart__row" key={item.group}>
+                <span>{item.group}</span><div><i style={{ width: `${(item.value / maxChartValue) * 100}%` }} /></div><strong>{item.value}{chartValuePropertyId ? '' : ` / ${item.count}`}</strong>
+              </div>)}</div>
+              {!visibleRecords.length && <p className="database-gallery-empty">{selected.records.length ? 'No records match that search.' : 'Add a record to see it here.'}</p>}
+            </section> : viewLayout === 'TIMELINE' && calendarPropertyId ? <section className="database-timeline" aria-label="Database timeline">
+              <header className="database-calendar__header">
+                <button type="button" aria-label="Previous month" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>‹</button>
+                <h3>{new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(calendarMonth)}</h3>
+                <button type="button" aria-label="Next month" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>›</button>
+              </header>
+              {(() => {
+                const monthKey = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}`;
+                const monthDays = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+                const records = visibleRecords.filter((record) => calendarDateKey(record.values[calendarPropertyId]).startsWith(`${monthKey}-`)).sort((left, right) => calendarDateKey(left.values[calendarPropertyId]).localeCompare(calendarDateKey(right.values[calendarPropertyId])));
+                const ticks = [...new Set([1, 8, 15, 22, monthDays])];
+                const titleProperty = selected.properties.find((property) => property.id === 'name') ?? selected.properties.find((property) => property.type === 'text') ?? selected.properties[0];
+                return <>
+                  <div className="database-timeline__axis"><span>{selected.properties.find((property) => property.id === calendarPropertyId)?.name}</span><div>{ticks.map((day) => <time key={day} style={{ left: `${((day - 1) / Math.max(1, monthDays - 1)) * 100}%` }}>{day}</time>)}</div><span>Date</span></div>
+                  {records.map((record) => {
+                    const dateKey = calendarDateKey(record.values[calendarPropertyId]);
+                    const day = Number(dateKey.slice(-2));
+                    return <div className="database-timeline__row" key={record.id}>
+                      <strong>{String(record.values[titleProperty?.id ?? ''] ?? 'Untitled record')}</strong>
+                      <div className="database-timeline__track"><i style={{ left: `${((day - 1) / Math.max(1, monthDays - 1)) * 100}%` }} /></div>
+                      <time dateTime={dateKey}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(`${dateKey}T12:00:00`))}</time>
+                    </div>;
+                  })}
+                  {!records.length && <p className="database-gallery-empty">{selected.records.length ? 'No dated records match this month and filter.' : 'Add records with dates to see them here.'}</p>}
+                </>;
+              })()}
+            </section> : viewLayout === 'GALLERY' ? <div className="database-gallery" aria-label="Database record gallery">
               {visibleRecords.map((record) => {
                 const titleProperty = selected.properties.find((property) => property.id === 'name') ?? selected.properties.find((property) => property.type === 'text') ?? selected.properties[0];
                 return <article className="database-gallery-card" key={record.id}>

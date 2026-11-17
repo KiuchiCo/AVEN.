@@ -560,6 +560,33 @@ body {
 .database-calendar__record { overflow: hidden; padding: 5px 6px; border-left: 2px solid #a48766; border-radius: 4px; background: #f3ece2; }
 .database-calendar__record strong { display: block; overflow: hidden; color: #51483d; font-size: 9px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .database-calendar__record small { display: block; margin-top: 2px; color: #91877b; font-size: 8px; }
+.database-list { display: grid; }
+.database-list__row { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 4px; border-bottom: 1px solid #eee9e1; }
+.database-list__row:last-of-type { border-bottom: 0; }
+.database-list__row h3 { overflow: hidden; margin: 0 0 4px; color: #302b25; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.database-list__row p { overflow: hidden; margin: 0; color: #8a8176; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.database-list__row time { flex: none; color: #999187; font-size: 10px; }
+.database-chart { padding: 18px; border: 1px solid #ebe5dc; border-radius: 12px; background: #fbf9f5; }
+.database-chart__heading { display: flex; align-items: baseline; gap: 8px; margin-bottom: 18px; }
+.database-chart__heading h3 { margin: 0; color: #302b25; font-family: var(--aven-display-font); font-size: 19px; font-weight: 500; }
+.database-chart__heading span { color: #8a8176; font-size: 10px; }
+.database-chart__rows { display: grid; gap: 12px; }
+.database-chart__row { display: grid; grid-template-columns: minmax(95px, 150px) minmax(80px, 1fr) 55px; align-items: center; gap: 12px; color: #51483d; font-size: 11px; }
+.database-chart__row > div { height: 12px; overflow: hidden; border-radius: 99px; background: #eae4dc; }
+.database-chart__row i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #a48766, #cbb398); }
+.database-chart__row strong { color: #6f675d; font-size: 10px; text-align: right; }
+.database-timeline { min-width: 0; overflow-x: auto; }
+.database-timeline__axis, .database-timeline__row { display: grid; grid-template-columns: minmax(120px, 200px) minmax(260px, 1fr) 70px; align-items: center; gap: 12px; min-width: 490px; }
+.database-timeline__axis { padding: 6px 8px 10px; color: #8a8176; font-size: 9px; }
+.database-timeline__axis > div { position: relative; height: 21px; border-bottom: 1px solid #dcd4ca; }
+.database-timeline__axis time { position: absolute; bottom: 3px; transform: translateX(-50%); }
+.database-timeline__axis time:first-child { transform: none; }
+.database-timeline__axis time:last-child { transform: translateX(-100%); }
+.database-timeline__row { min-height: 43px; padding: 5px 8px; border-top: 1px solid #eee9e1; }
+.database-timeline__row > strong { overflow: hidden; color: #51483d; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.database-timeline__track { position: relative; height: 18px; border-bottom: 1px solid #e7e1d8; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), #eee9e1 calc(25% - 1px), #eee9e1 25%); }
+.database-timeline__track i { position: absolute; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%); border: 2px solid #fffdfa; border-radius: 50%; background: #a48766; box-shadow: 0 0 0 1px #a48766; }
+.database-timeline__row time { color: #8a8176; font-size: 9px; text-align: right; }
 .database-table-scroll { overflow-x: auto; border: 1px solid #e7e1d8; border-radius: 10px; }
 .database-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; text-align: left; }
 .database-table th, .database-table td { padding: 11px 12px; border-bottom: 1px solid #eee9e1; white-space: nowrap; }
