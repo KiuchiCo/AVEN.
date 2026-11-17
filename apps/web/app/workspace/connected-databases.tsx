@@ -7,7 +7,7 @@ import { useWorkspaceSession } from './workspace-shell';
 type Property = { id: string; name: string; type: string };
 type RecordValues = Record<string, string | number | boolean | null>;
 type DatabaseRecord = { id: string; values: RecordValues; updatedAt: string };
-type SavedView = { id: string; name: string; filterQuery: string; sortPropertyId: string; sortDirection: 'ASC' | 'DESC' };
+type SavedView = { id: string; name: string; filterQuery: string; sortPropertyId: string; sortDirection: 'ASC' | 'DESC'; layout: 'TABLE' | 'BOARD'; groupByPropertyId: string };
 type WorkspaceDatabase = { id: string; name: string; description: string | null; properties: Property[]; records: DatabaseRecord[]; views: SavedView[] };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
@@ -30,6 +30,8 @@ export function DatabasesWorkspace() {
   const [filterQuery, setFilterQuery] = useState('');
   const [sortPropertyId, setSortPropertyId] = useState('updatedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [viewLayout, setViewLayout] = useState<'TABLE' | 'BOARD'>('TABLE');
+  const [groupByPropertyId, setGroupByPropertyId] = useState('status');
   const [selectedViewId, setSelectedViewId] = useState('');
   const [viewName, setViewName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -68,6 +70,8 @@ export function DatabasesWorkspace() {
 
   const selected = databases.find((database) => database.id === selectedId);
   const selectedView = selected?.views.find((view) => view.id === selectedViewId);
+  const statusProperties = selected?.properties.filter((property) => property.type === 'status') ?? [];
+  const boardPropertyId = statusProperties.some((property) => property.id === groupByPropertyId) ? groupByPropertyId : statusProperties[0]?.id ?? '';
   const visibleRecords = selected ? selected.records
     .filter((record) => {
       const query = filterQuery.trim().toLocaleLowerCase();
@@ -86,6 +90,7 @@ export function DatabasesWorkspace() {
       else comparison = String(leftValue ?? '').localeCompare(String(rightValue ?? ''), undefined, { numeric: true, sensitivity: 'base' });
       return sortDirection === 'asc' ? comparison : -comparison;
     }) : [];
+  const boardGroups = statusProperties.length ? [...new Set([...statuses, ...visibleRecords.map((record) => String(record.values[boardPropertyId] ?? 'No status'))])] : [];
 
   async function createDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -150,11 +155,15 @@ export function DatabasesWorkspace() {
       setFilterQuery('');
       setSortPropertyId('updatedAt');
       setSortDirection('desc');
+      setViewLayout('TABLE');
+      setGroupByPropertyId(statusProperties[0]?.id ?? 'status');
       return;
     }
     setFilterQuery(view.filterQuery);
     setSortPropertyId(view.sortPropertyId);
     setSortDirection(view.sortDirection.toLocaleLowerCase() as 'asc' | 'desc');
+    setViewLayout(view.layout);
+    setGroupByPropertyId(view.groupByPropertyId);
   }
 
   async function saveCurrentView(event: FormEvent<HTMLFormElement>) {
@@ -164,7 +173,7 @@ export function DatabasesWorkspace() {
     try {
       const created = await request(`/workspaces/${workspace.id}/databases/${selected.id}/views`, {
         method: 'POST',
-        body: JSON.stringify({ name: viewName, filterQuery, sortPropertyId, sortDirection: sortDirection.toLocaleUpperCase() }),
+        body: JSON.stringify({ name: viewName, filterQuery, sortPropertyId, sortDirection: sortDirection.toLocaleUpperCase(), layout: viewLayout, groupByPropertyId: boardPropertyId }),
       }) as SavedView;
       setViewName('');
       await reload();
@@ -180,6 +189,7 @@ export function DatabasesWorkspace() {
       await request(`/workspaces/${workspace.id}/databases/${selected.id}/views/${selectedView.id}`, { method: 'DELETE' });
       setSelectedViewId('');
       setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc');
+      setViewLayout('TABLE'); setGroupByPropertyId(statusProperties[0]?.id ?? 'status');
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete this view.'); }
     finally { setBusy(false); }
@@ -204,6 +214,20 @@ export function DatabasesWorkspace() {
     finally { setBusy(false); }
   }
 
+  async function moveBoardRecord(recordId: string, nextStatus: string) {
+    if (!selected || !boardPropertyId) return;
+    const record = selected.records.find((item) => item.id === recordId);
+    if (!record || record.values[boardPropertyId] === nextStatus) return;
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/databases/${selected.id}/records/${record.id}`, {
+        method: 'PATCH', body: JSON.stringify({ values: { ...record.values, [boardPropertyId]: nextStatus === 'No status' ? null : nextStatus } }),
+      });
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not move this record.'); }
+    finally { setBusy(false); }
+  }
+
   return (
     <div className="workspace-section-page connected-page database-page">
       <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
@@ -211,7 +235,7 @@ export function DatabasesWorkspace() {
       <p className="workspace-section-page__description">Keep structured information beside the projects, notes, and plans it supports.</p>
       {error && <p className="productivity-error" role="alert">{error}</p>}
       <div className="database-toolbar">
-        <label>Workspace database<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); }} disabled={!databases.length}>
+        <label>Workspace database<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); setViewLayout('TABLE'); setGroupByPropertyId('status'); }} disabled={!databases.length}>
           {databases.length ? databases.map((database) => <option key={database.id} value={database.id}>{database.name}</option>) : <option value="">Create your first database</option>}
         </select></label>
         <span>{selected ? `${selected.records.length} ${selected.records.length === 1 ? 'record' : 'records'}` : 'Start with a simple table'}</span>
@@ -239,6 +263,8 @@ export function DatabasesWorkspace() {
             </form>
             <div className="database-view-controls" aria-label="Table view controls">
               <label>Saved view<select value={selectedViewId} onChange={(event) => applyView(event.target.value)}><option value="">Custom view</option>{selected.views.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select></label>
+              <label>Layout<select value={viewLayout} onChange={(event) => { setViewLayout(event.target.value as 'TABLE' | 'BOARD'); setSelectedViewId(''); }}><option value="TABLE">Table</option><option value="BOARD" disabled={!statusProperties.length}>Status board</option></select></label>
+              {viewLayout === 'BOARD' && <label>Group by<select value={boardPropertyId} onChange={(event) => { setGroupByPropertyId(event.target.value); setSelectedViewId(''); }}>{statusProperties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>}
               <label>Filter records<input type="search" value={filterQuery} onChange={(event) => { setFilterQuery(event.target.value); setSelectedViewId(''); }} placeholder="Search record values" /></label>
               <label>Sort by<select value={sortPropertyId} onChange={(event) => { setSortPropertyId(event.target.value); setSelectedViewId(''); }}>
                 <option value="updatedAt">Updated</option>
@@ -249,10 +275,21 @@ export function DatabasesWorkspace() {
             </div>
             <form className="database-save-view" onSubmit={saveCurrentView}>
               <label>Save current filter and sort<input value={viewName} onChange={(event) => setViewName(event.target.value)} required maxLength={80} placeholder="e.g. Recently updated" /></label>
-              <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save view'}</button>
+              <button type="submit" disabled={busy || (viewLayout === 'BOARD' && !boardPropertyId)}>{busy ? 'Saving…' : 'Save view'}</button>
               {selectedView && <button type="button" disabled={busy} onClick={() => void deleteSelectedView()}>Delete “{selectedView.name}”</button>}
             </form>
-            <div className="database-table-scroll"><table className="database-table"><thead><tr>{selected.properties.map((property) => <th key={property.id}>{property.name}</th>)}<th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead>
+            {viewLayout === 'BOARD' && boardPropertyId ? <div className="database-board" aria-label="Records grouped by status">
+              {boardGroups.map((group) => {
+                const groupRecords = visibleRecords.filter((record) => String(record.values[boardPropertyId] ?? 'No status') === group);
+                return <section className="database-board-column" key={group} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const recordId = event.dataTransfer.getData('text/plain'); if (recordId) void moveBoardRecord(recordId, group); }}>
+                  <header><h3>{group}</h3><span>{groupRecords.length}</span></header>
+                  <div className="database-board-cards">{groupRecords.map((record) => <article className="database-board-card" key={record.id} draggable={!busy} onDragStart={(event) => event.dataTransfer.setData('text/plain', record.id)}>
+                    <strong>{String(record.values.name ?? record.values[boardPropertyId] ?? 'Untitled record')}</strong>
+                    {selected.properties.filter((property) => property.id !== 'name' && property.id !== boardPropertyId).slice(0, 3).map((property) => <p key={property.id}><span>{property.name}</span>{String(record.values[property.id] ?? '—')}</p>)}
+                  </article>)}</div>
+                </section>;
+              })}
+            </div> : <div className="database-table-scroll"><table className="database-table"><thead><tr>{selected.properties.map((property) => <th key={property.id}>{property.name}</th>)}<th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {visibleRecords.map((record) => <tr key={record.id}>
                   {editingId === record.id ? <>
@@ -265,7 +302,7 @@ export function DatabasesWorkspace() {
                 </tr>)}
                 {!selected.records.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records yet. Add the first one below.</td></tr>}
                 {selected.records.length > 0 && !visibleRecords.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records match that search.</td></tr>}
-              </tbody></table></div>
+              </tbody></table></div>}
             <form className="database-add-record" onSubmit={createRecord}>
               {selected.properties.map((property) => <label key={property.id}>{property.name}{property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? 'Website redesign' : undefined} required={property.id === 'name'} />}</label>)}
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add record'}</button>

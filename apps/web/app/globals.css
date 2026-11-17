@@ -516,6 +516,17 @@ body {
 .database-save-view button { min-height: 34px; padding: 7px 10px; border: 1px solid #e3dbd0; border-radius: 8px; background: #f6f1ea; color: #6c5842; cursor: pointer; font: inherit; font-size: 10px; font-weight: 650; }
 .database-save-view button:disabled { opacity: .6; cursor: wait; }
 .database-save-view input:focus { outline: 3px solid rgb(164 135 102 / 28%); border-color: #a48766; }
+.database-board { display: grid; grid-auto-columns: minmax(190px, 1fr); grid-auto-flow: column; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.database-board-column { min-height: 235px; padding: 10px; border: 1px solid #ebe5dc; border-radius: 11px; background: #fbf9f5; }
+.database-board-column > header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.database-board-column h3 { margin: 0; color: #51483d; font-size: 12px; font-weight: 700; }
+.database-board-column > header > span { min-width: 22px; padding: 3px 6px; border-radius: 99px; background: #eee8df; color: #786b5c; font-size: 10px; text-align: center; }
+.database-board-cards { display: grid; gap: 8px; min-height: 185px; }
+.database-board-card { padding: 10px; border: 1px solid #e9e2d8; border-radius: 9px; background: #fffdfa; box-shadow: 0 3px 9px rgb(55 43 30 / 4%); cursor: grab; }
+.database-board-card:active { cursor: grabbing; }
+.database-board-card > strong { display: block; color: #302b25; font-size: 11px; }
+.database-board-card > p { display: flex; justify-content: space-between; gap: 8px; margin: 7px 0 0; color: #635b51; font-size: 10px; }
+.database-board-card > p > span { color: #91877b; }
 .database-table-scroll { overflow-x: auto; border: 1px solid #e7e1d8; border-radius: 10px; }
 .database-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; text-align: left; }
 .database-table th, .database-table td { padding: 11px 12px; border-bottom: 1px solid #eee9e1; white-space: nowrap; }
@@ -608,6 +619,7 @@ body {
   .connected-layout { grid-template-columns: 1fr; gap: 12px; margin-top: 20px; }
   .database-layout { grid-template-columns: 1fr; }
   .database-toolbar { align-items: center; }
+  .database-board { grid-auto-columns: minmax(175px, 82vw); }
   .connected-compose { position: static; }
   .connected-record-list { padding: 14px; }
 }

@@ -23,6 +23,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.12 · Custom database properties](docs/sections/12-custom-database-properties.md) | Add typed columns to workspace databases | Complete |
 | [1.13 · Database filtering and sorting](docs/sections/13-database-filter-sort.md) | Search and order database rows | Complete |
 | [1.14 · Saved database views](docs/sections/14-saved-database-views.md) | Save, restore, and remove a database filter and sort configuration | Complete |
+| [1.15 · Database board views](docs/sections/15-database-board-views.md) | Group records into status columns and save the layout | Complete |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).

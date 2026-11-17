@@ -43,6 +43,11 @@ enum DatabaseSortDirection {
   DESC
 }
 
+enum DatabaseViewLayout {
+  TABLE
+  BOARD
+}
+
 model User {
   id                String            @id @default(uuid()) @db.Uuid
   email             String            @unique @db.VarChar(320)
@@ -216,6 +221,8 @@ model DatabaseView {
   filterQuery     String               @default("") @db.VarChar(200)
   sortPropertyId  String               @default("updatedAt") @db.VarChar(80)
   sortDirection   DatabaseSortDirection @default(DESC)
+  layout          DatabaseViewLayout  @default(TABLE)
+  groupByPropertyId String              @default("status") @db.VarChar(80)
   createdAt       DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
   workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
