@@ -4,7 +4,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 
-type Project = { id: string; name: string; description: string | null; status: string; taskCount: number };
+type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Task = { id: string; title: string; description: string | null; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null };
 
 const columns = [
@@ -24,6 +24,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('ALL');
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -73,7 +74,7 @@ export default function ProjectsPage() {
     try {
       await request(`/workspaces/${workspace.id}/projects`, {
         method: 'POST',
-        body: JSON.stringify({ name: form.get('name'), description: form.get('description') || undefined }),
+        body: JSON.stringify({ name: form.get('name'), description: form.get('description') || undefined, status: form.get('status'), dueAt: form.get('dueAt') || undefined }),
       });
       formElement.reset();
       await reload();
@@ -90,7 +91,7 @@ export default function ProjectsPage() {
     try {
       await request(`/workspaces/${workspace.id}/tasks`, {
         method: 'POST',
-        body: JSON.stringify({ title: form.get('title'), projectId: form.get('projectId') || undefined, priority: form.get('priority') }),
+        body: JSON.stringify({ title: form.get('title'), projectId: form.get('projectId') || undefined, priority: form.get('priority'), dueAt: form.get('dueAt') || undefined }),
       });
       formElement.reset();
       await reload();
@@ -103,6 +104,26 @@ export default function ProjectsPage() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      await reload();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not update the task.');
+    } finally { setBusy(false); }
+  }
+
+  async function updateProject(project: Project, field: 'status' | 'dueAt', value: string) {
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/${project.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: value || null }) });
+      await reload();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not update the project.');
+    } finally { setBusy(false); }
+  }
+
+  async function updateTask(task: Task, field: 'priority' | 'dueAt', value: string) {
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: value || null }) });
       await reload();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not update the task.');
@@ -122,6 +143,7 @@ export default function ProjectsPage() {
           <h2>New project</h2>
           <label>Project name<input name="name" maxLength={160} required placeholder="Website redesign" /></label>
           <label>Description <span>(optional)</span><input name="description" maxLength={5000} placeholder="What is this project for?" /></label>
+          <div className="productivity-form__row"><label>Status<select name="status" defaultValue="PLANNING"><option value="PLANNING">Planning</option><option value="IN_PROGRESS">In progress</option><option value="ON_HOLD">On hold</option><option value="COMPLETED">Completed</option></select></label><label>Due date <span>(optional)</span><input name="dueAt" type="date" /></label></div>
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create project'}</button>
         </form>
         <form className="productivity-form" onSubmit={submitTask}>
@@ -131,6 +153,7 @@ export default function ProjectsPage() {
             <label>Project<select name="projectId" value={selectedProject} onChange={(event) => setSelectedProject(event.target.value)}><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
             <label>Priority<select name="priority" defaultValue="MEDIUM"><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label>
           </div>
+          <label>Due date <span>(optional)</span><input name="dueAt" type="date" /></label>
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create task'}</button>
         </form>
       </div>
@@ -141,24 +164,28 @@ export default function ProjectsPage() {
           <p className="productivity-message">No projects yet. Create one above to start your first board.</p>
         ) : (
           <div className="productivity-project-list">{projects.map((project) => (
-            <button key={project.id} className={`productivity-project${selectedProject === project.id ? ' productivity-project--active' : ''}`} onClick={() => setSelectedProject(project.id)} aria-pressed={selectedProject === project.id}>
-              <span><strong>{project.name}</strong><small>{project.description || 'A new AVEN project'}</small></span><span className="productivity-project__count">{project.taskCount} tasks</span>
-            </button>
+            <article key={project.id} className={`productivity-project${selectedProject === project.id ? ' productivity-project--active' : ''}`}>
+              <button className="productivity-project__select" onClick={() => setSelectedProject(project.id)} aria-pressed={selectedProject === project.id}>
+                <span><strong>{project.name}</strong><small>{project.description || 'A new AVEN project'}</small></span><span className="productivity-project__count">{project.taskCount} tasks</span>
+              </button>
+              <div className="productivity-project__controls"><label>Status <select value={project.status} disabled={busy} onChange={(event) => void updateProject(project, 'status', event.target.value)}><option value="PLANNING">Planning</option><option value="IN_PROGRESS">In progress</option><option value="ON_HOLD">On hold</option><option value="COMPLETED">Completed</option><option value="ARCHIVED">Archived</option></select></label><label>Due <input aria-label={`Due date for ${project.name}`} type="date" value={project.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateProject(project, 'dueAt', event.target.value)} /></label></div>
+            </article>
           ))}</div>
         )}
       </section>
 
       <section className="productivity-board" aria-labelledby="task-board-title">
-        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div><span>Changes save automatically</span></div>
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div><label className="productivity-board__filter">Priority <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label></div>
         {loading ? <p className="productivity-message">Loading tasks…</p> : (
           <div className="productivity-columns">{columns.map((column) => {
-            const records = tasks.filter((task) => task.status === column.status && (!selectedProject || task.project?.id === selectedProject));
+            const records = tasks.filter((task) => task.status === column.status && (!selectedProject || task.project?.id === selectedProject) && (priorityFilter === 'ALL' || task.priority === priorityFilter));
             return <section className="productivity-column" key={column.status} aria-label={`${column.title}, ${records.length} tasks`}>
               <h3>{column.title}<span>{records.length}</span></h3>
               {records.length === 0 ? <p className="productivity-column__empty">Nothing here yet</p> : records.map((task) => <article className="productivity-task" key={task.id}>
                 <strong>{task.title}</strong>
                 {task.project && <span className="productivity-task__project">{task.project.name}</span>}
-                <div className="productivity-task__footer"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><label className="visually-hidden" htmlFor={`status-${task.id}`}>Status for {task.title}</label><select id={`status-${task.id}`} value={task.status} disabled={busy} onChange={(event) => void changeStatus(task, event.target.value)}>{columns.map((option) => <option key={option.status} value={option.status}>{option.title}</option>)}</select></div>
+                <div className="productivity-task__footer"><label className="visually-hidden" htmlFor={`priority-${task.id}`}>Priority for {task.title}</label><select className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`} id={`priority-${task.id}`} value={task.priority} disabled={busy} onChange={(event) => void updateTask(task, 'priority', event.target.value)}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select><label className="visually-hidden" htmlFor={`status-${task.id}`}>Status for {task.title}</label><select id={`status-${task.id}`} value={task.status} disabled={busy} onChange={(event) => void changeStatus(task, event.target.value)}>{columns.map((option) => <option key={option.status} value={option.status}>{option.title}</option>)}</select></div>
+                <div className="productivity-task__due"><label htmlFor={`due-${task.id}`}>Due date</label><input id={`due-${task.id}`} type="date" value={task.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'dueAt', event.target.value)} /><span className={task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'productivity-task__overdue' : ''}>{task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'Overdue' : ''}</span></div>
               </article>)}
             </section>;
           })}</div>

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -21,5 +21,15 @@ export class ProjectsController {
     @Body() body: unknown,
   ) {
     return this.productivity.createProject(identity, workspaceId, body);
+  }
+
+  @Patch(':projectId')
+  update(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('projectId', new ParseUUIDPipe()) projectId: string,
+    @Body() body: unknown,
+  ) {
+    return this.productivity.updateProject(identity, workspaceId, projectId, body);
   }
 }

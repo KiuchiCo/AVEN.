@@ -430,12 +430,18 @@ body {
 .productivity-section-heading > span, .productivity-projects .workspace-section-heading > span, .productivity-board .workspace-section-heading > span { color: #777168; font-size: 12px; }
 .productivity-message { margin: 0; padding: 17px; border-radius: 10px; background: #f8f5ef; color: #6c655d; font-size: 13px; }
 .productivity-project-list { display: grid; gap: 8px; }
-.productivity-project { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; padding: 12px 14px; border: 1px solid #e8e3db; border-radius: 10px; background: #fffdfa; text-align: left; cursor: pointer; }
+.productivity-project { display: grid; gap: 10px; padding: 10px 14px; border: 1px solid #e8e3db; border-radius: 10px; background: #fffdfa; }
 .productivity-project--active { border-color: #b59a7d; background: #f5efe7; }
+.productivity-project__select { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; padding: 2px 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
 .productivity-project > span:first-child { display: grid; gap: 4px; }
+.productivity-project__select > span:first-child { display: grid; gap: 4px; }
 .productivity-project strong { color: #26231f; font-size: 13px; }
 .productivity-project small { color: #777168; font-size: 11px; }
 .productivity-project__count { flex: 0 0 auto; color: #777168; font-size: 11px; }
+.productivity-project__controls { display: flex; flex-wrap: wrap; gap: 10px; border-top: 1px solid #eee8df; padding-top: 8px; }
+.productivity-project__controls label, .productivity-task__due { display: flex; align-items: center; gap: 6px; color: #777168; font-size: 10px; }
+.productivity-project__controls select, .productivity-project__controls input, .productivity-task__due input, .productivity-board__filter select { min-width: 0; padding: 5px 7px; border: 1px solid #e2ddd5; border-radius: 7px; background: #fffdfa; color: #39342e; font: inherit; font-size: 10px; }
+.productivity-board__filter { display: flex; align-items: center; gap: 7px; color: #777168; font-size: 11px; }
 .productivity-columns { display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 3px; }
 .productivity-column { min-height: 190px; padding: 11px; border: 1px solid #e8e3db; border-radius: 12px; background: #f8f5ef; }
 .productivity-column h3 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; color: #302c26; font-size: 12px; }
@@ -446,6 +452,8 @@ body {
 .productivity-task__project { color: #7a7167; font-size: 10px; }
 .productivity-task__footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .productivity-task select { padding: 5px 7px; font-size: 10px; }
+.productivity-task__due { justify-content: space-between; padding-top: 7px; border-top: 1px solid #eee8df; }
+.productivity-task__overdue { color: #a44735; font-weight: 700; }
 .productivity-priority { padding: 4px 7px; border-radius: 999px; background: #efebe6; color: #655c52; font-size: 10px; }
 .productivity-priority--high, .productivity-priority--urgent { background: #fae9df; color: #9d5431; }
 .productivity-priority--low { background: #e8eee7; color: #527352; }

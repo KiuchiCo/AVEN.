@@ -35,6 +35,20 @@ export class ProductivityService {
     });
   }
 
+  async updateProject(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const data: { name?: string; description?: string | null; status?: ProjectStatus; dueAt?: Date | null } = {};
+    if ('name' in body) data.name = textField(body.name, 'Project name', 160);
+    if ('description' in body) data.description = optionalText(body.description, 'Project description', 5000);
+    if ('status' in body) data.status = enumField(body.status, projectStatuses, 'Project status');
+    if ('dueAt' in body) data.dueAt = dateField(body.dueAt, 'Due date');
+    if (!Object.keys(data).length) throw new BadRequestException('Provide at least one project field to update.');
+    const result = await this.prisma.project.updateMany({ where: { id: projectId, workspaceId }, data });
+    if (result.count !== 1) throw new NotFoundException('Project not found in this workspace.');
+    return this.prisma.project.findFirstOrThrow({ where: { id: projectId, workspaceId } });
+  }
+
   async listTasks(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.requireMembership(identity, workspaceId);
     return this.prisma.task.findMany({
