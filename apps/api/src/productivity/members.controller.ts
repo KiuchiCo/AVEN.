@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -23,6 +23,16 @@ export class MembersController {
   @Post('invitations')
   invite(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
     return this.invitations.create(identity, workspaceId, body);
+  }
+
+  @Patch(':memberId')
+  updateMember(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('memberId', new ParseUUIDPipe()) memberId: string, @Body() body: unknown) {
+    return this.invitations.updateMember(identity, workspaceId, memberId, body);
+  }
+
+  @Delete(':memberId')
+  removeMember(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('memberId', new ParseUUIDPipe()) memberId: string) {
+    return this.invitations.removeMember(identity, workspaceId, memberId);
   }
 
   @Delete('invitations/:inviteId')

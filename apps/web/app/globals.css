@@ -514,6 +514,11 @@ body {
 .members-list li > div strong { overflow: hidden; color: #302c27; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .members-list li > div small { overflow: hidden; color: #898176; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .members-role { margin-left: auto; padding: 5px 8px; border-radius: 999px; background: #f4f0ea; color: #72675a; font-size: 8px; white-space: nowrap; }
+.members-row-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.members-row-actions select { min-width: 108px; padding: 6px 7px; border: 1px solid #e1d8cc; border-radius: 7px; background: #fffdfa; color: #5e564c; font: inherit; font-size: 9px; }
+.members-row-actions > button:not(.members-revoke) { padding: 6px 8px; border: 0; border-radius: 7px; background: #ede6dc; color: #6c5842; cursor: pointer; font: inherit; font-size: 9px; font-weight: 650; }
+.members-row-actions > button:disabled { opacity: .48; cursor: not-allowed; }
+.members-notice { padding: 10px 12px; border: 1px solid #d7e0d0; border-radius: 9px; background: #f6f9f3; color: #526b4f; font-size: 10px; }
 .members-invite-form { display: grid; gap: 12px; }
 .members-invite-form label { display: grid; gap: 6px; color: #5e564c; font-size: 10px; font-weight: 650; }
 .members-invite-form input, .members-invite-form select { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #e1d8cc; border-radius: 9px; background: #fffdfa; color: #302c27; font: inherit; font-size: 11px; }
@@ -1075,6 +1080,8 @@ body {
   .members-layout { grid-template-columns: 1fr; }
   .members-pending-panel { grid-column: auto; }
   .members-panel { padding: 15px; }
+  .members-row-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .members-row-actions select { min-width: 90px; }
   .intelligence-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .intelligence-columns { grid-template-columns: 1fr; }
   .intelligence-panel { padding: 15px; }

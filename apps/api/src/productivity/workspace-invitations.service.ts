@@ -46,6 +46,38 @@ export class WorkspaceInvitationsService {
     return { revoked: true };
   }
 
+  async updateMember(identity: AuthenticatedIdentity, workspaceId: string, memberId: string, input: unknown) {
+    const actor = await this.membership(identity, workspaceId);
+    if (actor.role !== 'OWNER') throw new ForbiddenException('Only the workspace owner can change member roles.');
+    const body = objectInput(input);
+    const role = roleValue(body.role);
+    if (memberId === actor.userId) throw new BadRequestException('You cannot change your own workspace role.');
+    const target = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: memberId } }, select: { role: true, user: { select: { displayName: true } } } });
+    if (!target) throw new NotFoundException('Workspace member not found.');
+    if (target.role === 'OWNER') throw new BadRequestException('The workspace owner role cannot be changed.');
+    await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.workspaceMember.updateMany({ where: { workspaceId, userId: memberId, role: { not: 'OWNER' } }, data: { role } });
+      if (updated.count !== 1) throw new NotFoundException('Workspace member not found.');
+      await transaction.workspaceActivity.create({ data: { workspaceId, actorId: actor.userId, entityType: 'MEMBER', entityId: memberId, message: `changed ${target.user.displayName}'s role to ${role.toLocaleLowerCase()}` } });
+    });
+    return { userId: memberId, role };
+  }
+
+  async removeMember(identity: AuthenticatedIdentity, workspaceId: string, memberId: string) {
+    const actor = await this.membership(identity, workspaceId);
+    if (actor.role !== 'OWNER') throw new ForbiddenException('Only the workspace owner can remove members.');
+    if (memberId === actor.userId) throw new BadRequestException('You cannot remove yourself as the workspace owner.');
+    const target = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: memberId } }, select: { role: true, user: { select: { displayName: true } } } });
+    if (!target) throw new NotFoundException('Workspace member not found.');
+    if (target.role === 'OWNER') throw new BadRequestException('The workspace owner cannot be removed.');
+    await this.prisma.$transaction(async (transaction) => {
+      const removed = await transaction.workspaceMember.deleteMany({ where: { workspaceId, userId: memberId, role: { not: 'OWNER' } } });
+      if (removed.count !== 1) throw new NotFoundException('Workspace member not found.');
+      await transaction.workspaceActivity.create({ data: { workspaceId, actorId: actor.userId, entityType: 'MEMBER', entityId: memberId, message: `removed ${target.user.displayName} from the workspace` } });
+    });
+    return { removed: true };
+  }
+
   async details(token: string) {
     const invite = await this.prisma.workspaceInvite.findUnique({ where: { tokenHash: hashToken(token) }, include: { workspace: { select: { name: true } } } });
     if (!invite || invite.status !== 'PENDING' || invite.expiresAt <= new Date()) throw new NotFoundException('This invitation is invalid, expired, or has already been used.');

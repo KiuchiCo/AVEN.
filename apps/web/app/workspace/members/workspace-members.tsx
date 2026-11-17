@@ -12,17 +12,20 @@ const roleLabels: Record<string, string> = { OWNER: 'Owner', ADMINISTRATOR: 'Adm
 
 export function WorkspaceMembers() {
   const { getToken } = useAuth();
-  const { workspace } = useWorkspaceSession();
+  const { user, workspace } = useWorkspaceSession();
   const [data, setData] = useState<WorkspaceData>({ members: [], invitations: [] });
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('MEMBER');
   const [inviteLink, setInviteLink] = useState('');
   const [inviteeEmail, setInviteeEmail] = useState('');
   const [copied, setCopied] = useState(false);
+  const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const canInvite = ['OWNER', 'ADMINISTRATOR'].includes(workspace.role ?? '');
+  const canManageMembers = workspace.role === 'OWNER';
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -37,7 +40,11 @@ export function WorkspaceMembers() {
 
   const reload = useCallback(async () => {
     setLoading(true); setError('');
-    try { setData(await request(`/workspaces/${workspace.id}/members/management`) as WorkspaceData); }
+    try {
+      const next = await request(`/workspaces/${workspace.id}/members/management`) as WorkspaceData;
+      setData(next);
+      setRoleDrafts(Object.fromEntries(next.members.map((member) => [member.userId, member.role])));
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load workspace people.'); }
     finally { setLoading(false); }
   }, [request, workspace.id]);
@@ -68,15 +75,45 @@ export function WorkspaceMembers() {
     catch { setError('Copy was blocked. Select and copy the invitation link below.'); }
   }
 
+  async function updateRole(member: Member) {
+    const role = roleDrafts[member.userId] ?? member.role;
+    if (role === member.role) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await request(`/workspaces/${workspace.id}/members/${member.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) });
+      setNotice(`Updated ${member.displayName}'s role to ${roleLabels[role] ?? role}.`);
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this member role.'); }
+    finally { setBusy(false); }
+  }
+
+  async function removeMember(member: Member) {
+    if (!window.confirm(`Remove ${member.displayName} from ${workspace.name}? Their assigned tasks will become unassigned.`)) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await request(`/workspaces/${workspace.id}/members/${member.userId}`, { method: 'DELETE' });
+      setNotice(`${member.displayName} was removed from the workspace.`);
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove this member.'); }
+    finally { setBusy(false); }
+  }
+
   return <div className="workspace-section-page members-page">
     <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
     <h1>People</h1>
-    <p className="workspace-section-page__description">Invite teammates into this workspace and manage outstanding invitations.</p>
+    <p className="workspace-section-page__description">Invite teammates, manage roles, and review outstanding invitations.</p>
     {error && <p className="productivity-error" role="alert">{error}</p>}
+    {notice && <p className="members-notice" role="status">{notice}</p>}
     <div className="members-layout">
       <section className="members-panel" aria-labelledby="members-list-title">
         <header><div><p className="workspace-eyebrow">WORKSPACE TEAM</p><h2 id="members-list-title">Members <span>{data.members.length}</span></h2></div></header>
-        {loading ? <p className="productivity-message">Loading people…</p> : <ul className="members-list">{data.members.map((member) => <li key={member.userId}><span className="members-avatar" aria-hidden="true">{member.displayName.trim().slice(0, 1).toUpperCase()}</span><div><strong>{member.displayName}</strong><small>{member.email}</small></div><span className="members-role">{roleLabels[member.role] ?? member.role}</span></li>)}</ul>}
+        {loading ? <p className="productivity-message">Loading people…</p> : <ul className="members-list">{data.members.map((member) => {
+          const isSelf = member.userId === user.id;
+          const currentRole = roleDrafts[member.userId] ?? member.role;
+          return <li key={member.userId}><span className="members-avatar" aria-hidden="true">{member.displayName.trim().slice(0, 1).toUpperCase()}</span><div><strong>{member.displayName}{isSelf ? ' · You' : ''}</strong><small>{member.email}</small></div>
+            {canManageMembers && !isSelf && member.role !== 'OWNER' ? <div className="members-row-actions"><select aria-label={`Role for ${member.displayName}`} value={currentRole} onChange={(event) => setRoleDrafts((current) => ({ ...current, [member.userId]: event.target.value }))}><option value="ADMINISTRATOR">Administrator</option><option value="MANAGER">Manager</option><option value="MEMBER">Member</option><option value="GUEST">Guest</option></select><button type="button" disabled={busy || currentRole === member.role} onClick={() => void updateRole(member)}>Save</button><button type="button" className="members-revoke" disabled={busy} onClick={() => void removeMember(member)}>Remove</button></div> : <span className="members-role">{roleLabels[member.role] ?? member.role}</span>}
+          </li>;
+        })}</ul>}
       </section>
 
       <section className="members-panel members-invite-panel" aria-labelledby="invite-title">
