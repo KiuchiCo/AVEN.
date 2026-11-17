@@ -34,18 +34,25 @@ Suggested first commit: `docs: define AVEN product foundation`
 Suggested shell commit: `feat: add responsive AVEN application shell`
 
 The current tooling milestone is documented in [Section 1.2 · Monorepo tooling](docs/sections/02-monorepo-tooling.md).
+The local PostgreSQL and Prisma setup is documented in [Section 1.3 · Persistence](docs/sections/03-postgres-prisma.md).
 
 ## Current state
 
-The design preview is preserved in the web app's `public` folder. The product is being moved into a TypeScript monorepo with a Next.js web app and NestJS API; PostgreSQL, migrations, and authentication are separate milestones. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
+The design preview is preserved in the web app's `public` folder. The product is being moved into a TypeScript monorepo with a Next.js web app and NestJS API. PostgreSQL local configuration and the first schema migration are included; authentication and database-backed product flows remain separate milestones. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
 
 ## Local development
 
-Requires Node.js 22.22.3 or newer and npm. From the repository root:
+Requires Node.js 24.15.0 or newer and npm. From the repository root:
 
 ```bash
 npm install
+cp .env.example .env
+npm run db:up
+npm run db:migrate:deploy
+npm run db:generate
 npm run dev
 ```
+
+The local database commands require Docker Desktop. See [Section 1.3 · PostgreSQL and Prisma](docs/sections/03-postgres-prisma.md) for migration details and API startup instructions.
 
 Open `http://localhost:3000`. The root route currently redirects to the preserved dashboard preview. In a second terminal, start the API with `npm run dev:api`; its scaffold health route is `http://localhost:4000/api/v1/health`.

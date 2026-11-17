@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMINISTRATOR
+  MANAGER
+  MEMBER
+  GUEST
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model User {
+  id               String            @id @default(uuid()) @db.Uuid
+  email            String            @unique @db.VarChar(320)
+  displayName      String            @db.VarChar(120)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
+  ownedWorkspaces  Workspace[]       @relation("WorkspaceCreator")
+  memberships      WorkspaceMember[]
+  createdProjects  Project[]          @relation("ProjectCreator")
+  assignedTasks    Task[]             @relation("TaskAssignee")
+  createdTasks     Task[]             @relation("TaskCreator")
+
+  @@map("users")
+}
+
+model Workspace {
+  id          String            @id @default(uuid()) @db.Uuid
+  name        String            @db.VarChar(120)
+  createdById String            @db.Uuid
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+  createdBy   User              @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  members     WorkspaceMember[]
+  projects    Project[]
+  tasks       Task[]
+  documents   Document[]
+  events      CalendarEvent[]
+
+  @@index([createdById])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @db.Uuid
+  userId      String        @db.Uuid
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+model Project {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @db.Uuid
+  createdById String        @db.Uuid
+  name        String        @db.VarChar(160)
+  description String?       @db.Text
+  status      ProjectStatus @default(PLANNING)
+  dueAt       DateTime?     @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User          @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  tasks       Task[]
+  documents   Document[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, dueAt])
+  @@map("projects")
+}
+
+model Task {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  projectId   String?      @db.Uuid
+  createdById String       @db.Uuid
+  assigneeId  String?      @db.Uuid
+  title       String       @db.VarChar(200)
+  description String?      @db.Text
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueAt       DateTime?    @db.Timestamptz(3)
+  completedAt DateTime?    @db.Timestamptz(3)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy   User         @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  events      CalendarEvent[]
+
+  @@index([workspaceId, status, dueAt])
+  @@index([projectId, status])
+  @@index([assigneeId, status])
+  @@map("tasks")
+}
+
+model Document {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  projectId   String?   @db.Uuid
+  title       String    @db.VarChar(200)
+  content     String    @default("") @db.Text
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, updatedAt])
+  @@index([projectId])
+  @@map("documents")
+}
+
+model CalendarEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  taskId      String?   @db.Uuid
+  title       String    @db.VarChar(200)
+  startsAt    DateTime  @db.Timestamptz(3)
+  endsAt      DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, startsAt])
+  @@index([taskId])
+  @@map("calendar_events")
+}

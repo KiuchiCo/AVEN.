@@ -120,10 +120,10 @@ Each row is an independent review and Git milestone. Keep each working tree focu
 - [x] Record major technical risks and dependencies.
 - [ ] Reconcile the shared visual tokens with the master brand brief.
 - [x] Create the monorepo scaffold and development tooling.
-- [ ] Configure local PostgreSQL and schema migrations.
+- [x] Configure local PostgreSQL and schema migrations.
 - [ ] Decide the authentication provider before implementing login.
 - [ ] Build and verify the first persistent workspace/project/task workflow.
 
 ## Review notes
 
-No application code or dependency changes are included in this milestone. The proposed stack and model are decisions for review before scaffolding. The current static dashboard remains the visual reference until the design and shell milestones migrate it into the application.
+This architecture milestone records the proposed stack and delivery shape. The application scaffold, prototype placement, and persistence setup are tracked as separate implementation milestones so each can be reviewed and committed independently.
