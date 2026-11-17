@@ -122,7 +122,7 @@ Each row is an independent review and Git milestone. Keep each working tree focu
 - [x] Create the monorepo scaffold and development tooling.
 - [x] Configure local PostgreSQL and schema migrations.
 - [x] Record the recommended authentication provider and security boundaries before login implementation.
-- [ ] Build and verify the first persistent workspace/project/task workflow.
+- [ ] Build and verify the first persistent project/task workflow.
 
 ## Review notes
 

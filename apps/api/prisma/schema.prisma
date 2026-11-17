@@ -39,32 +39,38 @@ enum TaskPriority {
 }
 
 model User {
-  id               String            @id @default(uuid()) @db.Uuid
-  email            String            @unique @db.VarChar(320)
-  displayName      String            @db.VarChar(120)
-  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
-  ownedWorkspaces  Workspace[]       @relation("WorkspaceCreator")
-  memberships      WorkspaceMember[]
-  createdProjects  Project[]          @relation("ProjectCreator")
-  assignedTasks    Task[]             @relation("TaskAssignee")
-  createdTasks     Task[]             @relation("TaskCreator")
+  id                String            @id @default(uuid()) @db.Uuid
+  email             String            @unique @db.VarChar(320)
+  displayName       String            @db.VarChar(120)
+  identityIssuer    String?           @db.VarChar(512)
+  identitySubject   String?           @db.VarChar(255)
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
+  ownedWorkspaces   Workspace[]       @relation("WorkspaceCreator")
+  memberships       WorkspaceMember[]
+  personalWorkspace Workspace?        @relation("PersonalWorkspaceOwner")
+  createdProjects   Project[]         @relation("ProjectCreator")
+  assignedTasks     Task[]            @relation("TaskAssignee")
+  createdTasks      Task[]            @relation("TaskCreator")
 
+  @@unique([identityIssuer, identitySubject])
   @@map("users")
 }
 
 model Workspace {
-  id          String            @id @default(uuid()) @db.Uuid
-  name        String            @db.VarChar(120)
-  createdById String            @db.Uuid
-  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
-  createdBy   User              @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  members     WorkspaceMember[]
-  projects    Project[]
-  tasks       Task[]
-  documents   Document[]
-  events      CalendarEvent[]
+  id              String            @id @default(uuid()) @db.Uuid
+  name            String            @db.VarChar(120)
+  createdById     String            @db.Uuid
+  personalOwnerId String?           @unique @db.Uuid
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+  createdBy       User              @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  personalOwner   User?             @relation("PersonalWorkspaceOwner", fields: [personalOwnerId], references: [id], onDelete: Cascade)
+  members         WorkspaceMember[]
+  projects        Project[]
+  tasks           Task[]
+  documents       Document[]
+  events          CalendarEvent[]
 
   @@index([createdById])
   @@map("workspaces")
@@ -106,23 +112,23 @@ model Project {
 }
 
 model Task {
-  id          String       @id @default(uuid()) @db.Uuid
-  workspaceId String       @db.Uuid
-  projectId   String?      @db.Uuid
-  createdById String       @db.Uuid
-  assigneeId  String?      @db.Uuid
-  title       String       @db.VarChar(200)
-  description String?      @db.Text
-  status      TaskStatus   @default(TODO)
-  priority    TaskPriority @default(MEDIUM)
-  dueAt       DateTime?    @db.Timestamptz(3)
-  completedAt DateTime?    @db.Timestamptz(3)
-  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  createdBy   User         @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  id          String          @id @default(uuid()) @db.Uuid
+  workspaceId String          @db.Uuid
+  projectId   String?         @db.Uuid
+  createdById String          @db.Uuid
+  assigneeId  String?         @db.Uuid
+  title       String          @db.VarChar(200)
+  description String?         @db.Text
+  status      TaskStatus      @default(TODO)
+  priority    TaskPriority    @default(MEDIUM)
+  dueAt       DateTime?       @db.Timestamptz(3)
+  completedAt DateTime?       @db.Timestamptz(3)
+  createdAt   DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(3)
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy   User            @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignee    User?           @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   events      CalendarEvent[]
 
   @@index([workspaceId, status, dueAt])

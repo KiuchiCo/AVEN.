@@ -7,7 +7,7 @@
 
 Use Clerk as AVEN's managed identity provider for the first authenticated release. Keep identity authentication in Clerk and keep application users, workspaces, workspace roles, invitations, and authorization in AVEN's PostgreSQL database.
 
-This is a provider recommendation, not an integration. Do not add credentials, auth packages, or sign-in routes until this record is reviewed and the Clerk development instance is configured.
+This is a provider recommendation; live sign-in requires a Clerk development instance and local keys. AVEN can prepare the integration without committing credentials. Keep development and production instances separate.
 
 ## Why
 
