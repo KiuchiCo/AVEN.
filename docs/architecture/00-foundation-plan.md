@@ -20,7 +20,7 @@ Start with a TypeScript monorepo and a modular monolith. Keep the web client and
 | API | NestJS, TypeScript | Provides clear modules and dependency boundaries while keeping the first backend a single deployable service. |
 | Primary data | PostgreSQL | Relational integrity and transactions suit workspace, project, task, document, and calendar relationships. |
 | ORM and migrations | Prisma | A typed schema and migration workflow give the first domain model a consistent source of truth. Use explicit SQL migrations when PostgreSQL features or access policies need them. |
-| Authentication | Decision deferred to its own small ADR before implementation | The choice affects session handling, email verification, MFA, invitations, and deployment. Do not create a second identity system or store credentials until the provider and threat model are reviewed. |
+| Authentication | Clerk recommended in [Section 1.4](../sections/04-identity-decision.md), pending review before implementation | The provider handles identity credentials and sessions; AVEN's API and PostgreSQL remain authoritative for workspace membership and permissions. Do not store credentials or add auth dependencies before the recommendation is reviewed. |
 | Background jobs, cache, search, files, real-time | Defer until a vertical slice needs each capability | Avoid adding Redis, a queue, object storage, or collaboration infrastructure before there is a real workflow to support. |
 
 The first deployment can run the web app, API, and PostgreSQL together as a modular product. Keep module boundaries in code; do not split them into microservices without measured scaling or team requirements.
@@ -121,7 +121,7 @@ Each row is an independent review and Git milestone. Keep each working tree focu
 - [ ] Reconcile the shared visual tokens with the master brand brief.
 - [x] Create the monorepo scaffold and development tooling.
 - [x] Configure local PostgreSQL and schema migrations.
-- [ ] Decide the authentication provider before implementing login.
+- [x] Record the recommended authentication provider and security boundaries before login implementation.
 - [ ] Build and verify the first persistent workspace/project/task workflow.
 
 ## Review notes

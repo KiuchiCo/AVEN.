@@ -47,7 +47,7 @@ The first release should let a user enter a workspace, navigate the main areas, 
 
 ## Decisions still open
 
-Choose the frontend framework, backend, database, authentication provider, and hosting approach before adding dependencies or storing user data. Keep secrets in environment configuration and out of Git.
+The frontend, backend, database, and recommended identity provider are recorded in the architecture and section decisions. Review the identity recommendation before integration. Hosting and production email delivery remain open. Keep secrets in environment configuration and out of Git.
 
 ## Record of sections
 
