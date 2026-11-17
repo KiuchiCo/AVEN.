@@ -26,6 +26,9 @@ export function DatabasesWorkspace() {
   const [selectedId, setSelectedId] = useState('');
   const [editingId, setEditingId] = useState('');
   const [draft, setDraft] = useState<RecordValues>({});
+  const [filterQuery, setFilterQuery] = useState('');
+  const [sortPropertyId, setSortPropertyId] = useState('updatedAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -61,6 +64,24 @@ export function DatabasesWorkspace() {
   }, [reload]);
 
   const selected = databases.find((database) => database.id === selectedId);
+  const visibleRecords = selected ? selected.records
+    .filter((record) => {
+      const query = filterQuery.trim().toLocaleLowerCase();
+      if (!query) return true;
+      return Object.values(record.values).some((value) => String(value ?? '').toLocaleLowerCase().includes(query));
+    })
+    .sort((left, right) => {
+      const leftValue = sortPropertyId === 'updatedAt' ? left.updatedAt : left.values[sortPropertyId];
+      const rightValue = sortPropertyId === 'updatedAt' ? right.updatedAt : right.values[sortPropertyId];
+      const leftEmpty = leftValue === null || leftValue === undefined || leftValue === '';
+      const rightEmpty = rightValue === null || rightValue === undefined || rightValue === '';
+      if (leftEmpty !== rightEmpty) return leftEmpty ? 1 : -1;
+      let comparison = 0;
+      if (typeof leftValue === 'number' && typeof rightValue === 'number') comparison = leftValue - rightValue;
+      else if (typeof leftValue === 'boolean' && typeof rightValue === 'boolean') comparison = Number(leftValue) - Number(rightValue);
+      else comparison = String(leftValue ?? '').localeCompare(String(rightValue ?? ''), undefined, { numeric: true, sensitivity: 'base' });
+      return sortDirection === 'asc' ? comparison : -comparison;
+    }) : [];
 
   async function createDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -170,9 +191,18 @@ export function DatabasesWorkspace() {
               <label>Type<select name="propertyType" defaultValue="text">{propertyTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add property'}</button>
             </form>
+            <div className="database-view-controls" aria-label="Table view controls">
+              <label>Filter records<input type="search" value={filterQuery} onChange={(event) => setFilterQuery(event.target.value)} placeholder="Search record values" /></label>
+              <label>Sort by<select value={sortPropertyId} onChange={(event) => setSortPropertyId(event.target.value)}>
+                <option value="updatedAt">Updated</option>
+                {selected.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
+              </select></label>
+              <label>Order<select value={sortDirection} onChange={(event) => setSortDirection(event.target.value as 'asc' | 'desc')}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+              <span className="database-view-count">{filterQuery.trim() ? `${visibleRecords.length} of ${selected.records.length} records` : `${selected.records.length} records`}</span>
+            </div>
             <div className="database-table-scroll"><table className="database-table"><thead><tr>{selected.properties.map((property) => <th key={property.id}>{property.name}</th>)}<th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
-                {selected.records.map((record) => <tr key={record.id}>
+                {visibleRecords.map((record) => <tr key={record.id}>
                   {editingId === record.id ? <>
                     {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <select aria-label={property.name} value={String(draft[property.id] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value || null }))}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input aria-label={property.name} type="checkbox" checked={Boolean(draft[property.id])} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.checked }))} /> : <input aria-label={property.name} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} value={draft[property.id] == null ? '' : String(draft[property.id])} maxLength={property.type === 'text' ? 2000 : undefined} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value === '' ? null : property.type === 'number' ? Number(event.target.value) : event.target.value }))} />}</td>)}
                     <td>Editing</td><td><form className="database-row-actions" onSubmit={saveRecord}><button type="submit" disabled={busy}>Save</button><button type="button" onClick={() => setEditingId('')}>Cancel</button></form></td>
@@ -182,6 +212,7 @@ export function DatabasesWorkspace() {
                   </>}
                 </tr>)}
                 {!selected.records.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records yet. Add the first one below.</td></tr>}
+                {selected.records.length > 0 && !visibleRecords.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records match that search.</td></tr>}
               </tbody></table></div>
             <form className="database-add-record" onSubmit={createRecord}>
               {selected.properties.map((property) => <label key={property.id}>{property.name}{property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? 'Website redesign' : undefined} required={property.id === 'name'} />}</label>)}
