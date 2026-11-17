@@ -9,11 +9,18 @@ export class DatabasesService {
 
   async list(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.requireMembership(identity, workspaceId);
-    return this.prisma.workspaceDatabase.findMany({
+    const databases = await this.prisma.workspaceDatabase.findMany({
       where: { workspaceId },
       orderBy: { updatedAt: 'desc' },
-      include: { records: { orderBy: { updatedAt: 'desc' } }, views: { orderBy: { createdAt: 'asc' } } },
+      include: {
+        records: { orderBy: { updatedAt: 'desc' }, include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } } },
+        views: { orderBy: { createdAt: 'asc' } },
+      },
     });
+    return databases.map((database) => ({
+      ...database,
+      records: database.records.map((record) => this.withRelationValues(record, database.properties)),
+    }));
   }
 
   async create(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
@@ -31,14 +38,22 @@ export class DatabasesService {
     const database = await this.prisma.workspaceDatabase.findFirst({ where: { id: databaseId, workspaceId }, select: { id: true, properties: true } });
     if (!database) throw new NotFoundException('Database not found in this workspace.');
     const values = recordValues(database.properties, objectInput(input).values);
-    return this.prisma.databaseRecord.create({ data: { workspaceId, databaseId, values } });
+    const { scalarValues, links } = await this.extractRelationLinks(workspaceId, database.properties, values);
+    const record = await this.prisma.$transaction(async (transaction) => {
+      const created = await transaction.databaseRecord.create({ data: { workspaceId, databaseId, values: scalarValues as Prisma.InputJsonValue } });
+      if (links.length) await transaction.databaseRecordLink.createMany({ data: links.map((link) => ({ workspaceId, sourceRecordId: created.id, ...link })) });
+      return transaction.databaseRecord.findUniqueOrThrow({
+        where: { id: created.id }, include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } },
+      });
+    });
+    return this.withRelationValues(record, database.properties);
   }
 
   async addProperty(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
     await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const name = textField(body.name, 'Property name', 80);
-    const type = enumValue(body.type, ['text', 'number', 'checkbox', 'date', 'status'] as const);
+    const type = enumValue(body.type, ['text', 'number', 'checkbox', 'date', 'status', 'relation'] as const);
     const database = await this.prisma.workspaceDatabase.findFirst({
       where: { id: databaseId, workspaceId },
       select: { id: true, properties: true },
@@ -49,7 +64,14 @@ export class DatabasesService {
       throw new BadRequestException('A property with that name already exists.');
     }
     const id = `field_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
-    const nextProperties = [...properties, { id, name, type }];
+    let relatedDatabaseId: string | undefined;
+    if (type === 'relation') {
+      relatedDatabaseId = textField(body.relatedDatabaseId, 'Related database', 80);
+      if (relatedDatabaseId === database.id) throw new BadRequestException('Choose a different database for this relation.');
+      const relatedDatabase = await this.prisma.workspaceDatabase.findFirst({ where: { id: relatedDatabaseId, workspaceId }, select: { id: true } });
+      if (!relatedDatabase) throw new BadRequestException('Related database must belong to this workspace.');
+    }
+    const nextProperties = [...properties, { id, name, type, ...(relatedDatabaseId ? { relatedDatabaseId } : {}) }];
     return this.prisma.workspaceDatabase.update({
       where: { id: database.id },
       data: { properties: nextProperties as Prisma.InputJsonValue },
@@ -99,12 +121,53 @@ export class DatabasesService {
     });
     if (!database) throw new NotFoundException('Database not found in this workspace.');
     const values = recordValues(database.properties, objectInput(input).values);
-    const result = await this.prisma.databaseRecord.updateMany({
-      where: { id: recordId, databaseId, workspaceId },
-      data: { values },
+    const { scalarValues, links } = await this.extractRelationLinks(workspaceId, database.properties, values);
+    const relationPropertyIds = propertyList(database.properties).filter((property) => property.type === 'relation').map((property) => property.id);
+    const record = await this.prisma.$transaction(async (transaction) => {
+      const result = await transaction.databaseRecord.updateMany({
+        where: { id: recordId, databaseId, workspaceId },
+        data: { values: scalarValues as Prisma.InputJsonValue },
+      });
+      if (result.count !== 1) throw new NotFoundException('Record not found in this database.');
+      if (relationPropertyIds.length) await transaction.databaseRecordLink.deleteMany({ where: { workspaceId, sourceRecordId: recordId, propertyId: { in: relationPropertyIds } } });
+      if (links.length) await transaction.databaseRecordLink.createMany({ data: links.map((link) => ({ workspaceId, sourceRecordId: recordId, ...link })) });
+      return transaction.databaseRecord.findFirstOrThrow({
+        where: { id: recordId, databaseId, workspaceId },
+        include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } },
+      });
     });
-    if (result.count !== 1) throw new NotFoundException('Record not found in this database.');
-    return this.prisma.databaseRecord.findFirstOrThrow({ where: { id: recordId, databaseId, workspaceId } });
+    return this.withRelationValues(record, database.properties);
+  }
+
+  private async extractRelationLinks(workspaceId: string, propertiesValue: unknown, values: Record<string, string | number | boolean | null | string[]>) {
+    const properties = propertyList(propertiesValue);
+    const links: Array<{ propertyId: string; targetRecordId: string }> = [];
+    for (const property of properties.filter((item) => item.type === 'relation')) {
+      if (!property.relatedDatabaseId) throw new BadRequestException(`${property.name} has an invalid relation definition.`);
+      const targetIds = [...new Set(Array.isArray(values[property.id]) ? values[property.id] as string[] : [])];
+      if (targetIds.length > 100) throw new BadRequestException('A relation property can link to at most 100 records.');
+      if (!targetIds.length) continue;
+      const targets = await this.prisma.databaseRecord.findMany({
+        where: { id: { in: targetIds }, databaseId: property.relatedDatabaseId, workspaceId },
+        select: { id: true },
+      });
+      if (targets.length !== targetIds.length) throw new BadRequestException(`${property.name} can only link to records in its selected workspace database.`);
+      links.push(...targetIds.map((targetRecordId) => ({ propertyId: property.id, targetRecordId })));
+    }
+    const relationPropertyIds = new Set(properties.filter((property) => property.type === 'relation').map((property) => property.id));
+    const scalarValues = Object.fromEntries(Object.entries(values).filter(([propertyId]) => !relationPropertyIds.has(propertyId)));
+    return { scalarValues, links };
+  }
+
+  private withRelationValues<T extends { values: Prisma.JsonValue; outgoingLinks: Array<{ propertyId: string; targetRecordId: string }> }>(record: T, propertiesValue: unknown) {
+    const { outgoingLinks, ...base } = record;
+    const values = record.values && typeof record.values === 'object' && !Array.isArray(record.values)
+      ? { ...record.values as Record<string, Prisma.JsonValue> }
+      : {};
+    for (const property of propertyList(propertiesValue).filter((item) => item.type === 'relation')) {
+      values[property.id] = outgoingLinks.filter((link) => link.propertyId === property.id).map((link) => link.targetRecordId);
+    }
+    return { ...base, values };
   }
 
   private async requireMembership(identity: AuthenticatedIdentity, workspaceId: string) {
@@ -139,7 +202,7 @@ function optionalText(value: unknown, label: string, max: number) {
   return value.trim();
 }
 
-function recordValues(propertiesValue: unknown, value: unknown): Record<string, string | number | boolean | null> {
+function recordValues(propertiesValue: unknown, value: unknown): Record<string, string | number | boolean | null | string[]> {
   const values = objectInput(value);
   const properties = propertyList(propertiesValue);
   if (Object.keys(values).length > properties.length) throw new BadRequestException('Record values can only use properties defined in this database.');
@@ -152,14 +215,19 @@ function recordValues(propertiesValue: unknown, value: unknown): Record<string, 
   return values as Record<string, string | number | boolean | null>;
 }
 
-function propertyList(value: unknown): Array<{ id: string; name: string; type: string }> {
+function propertyList(value: unknown): Array<{ id: string; name: string; type: string; relatedDatabaseId?: string }> {
   if (!Array.isArray(value)) throw new BadRequestException('This database has an invalid property definition.');
   return value.map((entry) => {
     if (!entry || typeof entry !== 'object' || !('id' in entry) || !('name' in entry) || !('type' in entry)
       || typeof entry.id !== 'string' || typeof entry.name !== 'string' || typeof entry.type !== 'string') {
       throw new BadRequestException('This database has an invalid property definition.');
     }
-    return { id: entry.id, name: entry.name, type: entry.type };
+    return {
+      id: entry.id,
+      name: entry.name,
+      type: entry.type,
+      ...('relatedDatabaseId' in entry && typeof entry.relatedDatabaseId === 'string' ? { relatedDatabaseId: entry.relatedDatabaseId } : {}),
+    };
   });
 }
 
@@ -176,6 +244,7 @@ function matchesType(value: unknown, type: string) {
     case 'date': return typeof value === 'string' && Number.isFinite(Date.parse(value));
     case 'text':
     case 'status': return typeof value === 'string';
+    case 'relation': return Array.isArray(value) && value.every((item) => typeof item === 'string');
     default: return false;
   }
 }

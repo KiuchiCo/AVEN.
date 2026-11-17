@@ -85,6 +85,7 @@ model Workspace {
   databases       WorkspaceDatabase[]
   databaseRecords DatabaseRecord[]
   databaseViews   DatabaseView[]
+  recordLinks     DatabaseRecordLink[]
 
   @@index([createdById])
   @@map("workspaces")
@@ -209,9 +210,28 @@ model DatabaseRecord {
   updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   database    WorkspaceDatabase @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  outgoingLinks DatabaseRecordLink[] @relation("DatabaseRecordLinkSource")
+  incomingLinks DatabaseRecordLink[] @relation("DatabaseRecordLinkTarget")
 
   @@index([workspaceId, databaseId, updatedAt])
   @@map("database_records")
+}
+
+model DatabaseRecordLink {
+  id             String         @id @default(uuid()) @db.Uuid
+  workspaceId    String         @db.Uuid
+  propertyId     String         @db.VarChar(80)
+  sourceRecordId String         @db.Uuid
+  targetRecordId String         @db.Uuid
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceRecord   DatabaseRecord @relation("DatabaseRecordLinkSource", fields: [sourceRecordId], references: [id], onDelete: Cascade)
+  targetRecord   DatabaseRecord @relation("DatabaseRecordLinkTarget", fields: [targetRecordId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceRecordId, propertyId, targetRecordId])
+  @@index([workspaceId, sourceRecordId, propertyId])
+  @@index([workspaceId, targetRecordId])
+  @@map("database_record_links")
 }
 
 model DatabaseView {

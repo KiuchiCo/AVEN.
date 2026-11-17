@@ -4,8 +4,8 @@ import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from './workspace-shell';
 
-type Property = { id: string; name: string; type: string };
-type RecordValues = Record<string, string | number | boolean | null>;
+type Property = { id: string; name: string; type: string; relatedDatabaseId?: string };
+type RecordValues = Record<string, string | number | boolean | null | string[]>;
 type DatabaseRecord = { id: string; values: RecordValues; updatedAt: string };
 type ViewLayout = 'TABLE' | 'BOARD' | 'GALLERY';
 type SavedView = { id: string; name: string; filterQuery: string; sortPropertyId: string; sortDirection: 'ASC' | 'DESC'; layout: ViewLayout; groupByPropertyId: string };
@@ -19,6 +19,7 @@ const propertyTypes = [
   { value: 'checkbox', label: 'Checkbox' },
   { value: 'date', label: 'Date' },
   { value: 'status', label: 'Status' },
+  { value: 'relation', label: 'Relation' },
 ];
 
 export function DatabasesWorkspace() {
@@ -35,6 +36,7 @@ export function DatabasesWorkspace() {
   const [groupByPropertyId, setGroupByPropertyId] = useState('status');
   const [selectedViewId, setSelectedViewId] = useState('');
   const [viewName, setViewName] = useState('');
+  const [newPropertyType, setNewPropertyType] = useState('text');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -77,7 +79,7 @@ export function DatabasesWorkspace() {
     .filter((record) => {
       const query = filterQuery.trim().toLocaleLowerCase();
       if (!query) return true;
-      return Object.values(record.values).some((value) => String(value ?? '').toLocaleLowerCase().includes(query));
+      return selected.properties.some((property) => propertyValueLabel(property, record.values[property.id]).toLocaleLowerCase().includes(query));
     })
     .sort((left, right) => {
       const leftValue = sortPropertyId === 'updatedAt' ? left.updatedAt : left.values[sortPropertyId];
@@ -92,6 +94,14 @@ export function DatabasesWorkspace() {
       return sortDirection === 'asc' ? comparison : -comparison;
     }) : [];
   const boardGroups = statusProperties.length ? [...new Set([...statuses, ...visibleRecords.map((record) => String(record.values[boardPropertyId] ?? 'No status'))])] : [];
+  function propertyValueLabel(property: Property, value: RecordValues[string]) {
+    if (property.type !== 'relation' || !Array.isArray(value)) return value == null ? '—' : String(value);
+    const related = databases.find((database) => database.id === property.relatedDatabaseId);
+    return value.map((recordId) => {
+      const record = related?.records.find((item) => item.id === recordId);
+      return String(record?.values.name ?? record?.values[related?.properties[0]?.id ?? ''] ?? 'Linked record');
+    }).join(', ') || '—';
+  }
 
   async function createDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -119,6 +129,7 @@ export function DatabasesWorkspace() {
     try {
       const values = Object.fromEntries(selected.properties.map((property) => {
         const raw = form.get(property.id);
+        if (property.type === 'relation') return [property.id, form.getAll(property.id).filter((value): value is string => typeof value === 'string')];
         if (property.type === 'checkbox') return [property.id, raw === 'on'];
         if (property.type === 'number') return [property.id, raw === null || raw === '' ? null : Number(raw)];
         return [property.id, raw ? String(raw) : null];
@@ -141,7 +152,7 @@ export function DatabasesWorkspace() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/databases/${selected.id}/properties`, {
-        method: 'PATCH', body: JSON.stringify({ name: form.get('propertyName'), type: form.get('propertyType') }),
+        method: 'PATCH', body: JSON.stringify({ name: form.get('propertyName'), type: form.get('propertyType'), relatedDatabaseId: form.get('relatedDatabaseId') }),
       });
       formElement.reset();
       await reload();
@@ -259,7 +270,8 @@ export function DatabasesWorkspace() {
             <div className="database-table-heading"><div><p className="workspace-eyebrow">TABLE VIEW</p><h2>{selected.name}</h2><p>{selected.description || 'A structured view of your workspace information.'}</p></div><span>{selected.records.length} records</span></div>
             <form className="database-add-property" onSubmit={createProperty}>
               <label>New property<input name="propertyName" required maxLength={80} placeholder="Owner, budget, due date…" /></label>
-              <label>Type<select name="propertyType" defaultValue="text">{propertyTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
+              <label>Type<select name="propertyType" value={newPropertyType} onChange={(event) => setNewPropertyType(event.target.value)}>{propertyTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
+              {newPropertyType === 'relation' && <label>Related database<select name="relatedDatabaseId" required defaultValue=""><option value="" disabled>Choose a database</option>{databases.filter((database) => database.id !== selected.id).map((database) => <option key={database.id} value={database.id}>{database.name}</option>)}</select></label>}
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add property'}</button>
             </form>
             <div className="database-view-controls" aria-label="Table view controls">
@@ -286,7 +298,7 @@ export function DatabasesWorkspace() {
                   <div className="database-gallery-card__cover" aria-hidden="true"><span>AVEN</span></div>
                   <div className="database-gallery-card__content">
                     <h3>{String(record.values[titleProperty?.id ?? ''] ?? 'Untitled record')}</h3>
-                    <div className="database-gallery-card__fields">{selected.properties.filter((property) => property.id !== titleProperty?.id).slice(0, 4).map((property) => <p key={property.id}><span>{property.name}</span>{property.type === 'checkbox' ? (record.values[property.id] ? 'Yes' : 'No') : String(record.values[property.id] ?? '—')}</p>)}</div>
+                    <div className="database-gallery-card__fields">{selected.properties.filter((property) => property.id !== titleProperty?.id).slice(0, 4).map((property) => <p key={property.id}><span>{property.name}</span>{property.type === 'checkbox' ? (record.values[property.id] ? 'Yes' : 'No') : propertyValueLabel(property, record.values[property.id])}</p>)}</div>
                     <small>Updated {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</small>
                   </div>
                 </article>;
@@ -299,7 +311,7 @@ export function DatabasesWorkspace() {
                   <header><h3>{group}</h3><span>{groupRecords.length}</span></header>
                   <div className="database-board-cards">{groupRecords.map((record) => <article className="database-board-card" key={record.id} draggable={!busy} onDragStart={(event) => event.dataTransfer.setData('text/plain', record.id)}>
                     <strong>{String(record.values.name ?? record.values[boardPropertyId] ?? 'Untitled record')}</strong>
-                    {selected.properties.filter((property) => property.id !== 'name' && property.id !== boardPropertyId).slice(0, 3).map((property) => <p key={property.id}><span>{property.name}</span>{String(record.values[property.id] ?? '—')}</p>)}
+                    {selected.properties.filter((property) => property.id !== 'name' && property.id !== boardPropertyId).slice(0, 3).map((property) => <p key={property.id}><span>{property.name}</span>{propertyValueLabel(property, record.values[property.id])}</p>)}
                   </article>)}</div>
                 </section>;
               })}
@@ -307,10 +319,10 @@ export function DatabasesWorkspace() {
               <tbody>
                 {visibleRecords.map((record) => <tr key={record.id}>
                   {editingId === record.id ? <>
-                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <select aria-label={property.name} value={String(draft[property.id] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value || null }))}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input aria-label={property.name} type="checkbox" checked={Boolean(draft[property.id])} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.checked }))} /> : <input aria-label={property.name} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} value={draft[property.id] == null ? '' : String(draft[property.id])} maxLength={property.type === 'text' ? 2000 : undefined} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value === '' ? null : property.type === 'number' ? Number(event.target.value) : event.target.value }))} />}</td>)}
+                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'relation' ? <select aria-label={property.name} multiple size={3} value={Array.isArray(draft[property.id]) ? draft[property.id] as string[] : []} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: Array.from(event.target.selectedOptions, (option) => option.value) }))}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select aria-label={property.name} value={String(draft[property.id] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value || null }))}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input aria-label={property.name} type="checkbox" checked={Boolean(draft[property.id])} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.checked }))} /> : <input aria-label={property.name} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} value={draft[property.id] == null ? '' : String(draft[property.id])} maxLength={property.type === 'text' ? 2000 : undefined} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value === '' ? null : property.type === 'number' ? Number(event.target.value) : event.target.value }))} />}</td>)}
                     <td>Editing</td><td><form className="database-row-actions" onSubmit={saveRecord}><button type="submit" disabled={busy}>Save</button><button type="button" onClick={() => setEditingId('')}>Cancel</button></form></td>
                   </> : <>
-                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <span className="database-status">{String(record.values[property.id] ?? '—')}</span> : property.type === 'checkbox' ? (record.values[property.id] ? 'Yes' : 'No') : String(record.values[property.id] ?? '—')}</td>)}
+                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <span className="database-status">{String(record.values[property.id] ?? '—')}</span> : property.type === 'checkbox' ? (record.values[property.id] ? 'Yes' : 'No') : propertyValueLabel(property, record.values[property.id])}</td>)}
                     <td>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</td><td><button className="database-row-edit" type="button" onClick={() => startEdit(record)}>Edit</button></td>
                   </>}
                 </tr>)}
@@ -318,7 +330,7 @@ export function DatabasesWorkspace() {
                 {selected.records.length > 0 && !visibleRecords.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records match that search.</td></tr>}
               </tbody></table></div>}
             <form className="database-add-record" onSubmit={createRecord}>
-              {selected.properties.map((property) => <label key={property.id}>{property.name}{property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? 'Website redesign' : undefined} required={property.id === 'name'} />}</label>)}
+              {selected.properties.map((property) => <label key={property.id}>{property.name}{property.type === 'relation' ? <select name={property.id} multiple size={3}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? 'Website redesign' : undefined} required={property.id === 'name'} />}</label>)}
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add record'}</button>
             </form>
           </>}
