@@ -490,6 +490,32 @@ body {
 .connected-record h3, .connected-event h3 { margin: 12px 0 7px; color: #28251f; font-family: var(--aven-display-font); font-size: 20px; font-weight: 500; }
 .connected-record > p { margin: 0; color: #70695f; font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .connected-record > small { display: block; margin-top: 12px; color: #999187; font-size: 10px; }
+.database-toolbar { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin: 24px 0 14px; color: #777168; font-size: 12px; }
+.database-toolbar label, .database-add-record label { display: grid; gap: 6px; color: #635b51; font-size: 11px; font-weight: 650; }
+.database-toolbar select, .database-add-record input, .database-add-record select, .database-table input, .database-table select { min-width: 0; padding: 9px 11px; border: 1px solid #e2ddd5; border-radius: 9px; background: #fffdfa; color: #28251f; font: inherit; font-size: 12px; }
+.database-layout { display: grid; grid-template-columns: minmax(230px, .7fr) minmax(0, 1.7fr); align-items: start; gap: 16px; }
+.database-create > p:not(.workspace-eyebrow) { margin: 0; color: #777168; font-size: 12px; line-height: 1.65; }
+.database-table-card { min-width: 0; padding: 20px; overflow: hidden; border: 1px solid rgb(87 73 58 / 12%); border-radius: 16px; background: rgb(255 255 255 / 72%); box-shadow: 0 8px 26px rgb(55 43 30 / 5%); }
+.database-empty { display: grid; min-height: 260px; align-content: center; justify-items: center; text-align: center; }
+.database-empty > span { color: #a48766; font-size: 32px; }
+.database-empty h2, .database-table-heading h2 { margin: 5px 0; color: #28251f; font-family: var(--aven-display-font); font-size: 24px; font-weight: 500; }
+.database-empty p, .database-table-heading > div > p:last-child { margin: 0; color: #777168; font-size: 12px; line-height: 1.6; }
+.database-table-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+.database-table-heading > span { flex: none; color: #8a8176; font-size: 11px; }
+.database-table-scroll { overflow-x: auto; border: 1px solid #e7e1d8; border-radius: 10px; }
+.database-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; text-align: left; }
+.database-table th, .database-table td { padding: 11px 12px; border-bottom: 1px solid #eee9e1; white-space: nowrap; }
+.database-table th { background: #faf8f4; color: #777168; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.database-table tr:last-child td { border-bottom: 0; }
+.database-table td { color: #3b3833; }
+.database-table-empty { padding: 26px !important; color: #8a8176 !important; text-align: center; }
+.database-status { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #eee8df; color: #685742; font-size: 10px; }
+.database-row-edit, .database-row-actions button { padding: 5px 8px; border: 1px solid #e3dbd0; border-radius: 7px; background: #fffdfa; color: #6c5842; cursor: pointer; font: inherit; font-size: 10px; }
+.database-row-actions { display: flex; gap: 5px; }
+.database-add-record { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 16px; }
+.database-add-record label:first-child { flex: 1 1 180px; }
+.database-add-record button { min-height: 36px; padding: 8px 12px; border: 0; border-radius: 8px; background: #2b2a27; color: #fff; cursor: pointer; font: inherit; font-size: 11px; font-weight: 650; }
+.database-table input:focus, .database-table select:focus, .database-add-record input:focus, .database-add-record select:focus { outline: 3px solid rgb(164 135 102 / 28%); border-color: #a48766; }
 .connected-event { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: start; gap: 14px; padding: 15px; border: 1px solid #e8e3db; border-radius: 12px; background: #fffdfa; }
 .connected-event > time { display: grid; justify-items: center; align-content: center; min-height: 56px; border-radius: 10px; background: #f1eae1; color: #826647; }
 .connected-event > time span { font-size: 9px; font-weight: 700; letter-spacing: .08em; }
@@ -564,6 +590,8 @@ body {
   .productivity-columns { grid-template-columns: repeat(4, minmax(155px, 1fr)); }
   .productivity-form__row { grid-template-columns: 1fr; }
   .connected-layout { grid-template-columns: 1fr; gap: 12px; margin-top: 20px; }
+  .database-layout { grid-template-columns: 1fr; }
+  .database-toolbar { align-items: center; }
   .connected-compose { position: static; }
   .connected-record-list { padding: 14px; }
 }

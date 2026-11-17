@@ -14,19 +14,20 @@ export class ClerkAuthGuard implements CanActivate {
     }
 
     const jwtKey = process.env.CLERK_JWT_KEY?.replaceAll('\\n', '\n');
+    const secretKey = process.env.CLERK_SECRET_KEY;
     const issuer = process.env.CLERK_ISSUER;
     const authorizedParties = (process.env.WEB_ORIGIN ?? 'http://localhost:3000')
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean);
 
-    if (!jwtKey || !issuer || authorizedParties.length === 0) {
+    if ((!jwtKey && !secretKey) || !issuer || authorizedParties.length === 0) {
       throw new ServiceUnavailableException('Clerk API verification is not configured.');
     }
 
     try {
       const claims = await verifyToken(token, {
-        jwtKey,
+        ...(jwtKey ? { jwtKey } : { secretKey }),
         issuer,
         authorizedParties,
       });

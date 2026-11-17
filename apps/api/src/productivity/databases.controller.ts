@@ -1,0 +1,46 @@
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
+import type { AuthenticatedIdentity } from '../auth/auth.types.js';
+import { DatabasesService } from './databases.service.js';
+
+@Controller('workspaces/:workspaceId/databases')
+@UseGuards(ClerkAuthGuard)
+export class DatabasesController {
+  constructor(private readonly databases: DatabasesService) {}
+
+  @Get()
+  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
+    return this.databases.list(identity, workspaceId);
+  }
+
+  @Post()
+  create(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Body() body: unknown,
+  ) {
+    return this.databases.create(identity, workspaceId, body);
+  }
+
+  @Post(':databaseId/records')
+  createRecord(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Body() body: unknown,
+  ) {
+    return this.databases.createRecord(identity, workspaceId, databaseId, body);
+  }
+
+  @Patch(':databaseId/records/:recordId')
+  updateRecord(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Param('recordId', new ParseUUIDPipe()) recordId: string,
+    @Body() body: unknown,
+  ) {
+    return this.databases.updateRecord(identity, workspaceId, databaseId, recordId, body);
+  }
+}

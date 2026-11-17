@@ -8,14 +8,18 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 
 | Section | Focus | Status |
 | --- | --- | --- |
-| [00 · Product foundation](docs/sections/00-product-foundation.md) | Product principles, first release scope, and delivery plan | In progress |
-| [01 · Application shell](docs/sections/01-application-shell.md) | Responsive navigation, workspace switcher, and dashboard starting point | In progress |
-| 02 · Authentication and accounts | Sign in, account settings, and workspace membership | Planned |
-| 03 · Projects | Tasks, boards, milestones, and project overview | Planned |
-| 04 · Documents | Create, edit, and organise workspace documents | Planned |
-| 05 · Databases | Structured records, views, and relationships | Planned |
-| 06 · Calendar | Events, task deadlines, and time blocking | Planned |
-| 07 · AVEN Intelligence | Workspace-aware assistant and approved actions | Planned |
+| [00 · Product foundation](docs/sections/00-product-foundation.md) | Product principles and first-release scope | Complete |
+| [1.1 · Application shell](docs/sections/01-application-shell.md) | Responsive navigation and dashboard starting point | Complete |
+| [1.2 · Monorepo tooling](docs/sections/02-monorepo-tooling.md) | Web/API workspace and development tooling | Complete |
+| [1.3 · PostgreSQL and Prisma](docs/sections/03-postgres-prisma.md) | Local database and migrations | Complete |
+| [1.4 · Identity decision](docs/sections/04-identity-decision.md) | Clerk identity-provider decision | Complete |
+| [1.5 · Sign-in and personal workspace](docs/sections/05-auth-workspace.md) | Authentication and personal workspace bootstrap | Complete |
+| [1.6 · Product shell](docs/sections/06-product-shell.md) | Authenticated AVEN navigation and pages | Complete |
+| [1.7 · Projects and tasks](docs/sections/07-projects-and-tasks.md) | Persistent project and task workflows | Complete |
+| [1.8 · Connected records](docs/sections/08-connected-records.md) | Project documents and task-linked calendar | Complete |
+| [1.9 · Live Home and My Tasks](docs/sections/09-live-home-and-my-tasks.md) | Workspace metrics and task list | Complete |
+| [1.10 · Document editing](docs/sections/10-document-editing.md) | Persistent document editing | Complete |
+| [1.11 · Basic databases](docs/sections/11-basic-databases.md) | Workspace tables and structured records | Ready for review |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).

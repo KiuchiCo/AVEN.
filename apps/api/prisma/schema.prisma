@@ -71,6 +71,8 @@ model Workspace {
   tasks           Task[]
   documents       Document[]
   events          CalendarEvent[]
+  databases       WorkspaceDatabase[]
+  databaseRecords DatabaseRecord[]
 
   @@index([createdById])
   @@map("workspaces")
@@ -168,4 +170,33 @@ model CalendarEvent {
   @@index([workspaceId, startsAt])
   @@index([taskId])
   @@map("calendar_events")
+}
+
+model WorkspaceDatabase {
+  id          String           @id @default(uuid()) @db.Uuid
+  workspaceId String           @db.Uuid
+  name        String           @db.VarChar(160)
+  description String?          @db.VarChar(500)
+  properties  Json             @default("[{\"id\":\"name\",\"name\":\"Name\",\"type\":\"text\"},{\"id\":\"status\",\"name\":\"Status\",\"type\":\"status\"}]") @db.JsonB
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  records     DatabaseRecord[]
+
+  @@index([workspaceId, updatedAt])
+  @@map("workspace_databases")
+}
+
+model DatabaseRecord {
+  id          String           @id @default(uuid()) @db.Uuid
+  workspaceId String           @db.Uuid
+  databaseId  String           @db.Uuid
+  values      Json             @default("{}") @db.JsonB
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  database    WorkspaceDatabase @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, databaseId, updatedAt])
+  @@map("database_records")
 }

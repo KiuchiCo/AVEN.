@@ -5,9 +5,11 @@ import { TasksController } from './tasks.controller.js';
 import { ProductivityService } from './productivity.service.js';
 import { DocumentsController } from './documents.controller.js';
 import { CalendarController } from './calendar.controller.js';
+import { DatabasesController } from './databases.controller.js';
+import { DatabasesService } from './databases.service.js';
 
 @Module({
-  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController],
-  providers: [ProductivityService, ClerkAuthGuard],
+  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController],
+  providers: [ProductivityService, DatabasesService, ClerkAuthGuard],
 })
 export class ProductivityModule {}

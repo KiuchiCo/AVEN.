@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 
 const sections: Record<string, { title: string; description: string; next: string }> = {
   inbox: { title: 'Inbox', description: 'A place for updates and things that need your attention.', next: 'Notifications will appear here when inbox workflows are connected.' },
-  databases: { title: 'Databases', description: 'Organise structured information your way.', next: 'Database views will arrive after the first connected records are available.' },
   intelligence: { title: 'AVEN Intelligence', description: 'Plan, analyse, and move work forward with context.', next: 'Intelligence will be connected only after AVEN has real workspace content to work with.' },
   activity: { title: 'Activity', description: 'See the changes happening across your workspace.', next: 'Workspace activity will appear when product updates are available.' },
 };

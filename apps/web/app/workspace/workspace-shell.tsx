@@ -115,7 +115,8 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
                   <Link href="/workspace/projects" onClick={() => setCreateOpen(false)}><NavIcon name="projects" /> Projects</Link>
                   <Link href="/workspace/tasks" onClick={() => setCreateOpen(false)}><NavIcon name="tasks" /> Tasks</Link>
                   <Link href="/workspace/documents" onClick={() => setCreateOpen(false)}><NavIcon name="documents" /> Documents</Link>
-                  <small>Creation becomes available as each section is built.</small>
+                  <Link href="/workspace/databases" onClick={() => setCreateOpen(false)}><NavIcon name="databases" /> Databases</Link>
+                  <small>More creation options will be added as each section is built.</small>
                 </div>
               )}
             </div>
