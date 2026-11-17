@@ -385,6 +385,9 @@ body {
 .calendar-item-actions button,.calendar-cancel-edit { border: 1px solid #e7dfd5; border-radius: 7px; background: #fffdfa; color: #66584a; padding: 6px 9px; font: 500 10px Inter, sans-serif; cursor: pointer; }
 .calendar-item-actions button:hover,.calendar-cancel-edit:hover { background: #f5f0e9; }
 .calendar-cancel-edit { justify-self: start; }
+.calendar-repeat-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.calendar-repeat-fields>label { display: grid; gap: 6px; color: #5d554c; font-size: 11px; font-weight: 600; }
+.calendar-repeat-fields select,.calendar-repeat-fields input { width: 100%; min-width: 0; min-height: 39px; padding: 8px 10px; border: 1px solid #e4ddd4; border-radius: 8px; background: #fffdfa; color: #37332e; font: 11px Inter,sans-serif; }
 
 .workspace-nav { display: grid; align-content: start; gap: 3px; overflow-y: auto; padding-top: 20px; }
 .workspace-nav__label { margin: 0 10px 7px; color: #827a70; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }

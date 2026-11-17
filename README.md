@@ -43,6 +43,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.37 · Calendar event management](docs/sections/37-calendar-event-management.md) | Edit and remove scheduled events and filter calendar items | Complete |
 | [1.38 · Team updates in the Inbox](docs/sections/38-team-inbox-notifications.md) | Per-member notifications, read state, dismissal, and activity links | Complete |
 | [1.39 · Workspace Knowledge Hub](docs/sections/39-workspace-knowledge-hub.md) | Shared reference library connected to search and AVEN Intelligence | Complete |
+| [1.40 · Recurring calendar events](docs/sections/40-recurring-calendar-events.md) | Daily, weekly, and monthly series with timezone-aware occurrences | Complete |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).
@@ -80,7 +81,7 @@ As of Section 1.35, AVEN has a Next.js and NestJS application with Clerk sign-in
 
 ## Local development
 
-Sections 1.36–1.38 add workspace switching, calendar event management, and per-member team notifications. Section 1.39 adds a shared Knowledge Hub connected to workspace search and AVEN Intelligence. See the [Section 1.39 notes](docs/sections/39-workspace-knowledge-hub.md) for migration, verification, and commit instructions.
+Sections 1.36–1.39 add workspace switching, calendar event management, per-member team notifications, and a shared Knowledge Hub. Section 1.40 adds timezone-aware recurring calendar events. See the [Section 1.40 notes](docs/sections/40-recurring-calendar-events.md) for migration, verification, and commit instructions.
 
 Requires Node.js 24.15.0 or newer and npm. From the repository root:
 

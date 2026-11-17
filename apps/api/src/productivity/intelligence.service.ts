@@ -30,8 +30,8 @@ export class IntelligenceService {
         select: { id: true, name: true, status: true, dueAt: true, updatedAt: true, _count: { select: { tasks: true } } },
       }),
       this.prisma.calendarEvent.findMany({
-        where: { workspaceId, startsAt: { gte: start, lt: end } }, orderBy: { startsAt: 'asc' }, take: 100,
-        select: { id: true, title: true, startsAt: true, endsAt: true, task: { select: { title: true } } },
+        where: { workspaceId, OR: [{ startsAt: { gte: start, lt: end } }, { recurrence: { not: null } }] }, orderBy: { startsAt: 'asc' }, take: 100,
+        select: { id: true, title: true, startsAt: true, endsAt: true, recurrence: true, recurrenceInterval: true, recurrenceUntil: true, recurrenceTimeZone: true, task: { select: { title: true } } },
       }),
       this.prisma.document.count({ where: { workspaceId } }),
       this.prisma.workspaceDatabase.count({ where: { workspaceId } }),
@@ -42,6 +42,7 @@ export class IntelligenceService {
     const dueThisWeek = open.filter((task) => task.dueAt && task.dueAt >= start && task.dueAt < end);
     const activeProjects = projects.filter((project) => ['PLANNING', 'IN_PROGRESS', 'ON_HOLD'].includes(project.status));
     const dueProjects = activeProjects.filter((project) => project.dueAt && project.dueAt >= start && project.dueAt < end);
+    const upcomingEvents = events.flatMap((event) => expandRecurringEvent(event, start, end));
     const insights = [];
     if (overdue.length) insights.push({ id: 'overdue', tone: 'urgent', title: `${overdue.length} overdue ${overdue.length === 1 ? 'task' : 'tasks'}`, detail: `The earliest is “${overdue[0].title}”. Review its date or move it forward.`, href: '/workspace/tasks', action: 'Review tasks' });
     if (dueThisWeek.length || dueProjects.length) insights.push({ id: 'deadlines', tone: 'warm', title: `${dueThisWeek.length + dueProjects.length} deadlines in the next 7 days`, detail: `${dueThisWeek.length} task${dueThisWeek.length === 1 ? '' : 's'} and ${dueProjects.length} project${dueProjects.length === 1 ? '' : 's'} have dates coming up.`, href: '/workspace/tasks', action: 'See deadlines' });
@@ -59,10 +60,10 @@ export class IntelligenceService {
     return {
       generatedAt: now,
       horizonEndsAt: end,
-      summary: { openTasks: open.length, overdueTasks: overdue.length, dueThisWeek: dueThisWeek.length + dueProjects.length, activeProjects: activeProjects.length, eventsThisWeek: events.length, documents: documentCount, databases: databaseCount, knowledge: knowledgeCount },
+      summary: { openTasks: open.length, overdueTasks: overdue.length, dueThisWeek: dueThisWeek.length + dueProjects.length, activeProjects: activeProjects.length, eventsThisWeek: upcomingEvents.length, documents: documentCount, databases: databaseCount, knowledge: knowledgeCount },
       insights: insights.slice(0, 4),
       focusTasks,
-      events: events.map((event) => ({ ...event, taskTitle: event.task?.title ?? null })),
+      events: upcomingEvents.map((event) => ({ ...event, taskTitle: event.task?.title ?? null })),
       upcomingProjects: dueProjects.slice(0, 5),
     };
   }
@@ -103,6 +104,71 @@ export class IntelligenceService {
       return { project: created, tasksCreated: tasks.length, milestonesCreated: milestones.length };
     });
   }
+}
+
+type BriefingEvent = {
+  id: string;
+  title: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  recurrence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null;
+  recurrenceInterval: number;
+  recurrenceUntil: Date | null;
+  recurrenceTimeZone: string | null;
+  task: { title: string } | null;
+};
+
+function expandRecurringEvent(event: BriefingEvent, start: Date, end: Date) {
+  const duration = event.endsAt ? event.endsAt.getTime() - event.startsAt.getTime() : null;
+  if (!event.recurrence) return event.startsAt >= start && event.startsAt < end ? [event] : [];
+  const until = event.recurrenceUntil ?? event.startsAt;
+  const occurrences: BriefingEvent[] = [];
+  const timeZone = event.recurrenceTimeZone ?? 'UTC';
+  const anchor = zonedParts(event.startsAt, timeZone);
+  const anchorDay = anchor.day;
+  let parts = anchor;
+  let cursor = new Date(event.startsAt);
+  let count = 0;
+  while (cursor <= until && cursor < end && count < 750) {
+    if (cursor >= start) occurrences.push({ ...event, id: `${event.id}-${cursor.toISOString()}`, startsAt: new Date(cursor), endsAt: duration === null ? null : new Date(cursor.getTime() + duration) });
+    const nextParts = advanceZonedParts(parts, event.recurrence, event.recurrenceInterval, anchorDay);
+    const next = dateInTimeZone(nextParts, timeZone);
+    if (next <= cursor) break;
+    cursor = next; parts = nextParts; count += 1;
+  }
+  return occurrences;
+}
+
+type ZonedParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
+
+function zonedParts(date: Date, timeZone: string): ZonedParts {
+  const formatted = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' }).formatToParts(date);
+  const values = Object.fromEntries(formatted.map(({ type, value }) => [type, Number(value)]));
+  return { year: values.year, month: values.month, day: values.day, hour: values.hour, minute: values.minute, second: values.second };
+}
+
+function dateInTimeZone(parts: ZonedParts, timeZone: string) {
+  const desired = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  let timestamp = desired;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const actual = zonedParts(new Date(timestamp), timeZone);
+    const represented = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute, actual.second);
+    const correction = desired - represented;
+    if (!correction) break;
+    timestamp += correction;
+  }
+  return new Date(timestamp);
+}
+
+function advanceZonedParts(parts: ZonedParts, frequency: string, interval: number, anchorDay: number): ZonedParts {
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  if (frequency === 'DAILY') date.setUTCDate(date.getUTCDate() + interval);
+  else if (frequency === 'WEEKLY') date.setUTCDate(date.getUTCDate() + interval * 7);
+  else {
+    date.setUTCDate(1); date.setUTCMonth(date.getUTCMonth() + interval);
+    date.setUTCDate(Math.min(anchorDay, new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate()));
+  }
+  return { ...parts, year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() };
 }
 
 function requiredText(value: unknown, label: string, max: number) {

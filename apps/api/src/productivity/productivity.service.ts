@@ -5,6 +5,7 @@ import { PrismaService } from '../database/prisma.service.js';
 const projectStatuses = ['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'] as const;
 const taskStatuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'CANCELLED'] as const;
 const taskPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
+const calendarRecurrences = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
 
 type ProjectStatus = (typeof projectStatuses)[number];
 type TaskStatus = (typeof taskStatuses)[number];
@@ -486,6 +487,11 @@ export class ProductivityService {
     const startsAt = requiredDate(body.startsAt, 'Start time');
     const endsAt = dateField(body.endsAt, 'End time');
     if (endsAt && endsAt <= startsAt) throw new BadRequestException('End time must be after the start time.');
+    const recurrence = recurrenceField(body.recurrence);
+    const recurrenceInterval = recurrenceIntervalField(body.recurrenceInterval);
+    const recurrenceUntil = dateField(body.recurrenceUntil, 'Repeat until');
+    const recurrenceTimeZone = recurrence ? timeZoneField(body.recurrenceTimeZone) : null;
+    validateRecurrence(recurrence ?? null, recurrenceUntil ?? null, startsAt, recurrenceTimeZone);
     const event = await this.prisma.calendarEvent.create({
       data: {
         workspaceId,
@@ -493,22 +499,31 @@ export class ProductivityService {
         title: textField(body.title, 'Event title', 200),
         startsAt,
         endsAt,
+        recurrence,
+        recurrenceInterval,
+        recurrenceUntil,
+        recurrenceTimeZone,
       },
       include: { task: { select: { id: true, title: true } } },
     });
-    await this.recordActivity(workspaceId, actorId, 'CALENDAR', event.id, `scheduled “${event.title}”`);
+    await this.recordActivity(workspaceId, actorId, 'CALENDAR', event.id, `${recurrence ? 'scheduled a recurring series' : 'scheduled'} “${event.title}”`);
     return event;
   }
 
   async updateCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, eventId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
-    const existing = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true, startsAt: true, endsAt: true } });
+    const existing = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true, startsAt: true, endsAt: true, recurrence: true, recurrenceInterval: true, recurrenceUntil: true, recurrenceTimeZone: true } });
     if (!existing) throw new NotFoundException('Calendar event not found in this workspace.');
-    const data: { title?: string; startsAt?: Date; endsAt?: Date | null; taskId?: string | null } = {};
+    const data: { title?: string; startsAt?: Date; endsAt?: Date | null; taskId?: string | null; recurrence?: typeof calendarRecurrences[number] | null; recurrenceInterval?: number; recurrenceUntil?: Date | null; recurrenceTimeZone?: string | null } = {};
     if ('title' in body) data.title = textField(body.title, 'Event title', 200);
     if ('startsAt' in body) data.startsAt = requiredDate(body.startsAt, 'Start time');
     if ('endsAt' in body) data.endsAt = dateField(body.endsAt, 'End time');
+    if ('recurrence' in body) data.recurrence = recurrenceField(body.recurrence);
+    if ('recurrenceInterval' in body) data.recurrenceInterval = recurrenceIntervalField(body.recurrenceInterval);
+    if ('recurrenceUntil' in body) data.recurrenceUntil = dateField(body.recurrenceUntil, 'Repeat until');
+    if ('recurrenceTimeZone' in body) data.recurrenceTimeZone = timeZoneField(body.recurrenceTimeZone);
+    if ('recurrence' in body && !body.recurrence) { data.recurrenceInterval = 1; data.recurrenceUntil = null; data.recurrenceTimeZone = null; }
     if ('taskId' in body) {
       data.taskId = optionalUuid(body.taskId, 'Task');
       if (data.taskId && !await this.prisma.task.findFirst({ where: { id: data.taskId, workspaceId }, select: { id: true } })) throw new NotFoundException('Task not found in this workspace.');
@@ -516,17 +531,21 @@ export class ProductivityService {
     const startsAt = data.startsAt ?? existing.startsAt;
     const endsAt = 'endsAt' in data ? data.endsAt : existing.endsAt;
     if (endsAt && endsAt <= startsAt) throw new BadRequestException('End time must be after the start time.');
+    const recurrence = 'recurrence' in data ? data.recurrence : existing.recurrence;
+    const recurrenceUntil = 'recurrenceUntil' in data ? data.recurrenceUntil : existing.recurrenceUntil;
+    const recurrenceTimeZone = 'recurrenceTimeZone' in data ? data.recurrenceTimeZone : existing.recurrenceTimeZone;
+    validateRecurrence(recurrence ?? null, recurrenceUntil ?? null, startsAt, recurrenceTimeZone ?? null);
     const updated = await this.prisma.calendarEvent.update({ where: { id: eventId }, data, include: { task: { select: { id: true, title: true } } } });
-    await this.recordActivity(workspaceId, actorId, 'CALENDAR', eventId, `updated “${updated.title}”`);
+    await this.recordActivity(workspaceId, actorId, 'CALENDAR', eventId, `updated ${updated.recurrence ? 'recurring series' : 'event'} “${updated.title}”`);
     return updated;
   }
 
   async deleteCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, eventId: string) {
     const actorId = await this.requireMembership(identity, workspaceId);
-    const event = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true } });
+    const event = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true, recurrence: true } });
     if (!event) throw new NotFoundException('Calendar event not found in this workspace.');
     await this.prisma.$transaction([
-      this.prisma.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'CALENDAR', entityId: eventId, message: `removed “${event.title}” from calendar` } }),
+      this.prisma.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'CALENDAR', entityId: eventId, message: `removed ${event.recurrence ? 'recurring series' : 'event'} “${event.title}” from calendar` } }),
       this.prisma.calendarEvent.delete({ where: { id: eventId } }),
     ]);
     return { id: eventId, deleted: true };
@@ -594,6 +613,34 @@ function requiredDate(value: unknown, label: string) {
   const date = dateField(value, label);
   if (!date) throw new BadRequestException(`${label} is required.`);
   return date;
+}
+
+function recurrenceField(value: unknown): typeof calendarRecurrences[number] | null {
+  if (value === undefined || value === null || value === '') return null;
+  return enumField(value, calendarRecurrences, 'Repeat frequency');
+}
+
+function recurrenceIntervalField(value: unknown) {
+  if (value === undefined) return 1;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 12) throw new BadRequestException('Repeat interval must be a whole number from 1 to 12.');
+  return value;
+}
+
+function timeZoneField(value: unknown) {
+  if (typeof value !== 'string' || value.length > 80) throw new BadRequestException('Choose a valid timezone for this recurring series.');
+  try { new Intl.DateTimeFormat('en-US', { timeZone: value }).format(new Date()); }
+  catch { throw new BadRequestException('Choose a valid timezone for this recurring series.'); }
+  return value;
+}
+
+function validateRecurrence(recurrence: string | null, until: Date | null, startsAt: Date, timeZone: string | null) {
+  if (!recurrence && until) throw new BadRequestException('Choose a repeat frequency before setting an end date.');
+  if (recurrence && !until) throw new BadRequestException('Choose the final date for this recurring series.');
+  if (recurrence && !timeZone) throw new BadRequestException('A timezone is required for recurring events.');
+  if (recurrence && until && until <= startsAt) throw new BadRequestException('The repeat end date must be after the first occurrence.');
+  const maximumUntil = new Date(startsAt);
+  maximumUntil.setFullYear(maximumUntil.getFullYear() + 2);
+  if (until && until > maximumUntil) throw new BadRequestException('Recurring events can span up to two years.');
 }
 
 function invalidText(message: string): never {
