@@ -1,12 +1,13 @@
 import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { AuthSetupNotice } from '../auth-setup-notice';
 import { WorkspaceShell } from './workspace-shell';
 
 export interface WorkspaceSession {
   user: { id: string; displayName: string; email: string };
-  workspace: { id: string; name: string; role: string | null; memberCount?: number };
+  workspace: { id: string; name: string; role: string | null; memberCount?: number; isPersonal?: boolean };
 }
 
 export const dynamic = 'force-dynamic';
@@ -24,9 +25,11 @@ export default async function WorkspaceLayout({ children }: Readonly<{ children:
 
   let session: WorkspaceSession | null = null;
   try {
+    const activeWorkspaceId = (await cookies()).get('aven-workspace-id')?.value;
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/session/bootstrap`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
       cache: 'no-store',
     });
     if (response.ok) session = (await response.json()) as WorkspaceSession;

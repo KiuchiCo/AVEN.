@@ -1,5 +1,5 @@
 import { createClerkClient } from '@clerk/backend';
-import { ConflictException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import type { AuthenticatedIdentity } from './auth.types.js';
 
@@ -7,7 +7,7 @@ import type { AuthenticatedIdentity } from './auth.types.js';
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async bootstrapWorkspace(identity: AuthenticatedIdentity) {
+  async bootstrapWorkspace(identity: AuthenticatedIdentity, preferredWorkspaceId?: unknown) {
     const secretKey = process.env.CLERK_SECRET_KEY;
     if (!secretKey) {
       throw new ServiceUnavailableException('Clerk profile access is not configured.');
@@ -83,15 +83,18 @@ export class AuthService {
             select: { role: true },
           });
 
-          const activeMembership = await transaction.workspaceMember.findFirstOrThrow({
+          const selectedMembership = typeof preferredWorkspaceId === 'string' && /^[0-9a-f-]{36}$/i.test(preferredWorkspaceId)
+            ? await transaction.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: preferredWorkspaceId, userId: user.id } }, include: { workspace: { select: { id: true, name: true, personalOwnerId: true, _count: { select: { members: true } } } } } })
+            : null;
+          const activeMembership = selectedMembership ?? await transaction.workspaceMember.findFirstOrThrow({
             where: { userId: user.id },
             orderBy: [{ createdAt: 'desc' }, { workspaceId: 'asc' }],
-            include: { workspace: { select: { id: true, name: true, _count: { select: { members: true } } } } },
+            include: { workspace: { select: { id: true, name: true, personalOwnerId: true, _count: { select: { members: true } } } } },
           });
 
           return {
             user: { id: user.id, email: user.email, displayName: user.displayName },
-            workspace: { id: activeMembership.workspace.id, name: activeMembership.workspace.name, role: activeMembership.role, memberCount: activeMembership.workspace._count.members },
+            workspace: { id: activeMembership.workspace.id, name: activeMembership.workspace.name, role: activeMembership.role, memberCount: activeMembership.workspace._count.members, isPersonal: Boolean(activeMembership.workspace.personalOwnerId) },
           };
         });
       } catch (error) {
@@ -107,4 +110,55 @@ export class AuthService {
 
     throw new ConflictException('Your workspace is being created. Please try again.');
   }
+
+  async listWorkspaces(identity: AuthenticatedIdentity) {
+    const user = await this.currentUser(identity);
+    const memberships = await this.prisma.workspaceMember.findMany({
+      where: { userId: user.id }, orderBy: [{ createdAt: 'asc' }, { workspace: { name: 'asc' } }],
+      include: { workspace: { select: { id: true, name: true, personalOwnerId: true, updatedAt: true, _count: { select: { members: true } } } } },
+    });
+    return memberships.map(({ role, workspace }) => ({ id: workspace.id, name: workspace.name, role, memberCount: workspace._count.members, isPersonal: Boolean(workspace.personalOwnerId), updatedAt: workspace.updatedAt }));
+  }
+
+  async createWorkspace(identity: AuthenticatedIdentity, input: unknown) {
+    const user = await this.currentUser(identity);
+    const body = objectInput(input);
+    const name = textField(body.name, 'Workspace name', 120);
+    return this.prisma.$transaction(async (transaction) => {
+      const workspace = await transaction.workspace.create({ data: { name, createdById: user.id } });
+      await transaction.workspaceMember.create({ data: { workspaceId: workspace.id, userId: user.id, role: 'OWNER' } });
+      await transaction.workspaceActivity.create({ data: { workspaceId: workspace.id, actorId: user.id, entityType: 'WORKSPACE', entityId: workspace.id, message: `created workspace “${name}”` } });
+      return { ...workspace, role: 'OWNER', memberCount: 1, isPersonal: false };
+    });
+  }
+
+  async renameWorkspace(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const user = await this.currentUser(identity);
+    const membership = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: user.id } }, select: { role: true } });
+    if (!membership) throw new UnauthorizedException('You are not a member of this workspace.');
+    if (membership.role !== 'OWNER') throw new ForbiddenException('Only the workspace owner can change its name.');
+    const name = textField(objectInput(input).name, 'Workspace name', 120);
+    return this.prisma.$transaction(async (transaction) => {
+      const result = await transaction.workspace.updateMany({ where: { id: workspaceId }, data: { name } });
+      if (result.count !== 1) throw new BadRequestException('Workspace not found.');
+      await transaction.workspaceActivity.create({ data: { workspaceId, actorId: user.id, entityType: 'WORKSPACE', entityId: workspaceId, message: `renamed workspace to “${name}”` } });
+      return transaction.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
+    });
+  }
+
+  private async currentUser(identity: AuthenticatedIdentity) {
+    const user = await this.prisma.user.findUnique({ where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } }, select: { id: true } });
+    if (!user) throw new UnauthorizedException('Finish setting up your AVEN account before managing workspaces.');
+    return user;
+  }
+}
+
+function objectInput(input: unknown): Record<string, unknown> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A JSON object is required.');
+  return input as Record<string, unknown>;
+}
+
+function textField(value: unknown, label: string, max: number) {
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new BadRequestException(`${label} must be between 1 and ${max} characters.`);
+  return value.trim();
 }

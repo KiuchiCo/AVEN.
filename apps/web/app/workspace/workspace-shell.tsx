@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { WorkspaceSession } from './layout';
 import { workspaceNavigation } from './workspace-navigation';
+import { WorkspaceSwitcher } from './workspace-switcher';
 
 const WorkspaceContext = createContext<WorkspaceSession | null>(null);
 
@@ -50,13 +51,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
             <p>Your entire world, organised.</p>
           </div>
 
-          <div className="workspace-switcher" aria-label="Current workspace">
-            <span className="workspace-switcher__mark" aria-hidden="true">◇</span>
-            <span className="workspace-switcher__copy">
-              <strong>{session.workspace.name}</strong>
-              <small>{(session.workspace.memberCount ?? 1) > 1 ? `${session.workspace.memberCount} members` : 'Personal workspace'}</small>
-            </span>
-          </div>
+          <WorkspaceSwitcher session={session} />
 
           <nav className="workspace-nav" aria-label="Workspace navigation">
             <p className="workspace-nav__label">Workspace</p>
