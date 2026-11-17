@@ -6,6 +6,7 @@ import { useWorkspaceSession } from '../workspace-shell';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Task = { id: string; title: string; description: string | null; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null };
+type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
 
 const columns = [
   { status: 'TODO', title: 'To do' },
@@ -20,6 +21,7 @@ export default function ProjectsPage() {
   const { workspace } = useWorkspaceSession();
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -64,7 +66,19 @@ export default function ProjectsPage() {
     return () => { cancelled = true; };
   }, [reload]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedProject) { setMilestones([]); return; }
+    void request(`/workspaces/${workspace.id}/projects/${selectedProject}/milestones`)
+      .then((rows: Milestone[]) => { if (!cancelled) setMilestones(rows); })
+      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load project milestones.'); });
+    return () => { cancelled = true; };
+  }, [request, selectedProject, workspace.id]);
+
   const selectedProjectName = useMemo(() => projects.find((project) => project.id === selectedProject)?.name, [projects, selectedProject]);
+  const selectedProjectTasks = useMemo(() => tasks.filter((task) => task.project?.id === selectedProject), [tasks, selectedProject]);
+  const completedTasks = selectedProjectTasks.filter((task) => task.status === 'COMPLETED').length;
+  const taskProgress = selectedProjectTasks.length ? Math.round((completedTasks / selectedProjectTasks.length) * 100) : 0;
 
   async function submitProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -130,6 +144,38 @@ export default function ProjectsPage() {
     } finally { setBusy(false); }
   }
 
+  async function submitMilestone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedProject) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/${selectedProject}/milestones`, {
+        method: 'POST', body: JSON.stringify({ title: form.get('title'), dueAt: form.get('dueAt') || undefined }),
+      });
+      formElement.reset();
+      const rows = await request(`/workspaces/${workspace.id}/projects/${selectedProject}/milestones`) as Milestone[];
+      setMilestones(rows);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not add the milestone.');
+    } finally { setBusy(false); }
+  }
+
+  async function toggleMilestone(milestone: Milestone) {
+    if (!selectedProject) return;
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/${selectedProject}/milestones/${milestone.id}`, {
+        method: 'PATCH', body: JSON.stringify({ completed: !milestone.completedAt }),
+      });
+      const rows = await request(`/workspaces/${workspace.id}/projects/${selectedProject}/milestones`) as Milestone[];
+      setMilestones(rows);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not update the milestone.');
+    } finally { setBusy(false); }
+  }
+
   return (
     <div className="workspace-section-page productivity-page">
       <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
@@ -173,6 +219,16 @@ export default function ProjectsPage() {
           ))}</div>
         )}
       </section>
+
+      {selectedProject && <section className="project-overview-panel" aria-labelledby="project-overview-title">
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">PROJECT OVERVIEW</p><h2 id="project-overview-title">{selectedProjectName}</h2></div><span>{completedTasks} of {selectedProjectTasks.length} tasks complete</span></div>
+        <div className="project-overview-progress"><div className="project-overview-progress__track"><span style={{ width: `${taskProgress}%` }} /></div><strong>{taskProgress}%</strong></div>
+        <div className="project-milestones">
+          <div className="project-milestones__heading"><h3>Milestones</h3><span>{milestones.filter((milestone) => milestone.completedAt).length} / {milestones.length} complete</span></div>
+          {milestones.length === 0 ? <p className="productivity-message">Add milestones to mark the important checkpoints in this project.</p> : <ul>{milestones.map((milestone) => <li key={milestone.id} className={milestone.completedAt ? 'project-milestone--complete' : ''}><label><input type="checkbox" checked={Boolean(milestone.completedAt)} disabled={busy} onChange={() => void toggleMilestone(milestone)} /><span>{milestone.title}</span></label><time>{milestone.dueAt ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(milestone.dueAt)) : 'No date'}</time></li>)}</ul>}
+          <form className="project-milestone-form" onSubmit={submitMilestone}><label className="visually-hidden" htmlFor="milestone-title">Milestone name</label><input id="milestone-title" name="title" maxLength={160} required placeholder="Add a project milestone" /><label className="visually-hidden" htmlFor="milestone-due">Milestone due date</label><input id="milestone-due" name="dueAt" type="date" /><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add milestone'}</button></form>
+        </div>
+      </section>}
 
       <section className="productivity-board" aria-labelledby="task-board-title">
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div><label className="productivity-board__filter">Priority <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label></div>

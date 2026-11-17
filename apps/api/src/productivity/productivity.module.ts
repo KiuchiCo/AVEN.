@@ -7,9 +7,10 @@ import { DocumentsController } from './documents.controller.js';
 import { CalendarController } from './calendar.controller.js';
 import { DatabasesController } from './databases.controller.js';
 import { DatabasesService } from './databases.service.js';
+import { MilestonesController } from './milestones.controller.js';
 
 @Module({
-  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController],
+  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController],
   providers: [ProductivityService, DatabasesService, ClerkAuthGuard],
 })
 export class ProductivityModule {}

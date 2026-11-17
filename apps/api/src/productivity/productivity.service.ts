@@ -49,6 +49,42 @@ export class ProductivityService {
     return this.prisma.project.findFirstOrThrow({ where: { id: projectId, workspaceId } });
   }
 
+  async listProjectMilestones(identity: AuthenticatedIdentity, workspaceId: string, projectId: string) {
+    await this.requireMembership(identity, workspaceId);
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
+    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    return this.prisma.projectMilestone.findMany({
+      where: { workspaceId, projectId },
+      orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async createProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
+    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    const body = objectInput(input);
+    return this.prisma.projectMilestone.create({
+      data: { workspaceId, projectId, title: textField(body.title, 'Milestone title', 160), dueAt: dateField(body.dueAt, 'Due date') },
+    });
+  }
+
+  async updateProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, milestoneId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    const data: { title?: string; dueAt?: Date | null; completedAt?: Date | null } = {};
+    if ('title' in body) data.title = textField(body.title, 'Milestone title', 160);
+    if ('dueAt' in body) data.dueAt = dateField(body.dueAt, 'Due date');
+    if ('completed' in body) {
+      if (typeof body.completed !== 'boolean') throw new BadRequestException('Milestone completion must be true or false.');
+      data.completedAt = body.completed ? new Date() : null;
+    }
+    if (!Object.keys(data).length) throw new BadRequestException('Provide a milestone field to update.');
+    const result = await this.prisma.projectMilestone.updateMany({ where: { id: milestoneId, projectId, workspaceId }, data });
+    if (result.count !== 1) throw new NotFoundException('Milestone not found in this project.');
+    return this.prisma.projectMilestone.findFirstOrThrow({ where: { id: milestoneId, projectId, workspaceId } });
+  }
+
   async listTasks(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.requireMembership(identity, workspaceId);
     return this.prisma.task.findMany({

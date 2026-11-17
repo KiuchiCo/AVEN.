@@ -454,6 +454,27 @@ body {
 .productivity-task select { padding: 5px 7px; font-size: 10px; }
 .productivity-task__due { justify-content: space-between; padding-top: 7px; border-top: 1px solid #eee8df; }
 .productivity-task__overdue { color: #a44735; font-weight: 700; }
+.project-overview-panel { margin: 16px 0; padding: 20px; border: 1px solid rgb(87 73 58 / 12%); border-radius: 16px; background: linear-gradient(145deg, #fffefa, #f8f3eb); box-shadow: 0 8px 26px rgb(55 43 30 / 5%); }
+.project-overview-panel > .workspace-section-heading { margin-bottom: 14px; }
+.project-overview-panel h2 { margin: 0; color: #211e1a; font-family: var(--aven-display-font); font-size: 23px; font-weight: 500; }
+.project-overview-panel .workspace-section-heading > span, .project-milestones__heading > span { color: #777168; font-size: 11px; }
+.project-overview-progress { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.project-overview-progress__track { height: 9px; flex: 1; overflow: hidden; border-radius: 999px; background: #e9e2d9; }
+.project-overview-progress__track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #80987c, #a8b89f); transition: width .2s ease; }
+.project-overview-progress > strong { min-width: 38px; color: #40372d; font-size: 12px; text-align: right; }
+.project-milestones { display: grid; gap: 10px; }
+.project-milestones__heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.project-milestones__heading h3 { margin: 0; color: #302c26; font-family: var(--aven-display-font); font-size: 18px; font-weight: 500; }
+.project-milestones ul { display: grid; margin: 0; padding: 0; list-style: none; }
+.project-milestones li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 2px; border-top: 1px solid #eee8df; }
+.project-milestones li > label { display: flex; align-items: center; gap: 9px; color: #39342e; font-size: 12px; }
+.project-milestones li input { accent-color: #718b70; }
+.project-milestones li time { color: #777168; font-size: 11px; }
+.project-milestones li.project-milestone--complete > label span { color: #888178; text-decoration: line-through; }
+.project-milestone-form { display: grid; grid-template-columns: minmax(150px, 1fr) auto auto; gap: 8px; margin-top: 3px; }
+.project-milestone-form input { min-width: 0; padding: 9px 10px; border: 1px solid #e2ddd5; border-radius: 8px; background: #fffdfa; color: #28251f; font: inherit; font-size: 12px; }
+.project-milestone-form button { padding: 9px 12px; border: 0; border-radius: 8px; background: #2b2a27; color: white; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; }
+.project-milestone-form button:disabled { opacity: .6; cursor: wait; }
 .productivity-priority { padding: 4px 7px; border-radius: 999px; background: #efebe6; color: #655c52; font-size: 10px; }
 .productivity-priority--high, .productivity-priority--urgent { background: #fae9df; color: #9d5431; }
 .productivity-priority--low { background: #e8eee7; color: #527352; }

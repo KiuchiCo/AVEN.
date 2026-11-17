@@ -30,6 +30,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.19 · Database calendar views](docs/sections/19-database-calendar.md) | Place dated records on a browsable month grid | Complete |
 | [1.20 · Advanced database views](docs/sections/20-advanced-database-views.md) | Add compact List, dated Timeline, and grouped Chart layouts | Complete |
 | [1.21 · Project schedules and task controls](docs/sections/21-project-schedules-task-controls.md) | Manage project lifecycle, due dates, task priorities, and overdue work | Complete |
+| [1.22 · Project milestones and progress](docs/sections/22-project-milestones-progress.md) | Track dated project checkpoints and completion progress | Complete |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).
@@ -63,7 +64,7 @@ Persistent document editing is documented in [Section 1.10 · Document editing](
 
 ## Current state
 
-As of Section 1.21, AVEN has a Next.js and NestJS application with Clerk sign-in, personal workspaces, workspace-scoped projects and tasks, editable documents, calendar events, and databases with Table, List, Board, Gallery, Calendar, Timeline, and Chart layouts. Database records support custom typed properties, relation fields, saved views, filtering, sorting, and CSV import/export. Projects and tasks support editable lifecycle, due dates, priority controls, priority filtering, and overdue cues. This is still an early Phase 2 product: the broader brief's real-time collaboration, full document editor, integrations, AI system, mobile/desktop apps, offline sync, and several advanced workflows remain future work. The original design preview is preserved in the web app's `public` folder. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
+As of Section 1.22, AVEN has a Next.js and NestJS application with Clerk sign-in, personal workspaces, workspace-scoped projects and tasks, editable documents, calendar events, and databases with Table, List, Board, Gallery, Calendar, Timeline, and Chart layouts. Database records support custom typed properties, relation fields, saved views, filtering, sorting, and CSV import/export. Projects and tasks support editable lifecycle, due dates, priority controls, priority filtering, and overdue cues; projects also show task completion progress and support dated milestones. This is still an early Phase 2 product: the broader brief's real-time collaboration, full document editor, integrations, AI system, mobile/desktop apps, offline sync, and several advanced workflows remain future work. The original design preview is preserved in the web app's `public` folder. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
 
 ## Local development
 
