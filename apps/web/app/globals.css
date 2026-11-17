@@ -668,6 +668,44 @@ body {
 .connected-event > time strong { font-family: var(--aven-display-font); font-size: 23px; font-weight: 500; }
 .connected-event__body h3 { margin: 1px 0 5px; font-family: var(--aven-interface-font); font-size: 13px; font-weight: 650; }
 .connected-event__body p { margin: 0 0 9px; color: #776f65; font-size: 11px; line-height: 1.5; }
+.calendar-form-hint { margin: 0; color: #8a8176; font-size: 10px; line-height: 1.5; }
+.aven-calendar { display: grid; gap: 13px; min-width: 0; }
+.aven-calendar__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.aven-calendar__toolbar .workspace-eyebrow { margin-bottom: 5px; }
+.aven-calendar__toolbar h2 { margin: 0; color: #28251f; font-family: var(--aven-display-font); font-size: 23px; font-weight: 500; }
+.aven-calendar__controls { display: flex; align-items: center; gap: 5px; }
+.aven-calendar__controls button { min-width: 34px; height: 34px; padding: 0 9px; border: 1px solid #e3dbd0; border-radius: 8px; background: #fffdfa; color: #6c5842; cursor: pointer; font: inherit; font-size: 13px; }
+.aven-calendar__controls button:not(:first-child) { font-size: 20px; }
+.aven-calendar__view-switch { display: flex; width: fit-content; gap: 3px; padding: 3px; border: 1px solid #e7e1d9; border-radius: 9px; background: #f5f1eb; }
+.aven-calendar__view-switch button { padding: 7px 12px; border: 0; border-radius: 7px; background: transparent; color: #6c655c; cursor: pointer; font: inherit; font-size: 11px; }
+.aven-calendar__view-switch button.is-active { background: white; color: #42382d; box-shadow: 0 1px 4px rgb(48 38 29 / 10%); }
+.aven-calendar__weekdays, .aven-calendar__grid { display: grid; min-width: 600px; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.aven-calendar__weekdays { color: #898176; font-size: 10px; font-weight: 700; text-align: center; }
+.aven-calendar__weekdays > span { padding: 7px 3px; }
+.aven-calendar__grid { border-top: 1px solid #ebe5dd; border-left: 1px solid #ebe5dd; }
+.aven-calendar__day { display: grid; align-content: start; gap: 5px; min-width: 0; min-height: 92px; padding: 5px; border: 0; border-right: 1px solid #ebe5dd; border-bottom: 1px solid #ebe5dd; background: #fffdfa; text-align: left; cursor: pointer; }
+.aven-calendar__day.is-outside { background: #faf8f4; }
+.aven-calendar__day.is-selected { background: #f4eee6; box-shadow: inset 0 0 0 1px #b59a7d; }
+.aven-calendar__day time { display: grid; width: 23px; height: 23px; place-items: center; border-radius: 50%; color: #5f584e; font-size: 10px; }
+.aven-calendar__day.is-today time { background: #a48766; color: white; }
+.aven-calendar__day.is-outside time { color: #b2aaa0; }
+.aven-calendar__day-items { display: grid; gap: 3px; min-width: 0; }
+.aven-calendar__item { display: inline-flex; max-width: 100%; overflow: hidden; padding: 4px 6px; border-radius: 5px; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.aven-calendar__item--event { border-left: 2px solid #9a83ad; background: #f0e9f3; color: #5d4968; }
+.aven-calendar__item--deadline { border-left: 2px solid #bd8c55; background: #f8efe2; color: #775633; }
+.aven-calendar__more { color: #81786d; font-size: 9px; }
+.aven-calendar__selected { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid #eae4dc; }
+.aven-calendar__selected > p { margin: 0; color: #81786d; font-size: 11px; }
+.aven-calendar__selected > article { display: flex; align-items: center; gap: 9px; padding: 8px; border: 1px solid #ebe5dd; border-radius: 8px; background: #fffdfa; }
+.aven-calendar__selected > article strong { min-width: 0; overflow: hidden; color: #39342e; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.aven-calendar__selected > article time { margin-left: auto; color: #81786d; font-size: 10px; white-space: nowrap; }
+.aven-calendar__agenda { display: grid; gap: 8px; max-height: 560px; overflow-y: auto; }
+.aven-calendar__agenda-item { display: grid; grid-template-columns: 90px 72px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 10px; border: 1px solid #ebe5dd; border-radius: 9px; background: #fffdfa; }
+.aven-calendar__agenda-item > time { color: #5f584e; font-size: 10px; }
+.aven-calendar__agenda-item > time small { display: block; margin-top: 3px; color: #8a8176; font-size: 9px; }
+.aven-calendar__agenda-item > strong { overflow: hidden; color: #39342e; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.aven-calendar__agenda-item > small { color: #81786d; font-size: 9px; }
+.aven-calendar__controls button:focus-visible, .aven-calendar__view-switch button:focus-visible, .aven-calendar__day:focus-visible { outline: 3px solid rgb(164 135 102 / 48%); outline-offset: 1px; z-index: 1; }
 
 .workspace-unavailable { display: grid; width: min(100% - 32px, 520px); min-height: 80vh; align-content: center; margin: auto; }
 .workspace-unavailable h1 { margin: 16px 0 7px; color: #1e1c19; font-family: var(--aven-display-font); font-size: 36px; font-weight: 500; letter-spacing: -0.04em; }
