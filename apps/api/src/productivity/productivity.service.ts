@@ -210,6 +210,31 @@ export class ProductivityService {
     });
   }
 
+  async searchWorkspace(identity: AuthenticatedIdentity, workspaceId: string, rawQuery: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    if (typeof rawQuery !== 'string' || rawQuery.trim().length < 2 || rawQuery.trim().length > 100) {
+      throw new BadRequestException('Search must be between 2 and 100 characters.');
+    }
+    const query = rawQuery.trim();
+    const contains = { contains: query, mode: 'insensitive' as const };
+    const [projects, tasks, documents, databases, records] = await Promise.all([
+      this.prisma.project.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, name: true, description: true, updatedAt: true } }),
+      this.prisma.task.findMany({ where: { workspaceId, OR: [{ title: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, updatedAt: true, project: { select: { name: true } } } }),
+      this.prisma.document.findMany({ where: { workspaceId, OR: [{ title: contains }, { content: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, content: true, updatedAt: true } }),
+      this.prisma.workspaceDatabase.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 8, select: { id: true, name: true, description: true, updatedAt: true } }),
+      this.prisma.databaseRecord.findMany({ where: { workspaceId }, orderBy: { updatedAt: 'desc' }, take: 300, select: { id: true, values: true, updatedAt: true, database: { select: { id: true, name: true } } } }),
+    ]);
+    const needle = query.toLocaleLowerCase();
+    const results = [
+      ...projects.map((item) => ({ id: item.id, type: 'Project', title: item.name, detail: item.description ?? 'Project', href: '/workspace/projects', updatedAt: item.updatedAt })),
+      ...tasks.map((item) => ({ id: item.id, type: 'Task', title: item.title, detail: item.project?.name ?? item.description ?? 'Workspace task', href: '/workspace/tasks', updatedAt: item.updatedAt })),
+      ...documents.map((item) => ({ id: item.id, type: 'Document', title: item.title, detail: item.content.toLocaleLowerCase().includes(needle) ? excerpt(item.content, needle) : 'Workspace document', href: '/workspace/documents', updatedAt: item.updatedAt })),
+      ...databases.map((item) => ({ id: item.id, type: 'Database', title: item.name, detail: item.description ?? 'Workspace database', href: '/workspace/databases', updatedAt: item.updatedAt })),
+      ...records.filter((item) => JSON.stringify(item.values).toLocaleLowerCase().includes(needle)).slice(0, 12).map((item) => ({ id: item.id, type: 'Record', title: recordTitle(item.values), detail: item.database.name, href: '/workspace/databases', updatedAt: item.updatedAt })),
+    ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 40);
+    return { query, results };
+  }
+
   async createCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
@@ -285,6 +310,23 @@ function requiredDate(value: unknown, label: string) {
 
 function invalidText(message: string): never {
   throw new BadRequestException(message);
+}
+
+function excerpt(content: string, needle: string) {
+  const index = content.toLocaleLowerCase().indexOf(needle);
+  if (index < 0) return content.slice(0, 140);
+  const start = Math.max(0, index - 45);
+  return `${start > 0 ? '…' : ''}${content.slice(start, start + 140).trim()}${start + 140 < content.length ? '…' : ''}`;
+}
+
+function recordTitle(values: unknown) {
+  if (values && typeof values === 'object' && !Array.isArray(values)) {
+    const name = (values as Record<string, unknown>).name;
+    if (typeof name === 'string' && name.trim()) return name;
+    const first = Object.values(values as Record<string, unknown>).find((value) => typeof value === 'string' && value.trim());
+    if (typeof first === 'string') return first;
+  }
+  return 'Untitled record';
 }
 
 function optionalUuid(value: unknown, label: string) {

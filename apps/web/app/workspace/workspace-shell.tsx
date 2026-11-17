@@ -2,8 +2,8 @@
 
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { WorkspaceSession } from './layout';
 import { workspaceNavigation } from './workspace-navigation';
 
@@ -17,10 +17,22 @@ export function useWorkspaceSession() {
 
 export function WorkspaceShell({ session, children }: Readonly<{ session: WorkspaceSession; children: ReactNode }>) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const activeItem = workspaceNavigation.find((item) => item.href === pathname);
-  const pageTitle = activeItem?.label ?? 'Workspace';
+  const pageTitle = pathname === '/workspace/search' ? 'Search' : activeItem?.label ?? 'Workspace';
+
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        router.push('/workspace/search');
+      }
+    }
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [router]);
 
   return (
     <WorkspaceContext.Provider value={session}>
@@ -97,9 +109,9 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
               <p className="workspace-breadcrumb"><span>My Workspace</span><span aria-hidden="true">/</span><strong>{pageTitle}</strong></p>
             </div>
             <div className="workspace-topbar__actions">
-              <Link className="workspace-topbar__search" href="/workspace/projects" aria-label="Browse projects">
-                <NavIcon name="projects" />
-                <span>Browse projects</span>
+              <Link className="workspace-topbar__search" href="/workspace/search" aria-label="Search your workspace">
+                <NavIcon name="search" />
+                <span>Search your workspace</span><kbd>⌘ K</kbd>
               </Link>
               <button
                 className="workspace-create-button"
