@@ -33,6 +33,16 @@ export class DatabasesController {
     return this.databases.createRecord(identity, workspaceId, databaseId, body);
   }
 
+  @Post(':databaseId/records/import')
+  importRecords(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Body() body: unknown,
+  ) {
+    return this.databases.importRecords(identity, workspaceId, databaseId, body);
+  }
+
   @Patch(':databaseId/properties')
   addProperty(
     @CurrentIdentity() identity: AuthenticatedIdentity,

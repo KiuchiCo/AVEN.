@@ -22,6 +22,37 @@ const propertyTypes = [
   { value: 'relation', label: 'Relation' },
 ];
 
+function parseCsv(text: string): string[][] {
+  const source = text.replace(/^\uFEFF/, '');
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quoted) {
+      if (character === '"' && source[index + 1] === '"') { cell += '"'; index += 1; }
+      else if (character === '"') quoted = false;
+      else cell += character;
+    } else if (character === '"' && cell === '') quoted = true;
+    else if (character === ',') { row.push(cell); cell = ''; }
+    else if (character === '\n' || character === '\r') {
+      row.push(cell); cell = '';
+      if (row.some((value) => value !== '')) rows.push(row);
+      row = [];
+      if (character === '\r' && source[index + 1] === '\n') index += 1;
+    } else cell += character;
+  }
+  if (quoted) throw new Error('The CSV file has an unclosed quoted field.');
+  if (cell !== '' || row.length) { row.push(cell); if (row.some((value) => value !== '')) rows.push(row); }
+  return rows;
+}
+
+function csvCell(value: string, numeric = false) {
+  const safe = !numeric && /^[=+@\-\t\r]/.test(value) ? `'${value}` : value;
+  return `"${safe.replaceAll('"', '""')}"`;
+}
+
 export function DatabasesWorkspace() {
   const { getToken } = useAuth();
   const { workspace } = useWorkspaceSession();
@@ -37,6 +68,7 @@ export function DatabasesWorkspace() {
   const [selectedViewId, setSelectedViewId] = useState('');
   const [viewName, setViewName] = useState('');
   const [newPropertyType, setNewPropertyType] = useState('text');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -101,6 +133,76 @@ export function DatabasesWorkspace() {
       const record = related?.records.find((item) => item.id === recordId);
       return String(record?.values.name ?? record?.values[related?.properties[0]?.id ?? ''] ?? 'Linked record');
     }).join(', ') || '—';
+  }
+
+  function exportCsv() {
+    if (!selected) return;
+    const properties = selected.properties.filter((property) => property.type !== 'relation');
+    const lines = [properties.map((property) => csvCell(property.name)).join(',')];
+    for (const record of visibleRecords) {
+      lines.push(properties.map((property) => csvCell(record.values[property.id] == null ? '' : String(record.values[property.id]), property.type === 'number')).join(','));
+    }
+    const file = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${selected.name.replace(/[^a-z0-9-_]+/gi, '-').toLocaleLowerCase() || 'aven-database'}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setError('');
+    setNotice(`Exported ${visibleRecords.length} visible records. Relation fields are omitted.`);
+  }
+
+  async function importCsv(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    const formElement = event.currentTarget;
+    const file = (new FormData(formElement).get('csvFile')) as File | null;
+    if (!file || !file.size) { setError('Choose a CSV file to import.'); return; }
+    if (file.size > 1_500_000) { setError('CSV files must be 1.5 MB or smaller.'); return; }
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const [headerRow, ...dataRows] = parseCsv(await file.text());
+      if (!headerRow?.length || !dataRows.length) throw new Error('The CSV needs a header row and at least one record.');
+      const headers = headerRow.map((header) => header.trim());
+      if (new Set(headers.map((header) => header.toLocaleLowerCase())).size !== headers.length) throw new Error('CSV column names must be unique.');
+      const mapped = headers.map((header) => {
+        const property = selected.properties.find((item) => item.name.toLocaleLowerCase() === header.toLocaleLowerCase());
+        if (!property) throw new Error(`“${header}” is not a property in this database.`);
+        if (property.type === 'relation') throw new Error('Relation fields are not imported from CSV. Import those links after the records exist.');
+        return property;
+      });
+      if (dataRows.length > 500) throw new Error('Import at most 500 records at a time.');
+      const rows = dataRows.map((cells, rowIndex) => {
+        if (cells.length !== headers.length) throw new Error(`Row ${rowIndex + 2} has a different number of columns than the header.`);
+        const values: Record<string, string | number | boolean | null> = {};
+        mapped.forEach((property, columnIndex) => {
+          const raw = cells[columnIndex].trim();
+          if (property.type === 'number') {
+            const number = raw === '' ? null : Number(raw);
+            if (number !== null && !Number.isFinite(number)) throw new Error(`Row ${rowIndex + 2}: ${property.name} must be a number.`);
+            values[property.id] = number;
+          } else if (property.type === 'checkbox') {
+            const normalized = raw.toLocaleLowerCase();
+            if (raw === '') values[property.id] = null;
+            else if (['true', 'yes', '1'].includes(normalized)) values[property.id] = true;
+            else if (['false', 'no', '0'].includes(normalized)) values[property.id] = false;
+            else throw new Error(`Row ${rowIndex + 2}: ${property.name} must be true/false, yes/no, or 1/0.`);
+          } else values[property.id] = raw || null;
+        });
+        if (selected.properties.some((property) => property.id === 'name') && (typeof values.name !== 'string' || !values.name.trim())) {
+          throw new Error(`Row ${rowIndex + 2} needs a record name.`);
+        }
+        return values;
+      });
+      const result = await request(`/workspaces/${workspace.id}/databases/${selected.id}/records/import`, {
+        method: 'POST', body: JSON.stringify({ rows }),
+      }) as { imported: number };
+      formElement.reset();
+      await reload();
+      setNotice(`Imported ${result.imported} records.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import this CSV.'); }
+    finally { setBusy(false); }
   }
 
   async function createDatabase(event: FormEvent<HTMLFormElement>) {
@@ -286,6 +388,13 @@ export function DatabasesWorkspace() {
               <label>Order<select value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as 'asc' | 'desc'); setSelectedViewId(''); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
               <span className="database-view-count">{filterQuery.trim() ? `${visibleRecords.length} of ${selected.records.length} records` : `${selected.records.length} records`}</span>
             </div>
+            {notice && <p className="database-import-notice" role="status">{notice}</p>}
+            <form className="database-csv-tools" onSubmit={importCsv}>
+              <label>Import CSV<input name="csvFile" type="file" accept=".csv,text/csv" required /></label>
+              <button type="submit" disabled={busy}>{busy ? 'Importing…' : 'Import rows'}</button>
+              <button type="button" onClick={exportCsv} disabled={busy}>Export {visibleRecords.length} visible</button>
+              <small>CSV uses property names as headers. Relations are left out.</small>
+            </form>
             <form className="database-save-view" onSubmit={saveCurrentView}>
               <label>Save current filter and sort<input value={viewName} onChange={(event) => setViewName(event.target.value)} required maxLength={80} placeholder="e.g. Recently updated" /></label>
               <button type="submit" disabled={busy || (viewLayout === 'BOARD' && !boardPropertyId)}>{busy ? 'Saving…' : 'Save view'}</button>

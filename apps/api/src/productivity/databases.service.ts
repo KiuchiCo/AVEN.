@@ -49,6 +49,33 @@ export class DatabasesService {
     return this.withRelationValues(record, database.properties);
   }
 
+  async importRecords(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId);
+    const body = objectInput(input);
+    if (!Array.isArray(body.rows) || body.rows.length === 0 || body.rows.length > 500) {
+      throw new BadRequestException('Import between 1 and 500 CSV rows at a time.');
+    }
+    const database = await this.prisma.workspaceDatabase.findFirst({
+      where: { id: databaseId, workspaceId },
+      select: { id: true, properties: true },
+    });
+    if (!database) throw new NotFoundException('Database not found in this workspace.');
+    const properties = propertyList(database.properties);
+    const relationIds = new Set(properties.filter((property) => property.type === 'relation').map((property) => property.id));
+    const rows = body.rows.map((row) => {
+      const values = recordValues(database.properties, row);
+      if (Object.keys(values).some((propertyId) => relationIds.has(propertyId))) {
+        throw new BadRequestException('Import relation fields separately after the related records exist.');
+      }
+      if (properties.some((property) => property.id === 'name') && (typeof values.name !== 'string' || !values.name.trim())) {
+        throw new BadRequestException('Every imported row must include a record name.');
+      }
+      return { workspaceId, databaseId, values: values as Prisma.InputJsonValue };
+    });
+    const result = await this.prisma.databaseRecord.createMany({ data: rows });
+    return { imported: result.count };
+  }
+
   async addProperty(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
     await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
