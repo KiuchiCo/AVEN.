@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "database_record_links_sourceRecordId_propertyId_targetRecordId_" RENAME TO "database_record_links_sourceRecordId_propertyId_targetRecor_key";
