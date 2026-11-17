@@ -11,9 +11,11 @@ import { MilestonesController } from './milestones.controller.js';
 import { SearchController } from './search.controller.js';
 import { MembersController } from './members.controller.js';
 import { ActivityController } from './activity.controller.js';
+import { IntelligenceController } from './intelligence.controller.js';
+import { IntelligenceService } from './intelligence.service.js';
 
 @Module({
-  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController],
-  providers: [ProductivityService, DatabasesService, ClerkAuthGuard],
+  controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController, IntelligenceController],
+  providers: [ProductivityService, DatabasesService, IntelligenceService, ClerkAuthGuard],
 })
 export class ProductivityModule {}

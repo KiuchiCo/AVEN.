@@ -51,9 +51,9 @@ export default function WorkspaceHomePage() {
 
         <section className="workspace-intelligence-card" aria-labelledby="intelligence-title">
           <span className="workspace-intelligence-card__sparkle" aria-hidden="true">✧</span>
-          <p className="workspace-eyebrow">COMING LATER</p>
+          <p className="workspace-eyebrow">YOUR WORKSPACE BRIEFING</p>
           <h2 id="intelligence-title">AVEN Intelligence</h2>
-          <p>Once your workspace has content, AVEN can help you bring it together and find a good next step.</p>
+          <p>Review upcoming work, spot overdue tasks, and search your saved workspace context.</p>
           <Link href="/workspace/intelligence">Explore this section <span aria-hidden="true">→</span></Link>
         </section>
       </div>
