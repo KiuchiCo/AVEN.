@@ -72,9 +72,9 @@ export class AuthService {
             });
           }
 
-          const membership = await transaction.workspaceMember.upsert({
+          await transaction.workspaceMember.upsert({
             where: { workspaceId_userId: { workspaceId: workspace.id, userId: user.id } },
-            update: { role: 'OWNER' },
+            update: {},
             create: {
               workspaceId: workspace.id,
               userId: user.id,
@@ -83,9 +83,15 @@ export class AuthService {
             select: { role: true },
           });
 
+          const activeMembership = await transaction.workspaceMember.findFirstOrThrow({
+            where: { userId: user.id },
+            orderBy: [{ createdAt: 'desc' }, { workspaceId: 'asc' }],
+            include: { workspace: { select: { id: true, name: true, _count: { select: { members: true } } } } },
+          });
+
           return {
             user: { id: user.id, email: user.email, displayName: user.displayName },
-            workspace: { id: workspace.id, name: workspace.name, role: membership.role },
+            workspace: { id: activeMembership.workspace.id, name: activeMembership.workspace.name, role: activeMembership.role, memberCount: activeMembership.workspace._count.members },
           };
         });
       } catch (error) {

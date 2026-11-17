@@ -15,6 +15,12 @@ enum WorkspaceRole {
   GUEST
 }
 
+enum WorkspaceInviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
 enum ProjectStatus {
   PLANNING
   IN_PROGRESS
@@ -70,6 +76,7 @@ model User {
   activityEntries   WorkspaceActivity[] @relation("ActivityActor")
   documentVersions DocumentVersion[] @relation("DocumentVersionCreator")
   documentComments DocumentComment[] @relation("DocumentCommentCreator")
+  sentWorkspaceInvites WorkspaceInvite[] @relation("WorkspaceInviteCreator")
 
   @@unique([identityIssuer, identitySubject])
   @@map("users")
@@ -97,9 +104,30 @@ model Workspace {
   activity        WorkspaceActivity[]
   documentVersions DocumentVersion[]
   documentComments DocumentComment[]
+  invitations     WorkspaceInvite[]
 
   @@index([createdById])
   @@map("workspaces")
+}
+
+model WorkspaceInvite {
+  id          String                @id @default(uuid()) @db.Uuid
+  workspaceId String                @db.Uuid
+  createdById String                @db.Uuid
+  email       String                @db.VarChar(320)
+  role        WorkspaceRole         @default(MEMBER)
+  tokenHash   String                @unique @db.VarChar(64)
+  status      WorkspaceInviteStatus @default(PENDING)
+  expiresAt   DateTime              @db.Timestamptz(3)
+  acceptedAt  DateTime?             @db.Timestamptz(3)
+  createdAt   DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime              @updatedAt @db.Timestamptz(3)
+  workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User                  @relation("WorkspaceInviteCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([email, status, expiresAt])
+  @@map("workspace_invites")
 }
 
 model WorkspaceMember {

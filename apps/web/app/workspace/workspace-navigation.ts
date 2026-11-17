@@ -8,4 +8,5 @@ export const workspaceNavigation = [
   { label: 'Databases', href: '/workspace/databases', icon: 'databases' },
   { label: 'Intelligence', href: '/workspace/intelligence', icon: 'intelligence' },
   { label: 'Activity', href: '/workspace/activity', icon: 'activity' },
+  { label: 'People', href: '/workspace/members', icon: 'people' },
 ] as const;

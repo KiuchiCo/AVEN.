@@ -54,7 +54,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
             <span className="workspace-switcher__mark" aria-hidden="true">◇</span>
             <span className="workspace-switcher__copy">
               <strong>{session.workspace.name}</strong>
-              <small>Personal workspace</small>
+              <small>{(session.workspace.memberCount ?? 1) > 1 ? `${session.workspace.memberCount} members` : 'Personal workspace'}</small>
             </span>
           </div>
 
@@ -141,7 +141,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
   );
 }
 
-type IconName = 'home' | 'inbox' | 'tasks' | 'projects' | 'documents' | 'calendar' | 'databases' | 'intelligence' | 'activity' | 'menu' | 'search';
+type IconName = 'home' | 'inbox' | 'tasks' | 'projects' | 'documents' | 'calendar' | 'databases' | 'intelligence' | 'activity' | 'people' | 'menu' | 'search';
 
 function NavIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -154,6 +154,7 @@ function NavIcon({ name }: { name: IconName }) {
     databases: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></>,
     intelligence: <><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z" /><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" /></>,
     activity: <><path d="M3 12h4l3-8 4 16 3-8h4" /></>,
+    people: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
     menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
     search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
   };

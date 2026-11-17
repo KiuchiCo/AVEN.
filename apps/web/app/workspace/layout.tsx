@@ -6,7 +6,7 @@ import { WorkspaceShell } from './workspace-shell';
 
 export interface WorkspaceSession {
   user: { id: string; displayName: string; email: string };
-  workspace: { id: string; name: string; role: string | null };
+  workspace: { id: string; name: string; role: string | null; memberCount?: number };
 }
 
 export const dynamic = 'force-dynamic';
