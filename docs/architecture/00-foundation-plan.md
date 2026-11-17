@@ -119,7 +119,7 @@ Each row is an independent review and Git milestone. Keep each working tree focu
 - [x] Break Phase 1 into reviewable milestones.
 - [x] Record major technical risks and dependencies.
 - [ ] Reconcile the shared visual tokens with the master brand brief.
-- [ ] Create the monorepo scaffold and development tooling.
+- [x] Create the monorepo scaffold and development tooling.
 - [ ] Configure local PostgreSQL and schema migrations.
 - [ ] Decide the authentication provider before implementing login.
 - [ ] Build and verify the first persistent workspace/project/task workflow.

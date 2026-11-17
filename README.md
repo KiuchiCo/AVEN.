@@ -33,6 +33,19 @@ Suggested first commit: `docs: define AVEN product foundation`
 
 Suggested shell commit: `feat: add responsive AVEN application shell`
 
+The current tooling milestone is documented in [Section 1.2 · Monorepo tooling](docs/sections/02-monorepo-tooling.md).
+
 ## Current state
 
-The repository contains a static HTML/CSS/JavaScript dashboard concept and product notes. The technical direction is Next.js, TypeScript, Tailwind CSS, NestJS, and PostgreSQL. Implementation is being staged so each milestone can be reviewed, committed, and pushed before the next begins. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the current checklist and next steps.
+The design preview is preserved in the web app's `public` folder. The product is being moved into a TypeScript monorepo with a Next.js web app and NestJS API; PostgreSQL, migrations, and authentication are separate milestones. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the phased checklist.
+
+## Local development
+
+Requires Node.js 22.22.3 or newer and npm. From the repository root:
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. The root route currently redirects to the preserved dashboard preview. In a second terminal, start the API with `npm run dev:api`; its scaffold health route is `http://localhost:4000/api/v1/health`.
