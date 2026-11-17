@@ -19,6 +19,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).
+The staged technical architecture is in the [foundation plan](docs/architecture/00-foundation-plan.md).
 
 ## Working on a section
 
@@ -34,4 +35,4 @@ Suggested shell commit: `feat: add responsive AVEN application shell`
 
 ## Current state
 
-This repository is at the product brief and first application shell stage. It uses plain HTML, CSS, and JavaScript so the initial experience can be explored without installing packages. A framework, backend, and database can be selected when their section is planned.
+The repository contains a static HTML/CSS/JavaScript dashboard concept and product notes. The technical direction is Next.js, TypeScript, Tailwind CSS, NestJS, and PostgreSQL. Implementation is being staged so each milestone can be reviewed, committed, and pushed before the next begins. See the [foundation plan](docs/architecture/00-foundation-plan.md) for the current checklist and next steps.
