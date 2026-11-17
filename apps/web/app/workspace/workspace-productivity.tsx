@@ -111,6 +111,72 @@ export function MyTasksWorkspace() {
   );
 }
 
+type InboxFilter = 'ATTENTION' | 'OVERDUE' | 'DUE_SOON' | 'HIGH_PRIORITY' | 'ALL_OPEN';
+
+function localDayKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+export function InboxWorkspace() {
+  const { tasks, projects, loading, savingId, error, updateStatus } = useWorkspaceProductivity();
+  const [filter, setFilter] = useState<InboxFilter>('ATTENTION');
+  const todayKey = localDayKey(new Date());
+  const weekEnd = new Date(); weekEnd.setHours(12, 0, 0, 0); weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekEndKey = localDayKey(weekEnd);
+  const openTasks = tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
+  const overdueTasks = openTasks.filter((task) => task.dueAt && task.dueAt.slice(0, 10) < todayKey);
+  const dueSoonTasks = openTasks.filter((task) => task.dueAt && task.dueAt.slice(0, 10) >= todayKey && task.dueAt.slice(0, 10) <= weekEndKey);
+  const highPriorityTasks = openTasks.filter((task) => task.priority === 'HIGH' || task.priority === 'URGENT');
+  const attentionTasks = openTasks.filter((task) => overdueTasks.includes(task) || dueSoonTasks.includes(task) || highPriorityTasks.includes(task));
+  const filteredTasks = (filter === 'OVERDUE' ? overdueTasks : filter === 'DUE_SOON' ? dueSoonTasks : filter === 'HIGH_PRIORITY' ? highPriorityTasks : filter === 'ALL_OPEN' ? openTasks : attentionTasks)
+    .slice().sort((a, b) => {
+      const dateA = a.dueAt?.slice(0, 10) ?? '9999-12-31'; const dateB = b.dueAt?.slice(0, 10) ?? '9999-12-31';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      const rank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+      return (rank[a.priority] ?? 4) - (rank[b.priority] ?? 4);
+    });
+  const filters: { key: InboxFilter; label: string; count: number }[] = [
+    { key: 'ATTENTION', label: 'Needs attention', count: attentionTasks.length },
+    { key: 'OVERDUE', label: 'Overdue', count: overdueTasks.length },
+    { key: 'DUE_SOON', label: 'Due this week', count: dueSoonTasks.length },
+    { key: 'HIGH_PRIORITY', label: 'High priority', count: highPriorityTasks.length },
+    { key: 'ALL_OPEN', label: 'All open', count: openTasks.length },
+  ];
+
+  function dueLabel(dueAt: string | null) {
+    if (!dueAt) return 'No due date';
+    const dateKey = dueAt.slice(0, 10);
+    if (dateKey < todayKey) return `Overdue · ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(`${dateKey}T12:00:00`))}`;
+    if (dateKey === todayKey) return 'Due today';
+    return `Due ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(`${dateKey}T12:00:00`))}`;
+  }
+
+  return (
+    <div className="workspace-section-page inbox-page">
+      <p className="workspace-eyebrow">YOUR WORKSPACE · ACTION CENTER</p>
+      <h1>Inbox</h1>
+      <p className="workspace-section-page__description">A focused queue for overdue work, upcoming deadlines, and high-priority tasks.</p>
+      {error && <p className="productivity-error" role="alert">{error}</p>}
+      <div className="inbox-summary" aria-label="Work needing attention">
+        <div><span>Needs attention</span><strong>{loading ? '—' : attentionTasks.length}</strong></div>
+        <div><span>Overdue</span><strong>{loading ? '—' : overdueTasks.length}</strong></div>
+        <div><span>Due this week</span><strong>{loading ? '—' : dueSoonTasks.length}</strong></div>
+        <div><span>Active projects</span><strong>{loading ? '—' : projects.filter((project) => project.status !== 'COMPLETED' && project.status !== 'ARCHIVED').length}</strong></div>
+      </div>
+      <section className="inbox-panel" aria-labelledby="inbox-queue-title">
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">WORK QUEUE</p><h2 id="inbox-queue-title">{filters.find((item) => item.key === filter)?.label}</h2></div><Link href="/workspace/projects">Manage projects <span aria-hidden="true">→</span></Link></div>
+        <div className="inbox-filters" role="group" aria-label="Filter inbox tasks">{filters.map((item) => <button type="button" key={item.key} aria-pressed={filter === item.key} className={filter === item.key ? 'is-active' : ''} onClick={() => setFilter(item.key)}>{item.label}<span>{item.count}</span></button>)}</div>
+        {loading ? <p className="productivity-message">Loading your inbox…</p> : filteredTasks.length === 0 ? <div className="task-list-empty"><span aria-hidden="true">✓</span><h3>{filter === 'ATTENTION' ? 'You’re all caught up.' : 'Nothing in this queue.'}</h3><p>{filter === 'ATTENTION' ? 'No overdue, near-term, or high-priority work needs your attention.' : 'Tasks will appear here when they match this filter.'}</p><Link href="/workspace/projects">Open projects <span aria-hidden="true">→</span></Link></div> : (
+          <div className="task-list-records">{filteredTasks.map((task) => <article className="task-list-record inbox-task" key={task.id}>
+            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3>{task.title}</h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}<time className={task.dueAt && task.dueAt.slice(0, 10) < todayKey ? 'inbox-task__overdue' : ''}>{dueLabel(task.dueAt)}</time>{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div></div>
+            <label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={savingId === task.id} onChange={(event) => void updateStatus(task.id, event.target.value)}>{taskStatuses.slice(0, 4).map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
+          </article>)}</div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export function WorkspaceHighlights() {
   const { tasks, projects, loading, error } = useWorkspaceProductivity();
   const openTasks = tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
