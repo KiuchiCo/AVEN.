@@ -6,6 +6,7 @@ const projectStatuses = ['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'ARC
 const taskStatuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'CANCELLED'] as const;
 const taskPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
 const calendarRecurrences = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
+const calendarEventTypes = ['MEETING', 'FOCUS', 'PERSONAL', 'REMINDER', 'OTHER'] as const;
 
 type ProjectStatus = (typeof projectStatuses)[number];
 type TaskStatus = (typeof taskStatuses)[number];
@@ -442,7 +443,7 @@ export class ProductivityService {
     return this.prisma.calendarEvent.findMany({
       where: { workspaceId },
       orderBy: { startsAt: 'asc' },
-      include: { task: { select: { id: true, title: true } } },
+      include: { task: { select: { id: true, title: true } }, project: { select: { id: true, name: true } } },
     });
   }
 
@@ -453,13 +454,14 @@ export class ProductivityService {
     }
     const query = rawQuery.trim();
     const contains = { contains: query, mode: 'insensitive' as const };
-    const [projects, tasks, documents, databases, records, knowledge] = await Promise.all([
+    const [projects, tasks, documents, databases, records, knowledge, events] = await Promise.all([
       this.prisma.project.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, name: true, description: true, updatedAt: true } }),
       this.prisma.task.findMany({ where: { workspaceId, OR: [{ title: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, updatedAt: true, project: { select: { name: true } } } }),
       this.prisma.document.findMany({ where: { workspaceId, OR: [{ title: contains }, { content: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, content: true, updatedAt: true } }),
       this.prisma.workspaceDatabase.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 8, select: { id: true, name: true, description: true, updatedAt: true } }),
       this.prisma.databaseRecord.findMany({ where: { workspaceId }, orderBy: { updatedAt: 'desc' }, take: 300, select: { id: true, values: true, updatedAt: true, database: { select: { id: true, name: true } } } }),
       this.prisma.knowledgeItem.findMany({ where: { workspaceId, archivedAt: null, OR: [{ title: contains }, { content: contains }, { tags: { has: query.toLocaleLowerCase() } }] }, orderBy: [{ isPinned: 'desc' }, { updatedAt: 'desc' }], take: 12, select: { id: true, title: true, content: true, tags: true, updatedAt: true } }),
+      this.prisma.calendarEvent.findMany({ where: { workspaceId, OR: [{ title: contains }, { description: contains }, { location: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, location: true, startsAt: true, updatedAt: true } }),
     ]);
     const needle = query.toLocaleLowerCase();
     const results = [
@@ -472,6 +474,7 @@ export class ProductivityService {
       ...databases.map((item) => ({ id: item.id, type: 'Database', title: item.name, detail: item.description ?? 'Workspace database', href: '/workspace/databases', updatedAt: item.updatedAt })),
       ...records.filter((item) => JSON.stringify(item.values).toLocaleLowerCase().includes(needle)).slice(0, 12).map((item) => ({ id: item.id, type: 'Record', title: recordTitle(item.values), detail: item.database.name, href: '/workspace/databases', updatedAt: item.updatedAt })),
       ...knowledge.map((item) => ({ id: item.id, type: 'Knowledge', title: item.title, detail: item.content.toLocaleLowerCase().includes(needle) ? excerpt(item.content, needle) : item.tags.join(' · ') || 'Workspace reference', href: '/workspace/knowledge', updatedAt: item.updatedAt })),
+      ...events.map((item) => ({ id: item.id, type: 'Event', title: item.title, detail: item.description ?? item.location ?? `Scheduled ${item.startsAt.toLocaleString()}`, href: '/workspace/calendar', updatedAt: item.updatedAt })),
     ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 40);
     return { query, results };
   }
@@ -480,10 +483,12 @@ export class ProductivityService {
     const actorId = await this.requireMembership(identity, workspaceId);
     const body = objectInput(input);
     const taskId = optionalUuid(body.taskId, 'Task');
+    const projectId = optionalUuid(body.projectId, 'Project');
     if (taskId) {
       const task = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { id: true, title: true } });
       if (!task) throw new NotFoundException('Task not found in this workspace.');
     }
+    if (projectId && !await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } })) throw new NotFoundException('Project not found in this workspace.');
     const startsAt = requiredDate(body.startsAt, 'Start time');
     const endsAt = dateField(body.endsAt, 'End time');
     if (endsAt && endsAt <= startsAt) throw new BadRequestException('End time must be after the start time.');
@@ -491,12 +496,18 @@ export class ProductivityService {
     const recurrenceInterval = recurrenceIntervalField(body.recurrenceInterval);
     const recurrenceUntil = dateField(body.recurrenceUntil, 'Repeat until');
     const recurrenceTimeZone = recurrence ? timeZoneField(body.recurrenceTimeZone) : null;
+    if ('isAllDay' in body && typeof body.isAllDay !== 'boolean') throw new BadRequestException('All-day must be a boolean.');
     validateRecurrence(recurrence ?? null, recurrenceUntil ?? null, startsAt, recurrenceTimeZone);
     const event = await this.prisma.calendarEvent.create({
       data: {
         workspaceId,
         taskId,
+        projectId,
         title: textField(body.title, 'Event title', 200),
+        description: optionalText(body.description, 'Event notes', 2000),
+        location: optionalText(body.location, 'Location', 250),
+        type: enumField(body.type, calendarEventTypes, 'Event type', 'MEETING'),
+        isAllDay: body.isAllDay === true,
         startsAt,
         endsAt,
         recurrence,
@@ -504,7 +515,7 @@ export class ProductivityService {
         recurrenceUntil,
         recurrenceTimeZone,
       },
-      include: { task: { select: { id: true, title: true } } },
+      include: { task: { select: { id: true, title: true } }, project: { select: { id: true, name: true } } },
     });
     await this.recordActivity(workspaceId, actorId, 'CALENDAR', event.id, `${recurrence ? 'scheduled a recurring series' : 'scheduled'} “${event.title}”`);
     return event;
@@ -515,8 +526,15 @@ export class ProductivityService {
     const body = objectInput(input);
     const existing = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true, startsAt: true, endsAt: true, recurrence: true, recurrenceInterval: true, recurrenceUntil: true, recurrenceTimeZone: true } });
     if (!existing) throw new NotFoundException('Calendar event not found in this workspace.');
-    const data: { title?: string; startsAt?: Date; endsAt?: Date | null; taskId?: string | null; recurrence?: typeof calendarRecurrences[number] | null; recurrenceInterval?: number; recurrenceUntil?: Date | null; recurrenceTimeZone?: string | null } = {};
+    const data: { title?: string; startsAt?: Date; endsAt?: Date | null; taskId?: string | null; projectId?: string | null; description?: string | null; location?: string | null; type?: typeof calendarEventTypes[number]; isAllDay?: boolean; recurrence?: typeof calendarRecurrences[number] | null; recurrenceInterval?: number; recurrenceUntil?: Date | null; recurrenceTimeZone?: string | null } = {};
     if ('title' in body) data.title = textField(body.title, 'Event title', 200);
+    if ('description' in body) data.description = optionalText(body.description, 'Event notes', 2000);
+    if ('location' in body) data.location = optionalText(body.location, 'Location', 250);
+    if ('type' in body) data.type = enumField(body.type, calendarEventTypes, 'Event type');
+    if ('isAllDay' in body) {
+      if (typeof body.isAllDay !== 'boolean') throw new BadRequestException('All-day must be a boolean.');
+      data.isAllDay = body.isAllDay;
+    }
     if ('startsAt' in body) data.startsAt = requiredDate(body.startsAt, 'Start time');
     if ('endsAt' in body) data.endsAt = dateField(body.endsAt, 'End time');
     if ('recurrence' in body) data.recurrence = recurrenceField(body.recurrence);
@@ -528,6 +546,10 @@ export class ProductivityService {
       data.taskId = optionalUuid(body.taskId, 'Task');
       if (data.taskId && !await this.prisma.task.findFirst({ where: { id: data.taskId, workspaceId }, select: { id: true } })) throw new NotFoundException('Task not found in this workspace.');
     }
+    if ('projectId' in body) {
+      data.projectId = optionalUuid(body.projectId, 'Project');
+      if (data.projectId && !await this.prisma.project.findFirst({ where: { id: data.projectId, workspaceId }, select: { id: true } })) throw new NotFoundException('Project not found in this workspace.');
+    }
     const startsAt = data.startsAt ?? existing.startsAt;
     const endsAt = 'endsAt' in data ? data.endsAt : existing.endsAt;
     if (endsAt && endsAt <= startsAt) throw new BadRequestException('End time must be after the start time.');
@@ -535,7 +557,7 @@ export class ProductivityService {
     const recurrenceUntil = 'recurrenceUntil' in data ? data.recurrenceUntil : existing.recurrenceUntil;
     const recurrenceTimeZone = 'recurrenceTimeZone' in data ? data.recurrenceTimeZone : existing.recurrenceTimeZone;
     validateRecurrence(recurrence ?? null, recurrenceUntil ?? null, startsAt, recurrenceTimeZone ?? null);
-    const updated = await this.prisma.calendarEvent.update({ where: { id: eventId }, data, include: { task: { select: { id: true, title: true } } } });
+    const updated = await this.prisma.calendarEvent.update({ where: { id: eventId }, data, include: { task: { select: { id: true, title: true } }, project: { select: { id: true, name: true } } } });
     await this.recordActivity(workspaceId, actorId, 'CALENDAR', eventId, `updated ${updated.recurrence ? 'recurring series' : 'event'} “${updated.title}”`);
     return updated;
   }

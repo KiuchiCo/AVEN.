@@ -9,8 +9,9 @@ import { useWorkspaceSession } from './workspace-shell';
 type Project = { id: string; name: string };
 type Task = { id: string; title: string; status: string; dueAt: string | null };
 type DocumentRecord = { id: string; title: string; content: string; updatedAt: string; project: Project | null };
-type CalendarEvent = { id: string; title: string; startsAt: string; endsAt: string | null; recurrence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null; recurrenceInterval: number; recurrenceUntil: string | null; recurrenceTimeZone: string | null; task: Pick<Task, 'id' | 'title'> | null };
-type CalendarItem = { id: string; eventId?: string; title: string; startsAt: string; endsAt: string | null; kind: 'Event' | 'Deadline'; taskTitle: string | null; recurrence?: string | null };
+type CalendarEventType = 'MEETING' | 'FOCUS' | 'PERSONAL' | 'REMINDER' | 'OTHER';
+type CalendarEvent = { id: string; title: string; description: string | null; location: string | null; type: CalendarEventType; isAllDay: boolean; startsAt: string; endsAt: string | null; recurrence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null; recurrenceInterval: number; recurrenceUntil: string | null; recurrenceTimeZone: string | null; task: Pick<Task, 'id' | 'title'> | null; project: Project | null };
+type CalendarItem = { id: string; eventId?: string; title: string; startsAt: string; endsAt: string | null; kind: 'Event' | 'Deadline'; taskTitle: string | null; projectTitle?: string | null; recurrence?: string | null; eventType?: CalendarEventType; isAllDay?: boolean; location?: string | null; description?: string | null };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -195,11 +196,13 @@ export function CalendarWorkspace() {
   const { workspace } = useWorkspaceSession();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(() => localDateKey(new Date()));
-  const [calendarView, setCalendarView] = useState<'MONTH' | 'AGENDA'>('MONTH');
+  const [calendarView, setCalendarView] = useState<'DAY' | 'WEEK' | 'MONTH' | 'AGENDA'>('MONTH');
   const [showEvents, setShowEvents] = useState(true);
   const [showDeadlines, setShowDeadlines] = useState(true);
+  const [eventTypeFilter, setEventTypeFilter] = useState<'ALL' | CalendarEventType>('ALL');
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [endValue, setEndValue] = useState('');
   const [repeatFrequency, setRepeatFrequency] = useState('');
@@ -227,12 +230,14 @@ export function CalendarWorkspace() {
   }, [getToken]);
 
   const reload = useCallback(async () => {
-    const [taskRows, eventRows] = await Promise.all([
+    const [taskRows, eventRows, projectRows] = await Promise.all([
       request(`/workspaces/${workspace.id}/tasks`),
       request(`/workspaces/${workspace.id}/events`),
-    ]) as [Task[], CalendarEvent[]];
+      request(`/workspaces/${workspace.id}/projects`),
+    ]) as [Task[], CalendarEvent[], Project[]];
     setTasks(taskRows.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED'));
     setEvents(eventRows);
+    setProjects(projectRows);
   }, [request, workspace.id]);
 
   useEffect(() => {
@@ -263,6 +268,11 @@ export function CalendarWorkspace() {
           startsAt: submittedStart ? dateTimeFromInput(submittedStart, seriesTimeZone).toISOString() : '',
           endsAt: endValue ? dateTimeFromInput(endValue, seriesTimeZone).toISOString() : undefined,
           taskId: form.get('taskId') || undefined,
+          projectId: form.get('projectId') || undefined,
+          description: form.get('description') || null,
+          location: form.get('location') || null,
+          type: form.get('type'),
+          isAllDay: form.get('isAllDay') === 'on',
           recurrence: recurrence || null,
           recurrenceInterval: Number(form.get('recurrenceInterval') ?? 1),
           recurrenceUntil: recurrence && repeatUntil ? new Date(dateTimeFromInput(`${repeatUntil}T23:59`, seriesTimeZone).getTime() + 59_999).toISOString() : null,
@@ -283,13 +293,17 @@ export function CalendarWorkspace() {
   const monthDays = Array.from({ length: 42 }, (_, index) => {
     const date = new Date(gridStart); date.setDate(gridStart.getDate() + index); return date;
   });
-  const rangeStart = calendarView === 'MONTH' ? gridStart : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
-  const rangeEnd = calendarView === 'MONTH' ? new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + 42) : new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate() + 90);
+  const selectedLocalDate = new Date(`${selectedDate}T12:00:00`);
+  const weekStart = new Date(selectedLocalDate); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const rangeStart = calendarView === 'MONTH' ? gridStart : calendarView === 'WEEK' ? weekStart : calendarView === 'AGENDA' ? new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()) : new Date(selectedLocalDate.getFullYear(), selectedLocalDate.getMonth(), selectedLocalDate.getDate());
+  const rangeEnd = calendarView === 'MONTH' ? new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + 42) : calendarView === 'WEEK' ? new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 7) : calendarView === 'DAY' ? new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate() + 1) : new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate() + 90);
   const calendarItems: CalendarItem[] = [
-    ...events.flatMap((event) => expandCalendarEvent(event, rangeStart, rangeEnd)),
+    ...events.flatMap((event) => expandCalendarEvent(event, rangeStart, rangeEnd).map((item) => ({ ...item, eventType: event.type, isAllDay: event.isAllDay, location: event.location, description: event.description, projectTitle: event.project?.name ?? null }))),
     ...tasks.filter((task) => task.dueAt && new Date(task.dueAt) >= rangeStart && new Date(task.dueAt) < rangeEnd).map((task) => ({ id: `task-${task.id}`, title: task.title, startsAt: task.dueAt as string, endsAt: null, kind: 'Deadline' as const, taskTitle: null })),
   ].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
-  const visibleCalendarItems = calendarItems.filter((item) => item.kind === 'Event' ? showEvents : showDeadlines);
+  const visibleCalendarItems = calendarItems.filter((item) => item.kind === 'Event' ? showEvents && (eventTypeFilter === 'ALL' || item.eventType === eventTypeFilter) : showDeadlines);
+  const weekDays = Array.from({ length: 7 }, (_, index) => { const date = new Date(weekStart); date.setDate(weekStart.getDate() + index); return date; });
+  const dayHours = Array.from({ length: 24 }, (_, index) => index);
   const itemsByDate = new Map<string, CalendarItem[]>();
   for (const item of visibleCalendarItems) {
     const key = localDateKey(new Date(item.startsAt));
@@ -299,8 +313,12 @@ export function CalendarWorkspace() {
   const selectedLabel = new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(new Date(`${selectedDate}T12:00:00`));
 
   function moveMonth(offset: number) {
-    const nextMonth = new Date(month.getFullYear(), month.getMonth() + offset, 1);
-    setMonth(nextMonth); setSelectedDate(localDateKey(nextMonth));
+    const step = calendarView === 'DAY' ? 1 : calendarView === 'WEEK' ? 7 : 1;
+    const nextDate = new Date(selectedLocalDate);
+    if (calendarView === 'MONTH') nextDate.setMonth(nextDate.getMonth() + offset);
+    else nextDate.setDate(nextDate.getDate() + offset * step);
+    const nextMonth = new Date(nextDate.getFullYear(), nextDate.getMonth(), 1);
+    setMonth(nextMonth); setSelectedDate(localDateKey(nextDate));
   }
 
   function chooseDate(date: Date) {
@@ -333,6 +351,19 @@ export function CalendarWorkspace() {
     finally { setBusy(false); }
   }
 
+  function exportCalendar() {
+    const escapeIcs = (value: string) => value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+    const stamp = (value: string) => new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AVEN//Calendar//EN', 'CALSCALE:GREGORIAN', ...visibleCalendarItems.map((item) => {
+      const event = item.kind === 'Event' ? events.find((row) => row.id === item.eventId) : null;
+      const localStart = localDateKey(new Date(item.startsAt));
+      const localEnd = new Date(`${localStart}T12:00:00`); localEnd.setDate(localEnd.getDate() + 1);
+      return ['BEGIN:VEVENT', `UID:${item.id}@aven.local`, item.isAllDay ? `DTSTART;VALUE=DATE:${localStart.replace(/-/g, '')}` : `DTSTART:${stamp(item.startsAt)}`, item.isAllDay ? `DTEND;VALUE=DATE:${localDateKey(localEnd).replace(/-/g, '')}` : item.endsAt ? `DTEND:${stamp(item.endsAt)}` : '', `SUMMARY:${escapeIcs(item.title)}`, item.description ? `DESCRIPTION:${escapeIcs(item.description)}` : '', item.location ? `LOCATION:${escapeIcs(item.location)}` : '', `CATEGORIES:${item.kind === 'Deadline' ? 'DEADLINE' : item.eventType}`, event?.project ? `RELATED-TO:${event.project.id}@aven.local` : '', 'END:VEVENT'].filter(Boolean).join('\r\n');
+    }), 'END:VCALENDAR'];
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'aven-calendar.ics'; anchor.click(); URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="workspace-section-page connected-page">
       <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
@@ -343,7 +374,11 @@ export function CalendarWorkspace() {
         <form className="productivity-form connected-compose" key={editingEvent?.id ?? 'new-event'} onSubmit={createEvent}>
           <h2>{editingEvent ? 'Edit event' : 'Schedule time'}</h2>
           <label>Event title<input name="title" defaultValue={editingEvent?.title ?? ''} required maxLength={200} placeholder="Project review" /></label>
+          <div className="productivity-form__row"><label>Type<select name="type" defaultValue={editingEvent?.type ?? 'MEETING'}>{[['MEETING','Meeting'],['FOCUS','Focus time'],['PERSONAL','Personal'],['REMINDER','Reminder'],['OTHER','Other']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Location <span>(optional)</span><input name="location" defaultValue={editingEvent?.location ?? ''} maxLength={250} placeholder="Room or video link" /></label></div>
+          <label>Notes <span>(optional)</span><textarea name="description" defaultValue={editingEvent?.description ?? ''} maxLength={2000} rows={2} placeholder="Add context for this event…" /></label>
+          <label>Linked project <span>(optional)</span><select name="projectId" defaultValue={editingEvent?.project?.id ?? ''}><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
           <label>Linked task <span>(optional)</span><select name="taskId" defaultValue={editingEvent?.task?.id ?? ''}><option value="">No task</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
+          <label className="calendar-all-day"><input name="isAllDay" type="checkbox" defaultChecked={editingEvent?.isAllDay ?? false} /> All-day event</label>
           <div className="productivity-form__row">
             <label>Starts<input name="startsAt" type="datetime-local" value={startValue} onChange={(event) => setStartValue(event.target.value)} required /></label>
             <label>Ends <span>(optional)</span><input name="endsAt" type="datetime-local" value={endValue} onChange={(event) => setEndValue(event.target.value)} /></label>
@@ -356,9 +391,10 @@ export function CalendarWorkspace() {
         </form>
         <section className="connected-record-list" aria-labelledby="calendar-list-title">
           <div className="aven-calendar">
-            <div className="aven-calendar__toolbar"><div><p className="workspace-eyebrow">YOUR SCHEDULE</p><h2 id="calendar-list-title">{calendarView === 'AGENDA' ? 'Coming up · 90 days' : new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(month)}</h2></div><div className="aven-calendar__controls"><button type="button" onClick={() => { const today = new Date(); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(localDateKey(today)); }}>Today</button><button type="button" aria-label="Previous month" onClick={() => moveMonth(-1)}>‹</button><button type="button" aria-label="Next month" onClick={() => moveMonth(1)}>›</button></div></div>
-            <div className="aven-calendar__view-switch"><button type="button" aria-pressed={calendarView === 'MONTH'} className={calendarView === 'MONTH' ? 'is-active' : ''} onClick={() => setCalendarView('MONTH')}>Month</button><button type="button" aria-pressed={calendarView === 'AGENDA'} className={calendarView === 'AGENDA' ? 'is-active' : ''} onClick={() => setCalendarView('AGENDA')}>Agenda</button></div>
+            <div className="aven-calendar__toolbar"><div><p className="workspace-eyebrow">YOUR SCHEDULE</p><h2 id="calendar-list-title">{calendarView === 'AGENDA' ? 'Coming up · 90 days' : calendarView === 'MONTH' ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(month) : calendarView === 'WEEK' ? `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(weekStart)} – ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6))}` : new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(selectedLocalDate)}</h2></div><div className="aven-calendar__controls"><button type="button" onClick={() => { const today = new Date(); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(localDateKey(today)); }}>Today</button><button type="button" aria-label="Previous period" onClick={() => moveMonth(-1)}>‹</button><button type="button" aria-label="Next period" onClick={() => moveMonth(1)}>›</button><button type="button" onClick={exportCalendar}>Export .ics</button></div></div>
+            <div className="aven-calendar__view-switch">{(['DAY','WEEK','MONTH','AGENDA'] as const).map((view) => <button key={view} type="button" aria-pressed={calendarView === view} className={calendarView === view ? 'is-active' : ''} onClick={() => setCalendarView(view)}>{view[0] + view.slice(1).toLocaleLowerCase()}</button>)}</div>
             <div className="calendar-filters"><button type="button" aria-pressed={showEvents} className={showEvents ? 'is-active' : ''} onClick={() => setShowEvents((value) => !value)}><i className="calendar-filter-dot calendar-filter-dot--event" /> Scheduled events</button><button type="button" aria-pressed={showDeadlines} className={showDeadlines ? 'is-active' : ''} onClick={() => setShowDeadlines((value) => !value)}><i className="calendar-filter-dot calendar-filter-dot--deadline" /> Task deadlines</button></div>
+            <div className="calendar-type-filters" role="group" aria-label="Filter event type">{(['ALL','MEETING','FOCUS','PERSONAL','REMINDER','OTHER'] as const).map((type) => <button key={type} type="button" aria-pressed={eventTypeFilter === type} className={eventTypeFilter === type ? 'is-active' : ''} onClick={() => setEventTypeFilter(type)}>{type === 'ALL' ? 'All types' : type[0] + type.slice(1).toLocaleLowerCase()}</button>)}</div>
             {loading ? <p className="productivity-message">Loading your schedule…</p> : calendarView === 'MONTH' ? <>
               <div className="aven-calendar__weekdays">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <span key={day}>{day}</span>)}</div>
               <div className="aven-calendar__grid">{monthDays.map((date) => {
@@ -367,8 +403,8 @@ export function CalendarWorkspace() {
                   <time dateTime={key}>{date.getDate()}</time><span className="aven-calendar__day-items">{dayItems.slice(0, 2).map((item) => <small className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`} key={`${item.kind}-${item.id}`}>{item.title}</small>)}{dayItems.length > 2 && <small className="aven-calendar__more">+{dayItems.length - 2} more</small>}</span>
                 </button>;
               })}</div>
-            </> : <div className="aven-calendar__agenda">{visibleCalendarItems.length === 0 ? <p className="productivity-message">Nothing matches these calendar filters.</p> : visibleCalendarItems.map((item) => <article className="aven-calendar__agenda-item" key={`${item.kind}-${item.id}`}><time dateTime={item.startsAt}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', weekday: 'short' }).format(new Date(item.startsAt))}<small>{item.kind === 'Deadline' ? 'Due today' : new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.startsAt))}</small></time><span className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`}>{item.recurrence ? 'Repeating event' : item.kind}</span><strong>{item.title}</strong>{item.taskTitle && <small>Task · {item.taskTitle}</small>}{item.kind === 'Event' && <div className="calendar-item-actions"><button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>Edit</button><button type="button" onClick={() => void removeEvent(events.find((event) => event.id === item.eventId)!)}>Delete</button></div>}</article>)}</div>}
-            <div className="aven-calendar__selected"><div className="project-milestones__heading"><h3>{selectedLabel}</h3><span>{selectedItems.length} {selectedItems.length === 1 ? 'item' : 'items'}</span></div>{selectedItems.length === 0 ? <p>No events or deadlines on this day.</p> : selectedItems.map((item) => <article key={`selected-${item.kind}-${item.id}`}><span className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`}>{item.recurrence ? 'Repeating event' : item.kind}</span><strong>{item.title}</strong><time>{item.kind === 'Deadline' ? 'All day' : new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.startsAt))}{item.endsAt ? ` – ${new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.endsAt))}` : ''}</time>{item.kind === 'Event' && <div className="calendar-item-actions"><button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>Edit</button><button type="button" onClick={() => void removeEvent(events.find((event) => event.id === item.eventId)!)}>Delete</button></div>}</article>)}</div>
+            </> : calendarView === 'WEEK' ? <div className="aven-calendar__week-grid">{weekDays.map((date) => { const key = localDateKey(date); const dayItems = itemsByDate.get(key) ?? []; return <section key={key} className={key === localDateKey(new Date()) ? 'is-today' : ''}><button type="button" className="aven-calendar__week-date" onClick={() => chooseDate(date)}><small>{new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date)}</small><strong>{date.getDate()}</strong></button>{dayItems.length ? dayItems.map((item) => <button type="button" key={`${item.kind}-${item.id}`} className={`aven-calendar__week-event aven-calendar__week-event--${(item.eventType ?? item.kind).toLocaleLowerCase()}`} onClick={() => item.kind === 'Event' && editEvent(events.find((event) => event.id === item.eventId)!)}><small>{item.kind === 'Deadline' || item.isAllDay ? 'All day' : new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.startsAt))}</small><strong>{item.title}</strong></button>) : <button type="button" className="aven-calendar__week-empty" onClick={() => chooseDate(date)}>＋</button>}</section>; })}</div> : calendarView === 'DAY' ? <div className="aven-calendar__day-timeline">{dayHours.map((hour) => { const hourItems = selectedItems.filter((item) => !item.isAllDay && item.kind === 'Event' && new Date(item.startsAt).getHours() === hour); const allDayItems = hour === 0 ? selectedItems.filter((item) => item.isAllDay || item.kind === 'Deadline') : []; return <div className="aven-calendar__hour" key={hour}><time>{String(hour).padStart(2, '0')}:00</time><div>{[...allDayItems, ...hourItems].map((item) => <article key={`${item.kind}-${item.id}`} className={`aven-calendar__timeline-event aven-calendar__timeline-event--${(item.eventType ?? item.kind).toLocaleLowerCase()}`}><strong>{item.title}</strong><span>{item.isAllDay || item.kind === 'Deadline' ? 'All day' : new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.startsAt))}{item.location ? ` · ${item.location}` : ''}{item.projectTitle ? ` · ${item.projectTitle}` : ''}</span>{item.kind === 'Event' && <button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>Edit</button>}</article>)}<button type="button" className="aven-calendar__hour-add" aria-label={`Schedule at ${hour}:00`} onClick={() => { setStartValue(`${selectedDate}T${String(hour).padStart(2, '0')}:00`); document.querySelector('.connected-compose')?.scrollIntoView({ behavior: 'smooth' }); }}>＋</button></div></div>; })}</div> : <div className="aven-calendar__agenda">{visibleCalendarItems.length === 0 ? <p className="productivity-message">Nothing matches these calendar filters.</p> : visibleCalendarItems.map((item) => <article className="aven-calendar__agenda-item" key={`${item.kind}-${item.id}`}><time dateTime={item.startsAt}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', weekday: 'short' }).format(new Date(item.startsAt))}<small>{item.kind === 'Deadline' || item.isAllDay ? 'All day' : new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.startsAt))}</small></time><span className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`}>{item.recurrence ? 'Repeating event' : item.eventType ?? item.kind}</span><strong>{item.title}</strong>{item.location && <small>{item.location}</small>}{item.projectTitle && <small>Project · {item.projectTitle}</small>}{item.taskTitle && <small>Task · {item.taskTitle}</small>}{item.kind === 'Event' && <div className="calendar-item-actions"><button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>Edit</button><button type="button" onClick={() => void removeEvent(events.find((event) => event.id === item.eventId)!)}>Delete</button></div>}</article>)}</div>}
+            <div className="aven-calendar__selected"><div className="project-milestones__heading"><h3>{selectedLabel}</h3><span>{selectedItems.length} {selectedItems.length === 1 ? 'item' : 'items'}</span></div>{selectedItems.length === 0 ? <p>No events or deadlines on this day.</p> : selectedItems.map((item) => <article key={`selected-${item.kind}-${item.id}`}><span className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`}>{item.recurrence ? 'Repeating event' : item.kind}</span><strong>{item.title}</strong><time>{item.kind === 'Deadline' || item.isAllDay ? 'All day' : new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.startsAt))}{item.projectTitle ? ` · ${item.projectTitle}` : ''}{item.endsAt && !item.isAllDay ? ` – ${new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.endsAt))}` : ''}</time>{item.kind === 'Event' && <div className="calendar-item-actions"><button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>Edit</button><button type="button" onClick={() => void removeEvent(events.find((event) => event.id === item.eventId)!)}>Delete</button></div>}</article>)}</div>
           </div>
         </section>
       </div>

@@ -65,6 +65,14 @@ enum CalendarRecurrence {
   MONTHLY
 }
 
+enum CalendarEventType {
+  MEETING
+  FOCUS
+  PERSONAL
+  REMINDER
+  OTHER
+}
+
 model User {
   id                String            @id @default(uuid()) @db.Uuid
   email             String            @unique @db.VarChar(320)
@@ -170,6 +178,7 @@ model Project {
   createdBy   User          @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
   tasks       Task[]
   documents   Document[]
+  calendarEvents CalendarEvent[]
   milestones  ProjectMilestone[]
 
   @@index([workspaceId, status])
@@ -330,7 +339,12 @@ model CalendarEvent {
   id          String    @id @default(uuid()) @db.Uuid
   workspaceId String    @db.Uuid
   taskId      String?   @db.Uuid
+  projectId   String?   @db.Uuid
   title       String    @db.VarChar(200)
+  description String?   @db.VarChar(2000)
+  location    String?   @db.VarChar(250)
+  type        CalendarEventType @default(MEETING)
+  isAllDay    Boolean   @default(false)
   startsAt    DateTime  @db.Timestamptz(3)
   endsAt      DateTime? @db.Timestamptz(3)
   recurrence  CalendarRecurrence?
@@ -341,9 +355,11 @@ model CalendarEvent {
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, startsAt])
   @@index([taskId])
+  @@index([projectId])
   @@map("calendar_events")
 }
 

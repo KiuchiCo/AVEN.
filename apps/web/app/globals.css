@@ -1153,6 +1153,36 @@ body {
 .aven-calendar__agenda-item > time small { display: block; margin-top: 3px; color: #8a8176; font-size: 9px; }
 .aven-calendar__agenda-item > strong { overflow: hidden; color: #39342e; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .aven-calendar__agenda-item > small { color: #81786d; font-size: 9px; }
+.calendar-type-filters { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.calendar-type-filters button { padding: 5px 9px; border: 1px solid #e7e1d9; border-radius: 999px; background: #fffdfa; color: #746b60; cursor: pointer; font: inherit; font-size: 10px; }
+.calendar-type-filters button.is-active { border-color: #b59a7d; background: #f1e8dd; color: #4e3d2a; }
+.calendar-all-day { display: flex; align-items: center; gap: 7px; }
+.calendar-all-day input { width: auto !important; }
+.aven-calendar__week-grid { display: grid; min-width: 700px; grid-template-columns: repeat(7, minmax(90px, 1fr)); overflow-x: auto; border-top: 1px solid #ebe5dd; border-left: 1px solid #ebe5dd; }
+.aven-calendar__week-grid > section { display: grid; align-content: start; gap: 6px; min-height: 260px; padding: 7px; border-right: 1px solid #ebe5dd; border-bottom: 1px solid #ebe5dd; background: #fffdfa; }
+.aven-calendar__week-grid > section.is-today { background: #f8f3ec; }
+.aven-calendar__week-date { display: flex; align-items: center; gap: 7px; border: 0; background: transparent; color: #51493f; cursor: pointer; text-align: left; }
+.aven-calendar__week-date small { color: #8a8176; font-size: 10px; }
+.aven-calendar__week-date strong { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; font-size: 11px; }
+.aven-calendar__week-grid > section.is-today .aven-calendar__week-date strong { background: #a48766; color: white; }
+.aven-calendar__week-event { display: grid; gap: 3px; width: 100%; padding: 7px; border: 0; border-left: 3px solid #9a83ad; border-radius: 5px; background: #f0e9f3; color: #51435c; cursor: pointer; text-align: left; }
+.aven-calendar__week-event small { font-size: 9px; opacity: .75; }
+.aven-calendar__week-event strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; }
+.aven-calendar__week-event--focus, .aven-calendar__timeline-event--focus { border-color: #759778; background: #e9f0e6; color: #405b42; }
+.aven-calendar__week-event--personal, .aven-calendar__timeline-event--personal { border-color: #bc9a69; background: #f6eee2; color: #715631; }
+.aven-calendar__week-event--reminder, .aven-calendar__timeline-event--reminder { border-color: #6594b7; background: #eaf1f6; color: #3f617b; }
+.aven-calendar__week-event--deadline, .aven-calendar__timeline-event--deadline { border-color: #bd8c55; background: #f8efe2; color: #775633; }
+.aven-calendar__week-empty { min-height: 30px; border: 1px dashed #e7e1d9; border-radius: 5px; background: transparent; color: #b2aaa0; cursor: pointer; }
+.aven-calendar__day-timeline { max-height: 640px; overflow-y: auto; border-top: 1px solid #ebe5dd; }
+.aven-calendar__hour { display: grid; min-height: 47px; grid-template-columns: 55px minmax(0, 1fr); border-bottom: 1px solid #eee9e2; }
+.aven-calendar__hour > time { padding: 8px 7px; color: #898176; font-size: 10px; }
+.aven-calendar__hour > div { position: relative; display: grid; align-content: start; gap: 4px; padding: 3px 7px; border-left: 1px solid #e6dfd6; }
+.aven-calendar__hour-add { position: absolute; top: 5px; right: 7px; border: 0; background: transparent; color: #b7aa99; cursor: pointer; opacity: .45; }
+.aven-calendar__hour-add:hover { opacity: 1; }
+.aven-calendar__timeline-event { display: flex; align-items: center; gap: 10px; padding: 6px 9px; border-left: 3px solid #9a83ad; border-radius: 6px; background: #f0e9f3; color: #51435c; }
+.aven-calendar__timeline-event strong { font-size: 11px; }
+.aven-calendar__timeline-event span { color: #7d746a; font-size: 10px; }
+.aven-calendar__timeline-event button { margin-left: auto; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
 .aven-calendar__controls button:focus-visible, .aven-calendar__view-switch button:focus-visible, .aven-calendar__day:focus-visible { outline: 3px solid rgb(164 135 102 / 48%); outline-offset: 1px; z-index: 1; }
 
 .workspace-unavailable { display: grid; width: min(100% - 32px, 520px); min-height: 80vh; align-content: center; margin: auto; }
