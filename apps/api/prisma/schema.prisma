@@ -106,6 +106,10 @@ model User {
   knowledgeItems      KnowledgeItem[] @relation("KnowledgeItemCreator")
   createdKnowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionCreator")
   createdAutomations AutomationRule[] @relation("AutomationRuleCreator")
+  taskComments TaskComment[] @relation("TaskCommentAuthor")
+  createdTaskChecklistItems TaskChecklistItem[] @relation("TaskChecklistCreator")
+  completedTaskChecklistItems TaskChecklistItem[] @relation("TaskChecklistCompleter")
+  taskFollows TaskFollower[]
 
   @@unique([identityIssuer, identitySubject])
   @@map("users")
@@ -139,6 +143,9 @@ model Workspace {
   knowledgeVersions KnowledgeVersion[]
   automations     AutomationRule[]
   automationRuns  AutomationRun[]
+  taskComments TaskComment[]
+  taskChecklistItems TaskChecklistItem[]
+  taskFollowers TaskFollower[]
 
   @@index([createdById])
   @@map("workspaces")
@@ -230,11 +237,66 @@ model Task {
   knowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionTask")
   dependsOn   Task[]           @relation("TaskDependencies")
   blocks      Task[]           @relation("TaskDependencies")
+  comments TaskComment[]
+  checklistItems TaskChecklistItem[]
+  followers TaskFollower[]
 
   @@index([workspaceId, status, dueAt])
   @@index([projectId, status])
   @@index([assigneeId, status])
   @@map("tasks")
+}
+
+model TaskComment {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  taskId      String   @db.Uuid
+  authorId    String   @db.Uuid
+  body        String   @db.VarChar(2000)
+  mentionedUserIds String[] @default([])
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task        Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author      User @relation("TaskCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, taskId, createdAt])
+  @@map("task_comments")
+}
+
+model TaskChecklistItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  taskId      String   @db.Uuid
+  createdById String   @db.Uuid
+  completedById String? @db.Uuid
+  title       String   @db.VarChar(240)
+  position    Int      @default(0)
+  completedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task        Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdBy   User @relation("TaskChecklistCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  completedBy User? @relation("TaskChecklistCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, taskId, position])
+  @@map("task_checklist_items")
+}
+
+model TaskFollower {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  taskId      String   @db.Uuid
+  userId      String   @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task        Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([workspaceId, taskId])
+  @@map("task_followers")
 }
 
 model ProjectMilestone {

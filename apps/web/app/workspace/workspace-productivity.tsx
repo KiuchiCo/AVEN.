@@ -111,7 +111,7 @@ export function MyTasksWorkspace() {
           <div className="task-list-empty"><span aria-hidden="true">☑</span><h3>{filter === 'COMPLETED' ? 'No completed tasks yet.' : 'A clear slate.'}</h3><p>{filter === 'COMPLETED' ? 'Completed tasks will be collected here.' : 'Create a task from your projects board and it will appear here.'}</p><Link href="/workspace/projects">Open projects <span aria-hidden="true">→</span></Link></div>
         ) : (
           <div className="task-list-records">{visibleTasks.map((task) => <article className="task-list-record" key={task.id}>
-            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3>{task.title}</h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}{task.dueAt && <time dateTime={task.dueAt}>Due {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(task.dueAt))}</time>}{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
+            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link></h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}{task.dueAt && <time dateTime={task.dueAt}>Due {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(task.dueAt))}</time>}{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
             <label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={savingId === task.id} onChange={(event) => void updateStatus(task.id, event.target.value)}>{taskStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
           </article>)}</div>
         )}
@@ -208,7 +208,7 @@ export function InboxWorkspace() {
   }
 
   const unreadUpdates = updates.filter((entry) => !entry.isRead).length;
-  const updateLinks: Record<string, string> = { PROJECT: '/workspace/projects', TASK: '/workspace/tasks', MILESTONE: '/workspace/projects', DOCUMENT: '/workspace/documents', KNOWLEDGE: '/workspace/knowledge', CALENDAR: '/workspace/calendar', WORKSPACE: '/workspace/settings' };
+  const updateLinks: Record<string, string> = { PROJECT: '/workspace/projects', TASK: '/workspace/tasks', TASK_COMMENT: '/workspace/tasks', TASK_CHECKLIST: '/workspace/tasks', MILESTONE: '/workspace/projects', DOCUMENT: '/workspace/documents', KNOWLEDGE: '/workspace/knowledge', CALENDAR: '/workspace/calendar', WORKSPACE: '/workspace/settings' };
 
   function dueLabel(dueAt: string | null) {
     if (!dueAt) return 'No due date';
@@ -230,7 +230,7 @@ export function InboxWorkspace() {
         {updates.length === 0 ? <p className="productivity-message">Teammate activity will show up here when someone else updates this workspace.</p> : <div className="inbox-notifications__list">{updates.slice(0, 8).map((entry) => <article className={!entry.isRead ? 'is-unread' : ''} key={entry.id}>
           <span className="inbox-notifications__dot" aria-hidden="true" />
           <div><p><strong>{entry.actor.displayName}</strong> {entry.message}</p><small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.createdAt))} · {entry.entityType.toLowerCase()}</small></div>
-          <Link href={updateLinks[entry.entityType] ?? '/workspace/activity'} aria-label={`Open related ${entry.entityType.toLowerCase()} update`}>→</Link>
+          <Link href={['TASK_COMMENT', 'TASK_CHECKLIST'].includes(entry.entityType) ? `/workspace/tasks/${entry.entityId}` : updateLinks[entry.entityType] ?? '/workspace/activity'} aria-label={`Open related ${entry.entityType.toLowerCase()} update`}>→</Link>
           <button type="button" disabled={updatesBusy} onClick={() => void updateReadState(entry.id, !entry.isRead)}>{entry.isRead ? 'Unread' : 'Read'}</button>
           <button type="button" disabled={updatesBusy} onClick={() => void dismissUpdate(entry.id)}>Dismiss</button>
         </article>)}</div>}
@@ -247,7 +247,7 @@ export function InboxWorkspace() {
         <div className="inbox-filters" role="group" aria-label="Filter inbox tasks">{filters.map((item) => <button type="button" key={item.key} aria-pressed={filter === item.key} className={filter === item.key ? 'is-active' : ''} onClick={() => setFilter(item.key)}>{item.label}<span>{item.count}</span></button>)}</div><TaskLabelFilter labels={allLabels} value={labelFilter} onChange={setLabelFilter} />
         {loading ? <p className="productivity-message">Loading your inbox…</p> : visibleFilteredTasks.length === 0 ? <div className="task-list-empty"><span aria-hidden="true">✓</span><h3>{filter === 'ATTENTION' ? 'You’re all caught up.' : 'Nothing in this queue.'}</h3><p>{filter === 'ATTENTION' ? 'No overdue, near-term, or high-priority work needs your attention.' : 'Tasks will appear here when they match this filter.'}</p><Link href="/workspace/projects">Open projects <span aria-hidden="true">→</span></Link></div> : (
           <div className="task-list-records">{visibleFilteredTasks.map((task) => <article className="task-list-record inbox-task" key={task.id}>
-            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3>{task.title}</h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}<time className={task.dueAt && task.dueAt.slice(0, 10) < todayKey ? 'inbox-task__overdue' : ''}>{dueLabel(task.dueAt)}</time>{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
+            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link></h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}<time className={task.dueAt && task.dueAt.slice(0, 10) < todayKey ? 'inbox-task__overdue' : ''}>{dueLabel(task.dueAt)}</time>{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
             <label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={savingId === task.id} onChange={(event) => void updateStatus(task.id, event.target.value)}>{taskStatuses.slice(0, 4).map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
           </article>)}</div>
         )}
@@ -280,7 +280,7 @@ export function WorkspaceHighlights() {
       {!loading && openTasks.length > 0 && <div className="workspace-live-priorities"><h3>Next up</h3>{openTasks.slice().sort((a, b) => {
         const rank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
         return (rank[a.priority] ?? 4) - (rank[b.priority] ?? 4);
-      }).slice(0, 3).map((task) => <div className="workspace-live-task" key={task.id}><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><strong>{task.title}</strong>{task.project && <small>{task.project.name}</small>}</div>)}</div>}
+      }).slice(0, 3).map((task) => <div className="workspace-live-task" key={task.id}><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link>{task.project && <small>{task.project.name}</small>}</div>)}</div>}
     </section>
   );
 }

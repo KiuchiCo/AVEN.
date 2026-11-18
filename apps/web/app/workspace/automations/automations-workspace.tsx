@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
+import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
@@ -120,7 +121,7 @@ export function AutomationsWorkspace() {
       <div className="automation-section-heading"><div><p className="workspace-eyebrow">AUDIT TRAIL</p><h2 id="automation-runs-title">Recent runs</h2></div><span>Latest {data.runs.length}</span></div>
       {loading ? <p className="productivity-message">Loading run history…</p> : data.runs.length === 0 ? <p className="automation-runs__empty">Automation activity will appear here when a rule runs.</p> : <div className="automation-run-list">{data.runs.map((run) => <article key={run.id}>
         <span className={`automation-run-status automation-run-status--${run.status.toLocaleLowerCase()}`}>{run.status === 'SUCCEEDED' ? 'Complete' : 'Failed'}</span>
-        <div><strong>{run.rule.name}</strong><small>{run.task ? `Task · ${run.task.title}` : 'Task no longer exists'} · {run.summary}</small>{run.task && <TaskLabels labels={run.task.labels} compact />}</div>
+        <div><strong>{run.rule.name}</strong><small>{run.task ? <>Task · <Link href={`/workspace/tasks/${run.task.id}`}>{run.task.title}</Link></> : 'Task no longer exists'} · {run.summary}</small>{run.task && <TaskLabels labels={run.task.labels} compact />}</div>
         <time dateTime={run.createdAt}>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(run.createdAt))}</time>
       </article>)}</div>}
     </section>

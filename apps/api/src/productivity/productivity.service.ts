@@ -606,7 +606,7 @@ export class ProductivityService {
     const needle = query.toLocaleLowerCase();
     const results = [
       ...projects.map((item) => ({ id: item.id, type: 'Project', title: item.name, detail: item.description ?? 'Project', href: '/workspace/projects', updatedAt: item.updatedAt })),
-      ...tasks.map((item) => ({ id: item.id, type: 'Task', title: item.title, detail: [...(item.project?.name ? [item.project.name] : []), ...(item.labels.length ? [item.labels.map((label) => `#${label}`).join(' ')] : []), ...(item.description ? [item.description] : [])].join(' · ') || 'Workspace task', labels: item.labels, href: `/workspace/tasks${item.labels.length ? `?label=${encodeURIComponent(item.labels[0])}` : ''}`, updatedAt: item.updatedAt })),
+      ...tasks.map((item) => ({ id: item.id, type: 'Task', title: item.title, detail: [...(item.project?.name ? [item.project.name] : []), ...(item.labels.length ? [item.labels.map((label) => `#${label}`).join(' ')] : []), ...(item.description ? [item.description] : [])].join(' · ') || 'Workspace task', labels: item.labels, href: `/workspace/tasks/${item.id}`, updatedAt: item.updatedAt })),
       ...documents.map((item) => {
         const content = documentPlainText(item.content);
         return { id: item.id, type: 'Document', title: item.title, detail: content.toLocaleLowerCase().includes(needle) ? excerpt(content, needle) : 'Workspace document', href: `/workspace/documents/${item.id}`, updatedAt: item.updatedAt };

@@ -19,8 +19,10 @@ import { KnowledgeController } from './knowledge.controller.js';
 import { KnowledgeService } from './knowledge.service.js';
 import { AutomationsController } from './automations.controller.js';
 import { AutomationsService } from './automations.service.js';
+import { TaskCollaborationModule } from './task-collaboration/task-collaboration.module.js';
 
 @Module({
+  imports: [TaskCollaborationModule],
   controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController, IntelligenceController, InvitationsController, KnowledgeController, AutomationsController],
   providers: [ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, KnowledgeService, AutomationsService, ClerkAuthGuard],
 })
