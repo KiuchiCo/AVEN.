@@ -3,9 +3,10 @@
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../../workspace-shell';
 import { TaskLabels } from '../../task-labels';
+import { parseTaskCsv, type TaskImportRow } from '../task-csv';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; budgetTotalCents: number | null; budgetSpentCents: number };
 type ProjectTask = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; events: { id: string }[]; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
@@ -39,11 +40,15 @@ export default function ProjectWorkspacePage() {
   const [taskFilter, setTaskFilter] = useState<'ALL' | 'OPEN' | 'BLOCKED' | 'OVERDUE' | 'COMPLETED'>('ALL');
   const [taskPriorityFilter, setTaskPriorityFilter] = useState('ALL');
   const [taskSearch, setTaskSearch] = useState('');
+  const [importRows, setImportRows] = useState<TaskImportRow[]>([]);
+  const [importFileName, setImportFileName] = useState('');
+  const [importMode, setImportMode] = useState<'CREATE' | 'UPSERT'>('CREATE');
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [tab, setTab] = useState<'OVERVIEW' | 'TIMELINE' | 'DOCUMENTS' | 'ACTIVITY' | 'BUDGET'>('OVERVIEW');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -126,7 +131,7 @@ export default function ProjectWorkspacePage() {
   async function saveBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!project) return;
     const form = new FormData(event.currentTarget);
-    setSaving(true); setError('');
+    setSaving(true); setError(''); setNotice('');
     try {
       await request(`/workspaces/${workspace.id}/projects/${project.id}`, { method: 'PATCH', body: JSON.stringify({ budgetTotal: form.get('budgetTotal') || null, budgetSpent: form.get('budgetSpent') }) });
       await reload();
@@ -169,6 +174,39 @@ export default function ProjectWorkspacePage() {
     link.download = `${project.name.replace(/[^a-z0-9-_]+/gi, '-').toLocaleLowerCase() || 'aven-project'}-tasks.csv`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function readProjectTaskCsv(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    setError('');
+    try {
+      if (file.size > 1_000_000) throw new Error('CSV files must be smaller than 1 MB.');
+      const parsed = parseTaskCsv(await file.text());
+      const projectTaskIds = new Set(tasks.map((task) => task.id));
+      const foreignIds = parsed.filter((row) => row.id && !projectTaskIds.has(row.id));
+      if (foreignIds.length) throw new Error('This project import can only update task IDs already in this project. Remove those rows or choose a different CSV.');
+      setImportRows(parsed);
+      setImportFileName(file.name);
+      setImportMode('CREATE');
+    } catch (reason) {
+      setImportRows([]); setImportFileName('');
+      setError(reason instanceof Error ? reason.message : 'Could not read this CSV file.');
+    }
+  }
+
+  async function importProjectTaskCsv(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!project || importRows.length === 0) return;
+    setSaving(true); setError(''); setNotice('');
+    try {
+      const scopedRows = importRows.map((row) => ({ ...row, projectId: project.id, ...(importMode === 'CREATE' ? { id: null } : {}) }));
+      const result = await request(`/workspaces/${workspace.id}/tasks/import`, { method: 'POST', body: JSON.stringify({ mode: importMode, projectId: project.id, tasks: scopedRows }) }) as { created: number; updated: number; unchanged: number };
+      setImportRows([]); setImportFileName(''); setImportMode('CREATE');
+      await reload();
+      setNotice(`CSV import complete: ${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import these project tasks.'); }
+    finally { setSaving(false); }
   }
 
   async function updateTaskLabels(taskId: string, labels: string[]) {
@@ -268,6 +306,7 @@ export default function ProjectWorkspacePage() {
     <div className="workspace-section-page project-hub">
       <p className="workspace-eyebrow"><Link href="/workspace/projects">Projects</Link> · {workspace.name}</p>
       {error && <p className="productivity-error" role="alert">{error}</p>}
+      {notice && <p className="productivity-success" role="status">{notice}</p>}
       {loading ? <p className="productivity-message">Loading project…</p> : !project ? <div className="workspace-section-empty"><h2>Project unavailable</h2><p>This project is not available in the current workspace.</p><Link href="/workspace/projects">Back to projects</Link></div> : <>
         <header className="project-hub__hero"><div><span className={`project-status-pill project-status-pill--${project.status.toLowerCase()}`}>{project.status.replaceAll('_', ' ').toLowerCase()}</span><h1>{project.name}</h1><p>{project.description || 'A project workspace for plans, documents, and delivery.'}</p></div><div className="project-hub__hero-actions"><button type="button" aria-expanded={showProjectEditor} onClick={() => setShowProjectEditor((value) => !value)}>{showProjectEditor ? 'Close editor' : 'Edit project'}</button><Link href="/workspace/projects" className="project-hub__back">← All projects</Link></div></header>
         {showProjectEditor && <form key={`${project.id}-${project.name}-${project.status}-${project.dueAt ?? ''}`} className="project-hub__project-editor" onSubmit={saveProjectDetails}><label>Project name<input name="name" required maxLength={160} defaultValue={project.name} /></label><label>Description<textarea name="description" rows={3} maxLength={5000} defaultValue={project.description ?? ''} /></label><div><label>Status<select name="status" defaultValue={project.status}><option value="PLANNING">Planning</option><option value="IN_PROGRESS">In progress</option><option value="ON_HOLD">On hold</option><option value="COMPLETED">Completed</option><option value="ARCHIVED">Archived</option></select></label><label>Project deadline<input name="dueAt" type="date" defaultValue={project.dueAt?.slice(0, 10) ?? ''} /></label></div><button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save project details'}</button></form>}
@@ -290,6 +329,7 @@ export default function ProjectWorkspacePage() {
           </section>
           <div className="project-hub__overview-grid">
             <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DELIVERY · SEQUENCING</p><h2>Project tasks</h2></div><div className="project-hub__task-actions"><button type="button" onClick={exportProjectTasks} disabled={!tasks.length}>Export CSV</button><button type="button" onClick={() => setTab('TIMELINE')}>View timeline →</button><button type="button" aria-expanded={showTaskForm} onClick={() => setShowTaskForm((value) => !value)}>{showTaskForm ? 'Close' : '＋ Add task'}</button></div></div>
+              <form className="project-task-import" onSubmit={importProjectTaskCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readProjectTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} rows · {importRows.filter((row) => row.id).length} existing project tasks match</span><small>{importRows.slice(0, 3).map((row) => row.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><label>Import behavior<select value={importMode} onChange={(event) => setImportMode(event.target.value as typeof importMode)}><option value="CREATE">Create new tasks</option><option value="UPSERT" disabled={!importRows.some((row) => row.id)}>Update matching IDs and create new rows</option></select></label><button type="submit" disabled={saving || !importRows.length}>{saving ? 'Importing…' : importMode === 'UPSERT' ? 'Sync CSV changes' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); setImportMode('CREATE'); }}>Cancel</button></div>}<small>Imports are limited to 200 rows and 1 MB. Task IDs must belong to this project; new rows are always assigned here.</small></form>
               {showTaskForm && <form className="project-hub__task-create" onSubmit={createTask}><label>Task name<input name="title" required maxLength={200} placeholder="Describe the next action" /></label><label>Description <span>(optional)</span><textarea name="description" rows={2} maxLength={5000} placeholder="Add context or acceptance notes" /></label><div><label>Priority<select name="priority" defaultValue="MEDIUM"><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assignee<select name="assigneeId" defaultValue=""><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<input name="dueAt" type="date" /></label></div><button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create task'}</button></form>}
               {tasks.length > 0 && <div className="project-hub__task-filters"><label>Find tasks<input type="search" value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="Search title, assignee, label" /></label><label>Status<select value={taskFilter} onChange={(event) => setTaskFilter(event.target.value as typeof taskFilter)}><option value="ALL">All tasks</option><option value="OPEN">Open</option><option value="BLOCKED">Blocked</option><option value="OVERDUE">Overdue</option><option value="COMPLETED">Completed</option></select></label><label>Priority<select value={taskPriorityFilter} onChange={(event) => setTaskPriorityFilter(event.target.value)}><option value="ALL">All priorities</option><option value="URGENT">Urgent</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option></select></label></div>}
               {tasks.length > 0 && <div className="project-hub__bulk-tools"><label><input type="checkbox" checked={visibleProjectTasks.length > 0 && visibleProjectTasks.every((task) => selectedTaskIds.includes(task.id))} onChange={(event) => setSelectedTaskIds((current) => event.target.checked ? [...new Set([...current, ...visibleProjectTasks.map((task) => task.id)])] : current.filter((id) => !visibleProjectTasks.some((task) => task.id === id)))} />Select {visibleProjectTasks.length} visible tasks</label>{selectedTaskIds.length > 0 && <form onSubmit={bulkUpdateProjectTasks}><strong>{selectedTaskIds.length} selected</strong><select name="status" defaultValue=""><option value="">Status unchanged</option>{taskStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select><select name="priority" defaultValue=""><option value="">Priority unchanged</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select><select name="assigneeId" defaultValue=""><option value="">Assignee unchanged</option><option value="__CLEAR__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select><select name="dueMode" defaultValue=""><option value="">Dates unchanged</option><option value="SET">Set due date</option><option value="CLEAR">Clear due dates</option></select><input aria-label="Due date for selected tasks" name="dueAt" type="date" /><button type="submit" disabled={saving}>{saving ? 'Updating…' : 'Apply changes'}</button><button type="button" disabled={saving} onClick={() => setSelectedTaskIds([])}>Clear selection</button></form>}</div>}
