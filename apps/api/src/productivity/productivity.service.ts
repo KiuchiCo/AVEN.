@@ -13,6 +13,11 @@ const calendarEventTypes = ['MEETING', 'FOCUS', 'PERSONAL', 'REMINDER', 'OTHER']
 type ProjectStatus = (typeof projectStatuses)[number];
 type TaskStatus = (typeof taskStatuses)[number];
 type TaskPriority = (typeof taskPriorities)[number];
+type TaskViewFilterSet = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; sort: string };
+const taskViewStatuses = ['ALL', ...taskStatuses] as const;
+const taskViewPriorities = ['ALL', ...taskPriorities] as const;
+const taskViewDueFilters = ['ALL', 'OVERDUE', 'TODAY', 'NEXT_7_DAYS', 'NO_DATE'] as const;
+const taskViewSorts = ['DUE_ASC', 'DUE_DESC', 'PRIORITY', 'TITLE'] as const;
 
 @Injectable()
 export class ProductivityService {
@@ -264,6 +269,51 @@ export class ProductivityService {
     const counts = new Map<string, number>();
     for (const task of tasks) for (const label of task.labels) counts.set(label, (counts.get(label) ?? 0) + 1);
     return [...counts.entries()].map(([label, taskCount]) => ({ label, taskCount })).sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  async listTaskViews(identity: AuthenticatedIdentity, workspaceId: string) {
+    await this.requireMembership(identity, workspaceId);
+    return this.prisma.workspaceTaskView.findMany({ where: { workspaceId }, orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }], include: { createdBy: { select: { id: true, displayName: true } } } });
+  }
+
+  async createTaskView(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const createdById = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const name = textField(body.name, 'View name', 60);
+    const filters = taskViewFilters(body.filters);
+    await this.validateTaskViewReferences(workspaceId, filters);
+    if (await this.prisma.workspaceTaskView.findFirst({ where: { workspaceId, name: { equals: name, mode: 'insensitive' } }, select: { id: true } })) throw new BadRequestException('A task view already uses that name.');
+    if (await this.prisma.workspaceTaskView.count({ where: { workspaceId } }) >= 20) throw new BadRequestException('A workspace can have up to 20 saved task views.');
+    return this.prisma.workspaceTaskView.create({ data: { workspaceId, createdById, name, filters: filters as Prisma.InputJsonValue }, include: { createdBy: { select: { id: true, displayName: true } } } });
+  }
+
+  async updateTaskView(identity: AuthenticatedIdentity, workspaceId: string, viewId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const data: { name?: string; filters?: Prisma.InputJsonValue } = {};
+    if ('name' in body) data.name = textField(body.name, 'View name', 60);
+    if ('filters' in body) {
+      const filters = taskViewFilters(body.filters);
+      await this.validateTaskViewReferences(workspaceId, filters);
+      data.filters = filters as Prisma.InputJsonValue;
+    }
+    if (!Object.keys(data).length) throw new BadRequestException('Provide a new view name or filter set.');
+    if (data.name && await this.prisma.workspaceTaskView.findFirst({ where: { workspaceId, id: { not: viewId }, name: { equals: data.name, mode: 'insensitive' } }, select: { id: true } })) throw new BadRequestException('A task view already uses that name.');
+    const result = await this.prisma.workspaceTaskView.updateMany({ where: { id: viewId, workspaceId }, data });
+    if (result.count !== 1) throw new NotFoundException('Saved task view not found in this workspace.');
+    return this.prisma.workspaceTaskView.findFirstOrThrow({ where: { id: viewId, workspaceId }, include: { createdBy: { select: { id: true, displayName: true } } } });
+  }
+
+  async deleteTaskView(identity: AuthenticatedIdentity, workspaceId: string, viewId: string) {
+    await this.requireMembership(identity, workspaceId, true);
+    const result = await this.prisma.workspaceTaskView.deleteMany({ where: { id: viewId, workspaceId } });
+    if (result.count !== 1) throw new NotFoundException('Saved task view not found in this workspace.');
+    return { id: viewId, deleted: true };
+  }
+
+  private async validateTaskViewReferences(workspaceId: string, filters: TaskViewFilterSet) {
+    if (filters.projectId && !await this.prisma.project.findFirst({ where: { id: filters.projectId, workspaceId }, select: { id: true } })) throw new BadRequestException('The selected project is not in this workspace.');
+    if (filters.assigneeId && !['ALL', 'UNASSIGNED'].includes(filters.assigneeId) && !await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: filters.assigneeId } }, select: { userId: true } })) throw new BadRequestException('The selected assignee is not in this workspace.');
   }
 
   async renameTaskLabel(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
@@ -1014,6 +1064,26 @@ function taskLabels(value: unknown): string[] {
   const labels = value.map((label) => (label as string).trim().toLocaleLowerCase()).filter(Boolean);
   if (labels.some((label) => label.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(label))) throw new BadRequestException('Each task label must be 1–32 letters, numbers, underscores, or hyphens.');
   return [...new Set(labels)];
+}
+
+function taskViewFilters(value: unknown): TaskViewFilterSet {
+  const input = objectInput(value);
+  if (typeof input.search !== 'string' || input.search.length > 300) throw new BadRequestException('Task view search must be 300 characters or fewer.');
+  const projectId = optionalUuid(input.projectId, 'Project filter') ?? '';
+  let assigneeId = 'ALL';
+  if (input.assigneeId === 'UNASSIGNED') assigneeId = 'UNASSIGNED';
+  else if (input.assigneeId !== undefined && input.assigneeId !== null && input.assigneeId !== '' && input.assigneeId !== 'ALL') assigneeId = optionalUuid(input.assigneeId, 'Assignee filter') ?? 'ALL';
+  const label = typeof input.label === 'string' && input.label.trim() ? taskLabels([input.label])[0] : '';
+  return {
+    projectId,
+    search: input.search.trim(),
+    status: enumField(input.status, taskViewStatuses, 'Task view status', 'ALL'),
+    priority: enumField(input.priority, taskViewPriorities, 'Task view priority', 'ALL'),
+    assigneeId,
+    label,
+    due: enumField(input.due, taskViewDueFilters, 'Task view due date filter', 'ALL'),
+    sort: enumField(input.sort, taskViewSorts, 'Task view sort order', 'DUE_ASC'),
+  };
 }
 
 function parseTemplateTasks(value: Prisma.JsonValue): ProjectTaskTemplate[] {

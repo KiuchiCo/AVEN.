@@ -15,7 +15,7 @@ type TemplateTask = { title: string; description: string | null; priority: strin
 type TemplateMilestone = { title: string };
 type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; taskTemplates: TemplateTask[]; milestoneTemplates: TemplateMilestone[]; useCount: number; lastUsedAt: string | null; createdBy: { displayName: string } };
 type TaskViewFilters = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; sort: string };
-type SavedTaskView = { id: string; name: string; filters: TaskViewFilters };
+type SavedTaskView = { id: string; name: string; filters: TaskViewFilters; createdBy?: { id: string; displayName: string } };
 type TaskLabelUsage = { label: string; taskCount: number };
 
 const columns = [
@@ -56,9 +56,9 @@ export default function ProjectsPage() {
   const [dueFilter, setDueFilter] = useState('ALL');
   const [taskSort, setTaskSort] = useState('DUE_ASC');
   const [savedTaskViews, setSavedTaskViews] = useState<SavedTaskView[]>([]);
+  const [legacyViewsRemaining, setLegacyViewsRemaining] = useState(0);
   const [taskViewName, setTaskViewName] = useState('');
   const [taskViewChoice, setTaskViewChoice] = useState('');
-  const [taskViewsReadyFor, setTaskViewsReadyFor] = useState('');
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [bulkPriority, setBulkPriority] = useState('');
   const [bulkAssignee, setBulkAssignee] = useState('');
@@ -87,18 +87,50 @@ export default function ProjectsPage() {
   }, [getToken]);
 
   const reload = useCallback(async () => {
-    const [projectRows, taskRows, memberRows, templateRows, labelRows] = await Promise.all([
+    const [projectRows, taskRows, memberRows, templateRows, labelRows, viewRows] = await Promise.all([
       request(`/workspaces/${workspace.id}/projects`),
       request(`/workspaces/${workspace.id}/tasks`),
       request(`/workspaces/${workspace.id}/members`),
       request(`/workspaces/${workspace.id}/projects/project-templates`),
       request(`/workspaces/${workspace.id}/tasks/labels`),
-    ]) as [Project[], Task[], Member[], ProjectTemplate[], TaskLabelUsage[]];
+      request(`/workspaces/${workspace.id}/tasks/views`),
+    ]) as [Project[], Task[], Member[], ProjectTemplate[], TaskLabelUsage[], SavedTaskView[]];
     setProjects(projectRows);
     setTasks(taskRows);
     setMembers(memberRows);
     setTemplates(templateRows);
     setTaskLabelUsages(labelRows);
+    let availableViews = viewRows;
+    const legacyKey = `aven.task-views.${workspace.id}`;
+    const importedKey = `aven.task-views-imported.${workspace.id}`;
+    try {
+      const legacyRaw = localStorage.getItem(legacyKey);
+      const legacyViews = legacyRaw ? JSON.parse(legacyRaw) as unknown : [];
+      const importedRaw = localStorage.getItem(importedKey);
+      const importedIds = new Set(importedRaw ? JSON.parse(importedRaw) as string[] : []);
+      if (Array.isArray(legacyViews)) {
+        let remaining = 0;
+        for (const legacy of legacyViews) {
+          if (!legacy || typeof legacy.id !== 'string' || typeof legacy.name !== 'string' || !legacy.filters || typeof legacy.filters !== 'object' || importedIds.has(legacy.id)) continue;
+          if (availableViews.length >= 20) { remaining += 1; continue; }
+          const baseName = legacy.name.trim().slice(0, 48) || 'Imported view';
+          let name = baseName;
+          let suffix = 2;
+          while (availableViews.some((view) => view.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+            const tail = ` (local ${suffix++})`;
+            name = `${baseName.slice(0, 60 - tail.length)}${tail}`;
+          }
+          try {
+            const imported = await request(`/workspaces/${workspace.id}/tasks/views`, { method: 'POST', body: JSON.stringify({ name, filters: legacy.filters }) }) as SavedTaskView;
+            availableViews = [imported, ...availableViews]; importedIds.add(legacy.id);
+            localStorage.setItem(importedKey, JSON.stringify([...importedIds]));
+          } catch { remaining += 1; }
+        }
+        setLegacyViewsRemaining(remaining);
+        if (remaining === 0) { localStorage.removeItem(legacyKey); localStorage.removeItem(importedKey); }
+      }
+    } catch { setLegacyViewsRemaining(1); }
+    setSavedTaskViews(availableViews);
     setSelectedProject((current) => projectRows.some((project) => project.id === current) ? current : projectRows[0]?.id || '');
   }, [request, workspace.id]);
 
@@ -155,20 +187,6 @@ export default function ProjectsPage() {
   const completedTasks = selectedProjectTasks.filter((task) => task.status === 'COMPLETED').length;
   const taskProgress = selectedProjectTasks.length ? Math.round((completedTasks / selectedProjectTasks.length) * 100) : 0;
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`aven.task-views.${workspace.id}`);
-      const parsed = stored ? JSON.parse(stored) as unknown : [];
-      setSavedTaskViews(Array.isArray(parsed) ? parsed.filter((view): view is SavedTaskView => view && typeof view.id === 'string' && typeof view.name === 'string' && view.filters && typeof view.filters === 'object').slice(0, 20) : []);
-    } catch { setSavedTaskViews([]); }
-    setTaskViewsReadyFor(workspace.id);
-  }, [workspace.id]);
-
-  useEffect(() => {
-    if (taskViewsReadyFor !== workspace.id) return;
-    try { localStorage.setItem(`aven.task-views.${workspace.id}`, JSON.stringify(savedTaskViews)); } catch { /* Keep the board usable if browser storage is unavailable. */ }
-  }, [savedTaskViews, taskViewsReadyFor, workspace.id]);
-
   function currentTaskViewFilters(): TaskViewFilters {
     return { projectId: selectedProject, search: taskSearch, status: statusFilter, priority: priorityFilter, assigneeId: assigneeFilter, label: labelFilter, due: dueFilter, sort: taskSort };
   }
@@ -181,14 +199,32 @@ export default function ProjectsPage() {
     setSelectedTaskIds([]); setNotice(`Applied “${view.name}”.`);
   }
 
-  function saveCurrentTaskView(event: FormEvent<HTMLFormElement>) {
+  async function saveCurrentTaskView(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = taskViewName.trim();
     if (!name) return;
-    if (savedTaskViews.length >= 20) { setError('You can save up to 20 task views in this workspace.'); return; }
-    if (savedTaskViews.some((view) => view.name.toLocaleLowerCase() === name.toLocaleLowerCase())) { setError('A saved task view already uses that name.'); return; }
-    setSavedTaskViews((views) => [...views, { id: crypto.randomUUID(), name, filters: currentTaskViewFilters() }]);
-    setTaskViewName(''); setError(''); setNotice(`Saved “${name}” for this browser and workspace.`);
+    const selected = savedTaskViews.find((view) => view.id === taskViewChoice);
+    if (!selected && savedTaskViews.length >= 20) { setError('This workspace already has 20 saved task views.'); return; }
+    setBusy(true); setError('');
+    try {
+      const saved = await request(selected ? `/workspaces/${workspace.id}/tasks/views/${selected.id}` : `/workspaces/${workspace.id}/tasks/views`, {
+        method: selected ? 'PATCH' : 'POST', body: JSON.stringify({ name, filters: currentTaskViewFilters() }),
+      }) as SavedTaskView;
+      setSavedTaskViews((views) => selected ? views.map((view) => view.id === saved.id ? saved : view) : [saved, ...views]);
+      setTaskViewChoice(saved.id); setTaskViewName(saved.name); setNotice(`${selected ? 'Updated' : 'Saved'} “${saved.name}” for this workspace.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save this task view.'); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteSavedTaskView() {
+    if (!taskViewChoice) return;
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/tasks/views/${taskViewChoice}`, { method: 'DELETE' });
+      setSavedTaskViews((views) => views.filter((view) => view.id !== taskViewChoice)); setTaskViewChoice(''); setTaskViewName('');
+      setNotice('Deleted the saved task view.');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete this task view.'); }
+    finally { setBusy(false); }
   }
 
   async function submitProject(event: FormEvent<HTMLFormElement>) {
@@ -545,9 +581,10 @@ export default function ProjectsPage() {
           <label>Due date<select value={dueFilter} onChange={(event) => { setDueFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">Any date</option><option value="OVERDUE">Overdue</option><option value="TODAY">Due today</option><option value="NEXT_7_DAYS">Next 7 days</option><option value="NO_DATE">No due date</option></select></label>
           <label>Sort<select value={taskSort} onChange={(event) => setTaskSort(event.target.value)}><option value="DUE_ASC">Due date · earliest</option><option value="DUE_DESC">Due date · latest</option><option value="PRIORITY">Priority · highest</option><option value="TITLE">Title · A–Z</option></select></label>
           <button type="button" onClick={() => { setTaskSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); setAssigneeFilter('ALL'); setLabelFilter(''); setDueFilter('ALL'); setTaskSort('DUE_ASC'); setSelectedTaskIds([]); }}>Clear filters</button>
-          <form onSubmit={saveCurrentTaskView}><label>Save current view<input required maxLength={60} value={taskViewName} onChange={(event) => setTaskViewName(event.target.value)} placeholder="e.g. My overdue work" /></label><button type="submit" disabled={savedTaskViews.length >= 20}>Save view</button></form>
-          {savedTaskViews.length > 0 && <div className="task-view-tools__saved"><label>Saved views<select value={taskViewChoice} onChange={(event) => setTaskViewChoice(event.target.value)}><option value="">Choose a saved view</option>{savedTaskViews.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select></label><button type="button" disabled={!taskViewChoice} onClick={() => { const view = savedTaskViews.find((item) => item.id === taskViewChoice); if (view) applyTaskView(view); }}>Apply view</button><button type="button" disabled={!taskViewChoice} onClick={() => { setSavedTaskViews((views) => views.filter((view) => view.id !== taskViewChoice)); setTaskViewChoice(''); }}>Delete view</button></div>}
-          <p>Views save in this browser for this workspace only. {savedTaskViews.length} / 20 saved.</p>
+          <form onSubmit={saveCurrentTaskView}><label>{taskViewChoice ? 'Update shared view' : 'Save current view'}<input required maxLength={60} value={taskViewName} onChange={(event) => setTaskViewName(event.target.value)} placeholder="e.g. My overdue work" /></label><button type="submit" disabled={busy || (!taskViewChoice && savedTaskViews.length >= 20)}>{busy ? 'Saving…' : taskViewChoice ? 'Update view' : 'Save view'}</button></form>
+          {savedTaskViews.length > 0 && <div className="task-view-tools__saved"><label>Workspace views<select value={taskViewChoice} onChange={(event) => { setTaskViewChoice(event.target.value); setTaskViewName(savedTaskViews.find((view) => view.id === event.target.value)?.name ?? ''); }}><option value="">Choose a saved view</option>{savedTaskViews.map((view) => <option key={view.id} value={view.id}>{view.name}{view.createdBy?.displayName ? ` · ${view.createdBy.displayName}` : ''}</option>)}</select></label><button type="button" disabled={!taskViewChoice || busy} onClick={() => { const view = savedTaskViews.find((item) => item.id === taskViewChoice); if (view) applyTaskView(view); }}>Apply view</button><button type="button" disabled={!taskViewChoice || busy} onClick={() => void deleteSavedTaskView()}>Delete view</button><button type="button" disabled={busy} onClick={() => { setTaskViewChoice(''); setTaskViewName(''); }}>New view</button></div>}
+          <p>{savedTaskViews.length} / 20 shared views. Everyone in this workspace can apply or update them.</p>
+          {legacyViewsRemaining > 0 && <p role="status">{legacyViewsRemaining} older browser-saved view(s) are still on this device. Free a workspace view slot and reload to finish importing them.</p>}
         </div>
         <details className="task-label-manager">
           <summary>Workspace labels <span>{taskLabelUsages.length} labels · manage names and usage</span></summary>

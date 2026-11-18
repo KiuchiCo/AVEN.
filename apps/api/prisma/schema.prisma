@@ -96,6 +96,7 @@ model User {
   personalWorkspace Workspace?        @relation("PersonalWorkspaceOwner")
   createdProjects   Project[]         @relation("ProjectCreator")
   createdProjectTemplates ProjectTemplate[] @relation("ProjectTemplateCreator")
+  createdTaskViews   WorkspaceTaskView[] @relation("TaskViewCreator")
   assignedTasks     Task[]            @relation("TaskAssignee")
   createdTasks      Task[]            @relation("TaskCreator")
   activityEntries   WorkspaceActivity[] @relation("ActivityActor")
@@ -146,6 +147,7 @@ model Workspace {
   taskComments TaskComment[]
   taskChecklistItems TaskChecklistItem[]
   taskFollowers TaskFollower[]
+  taskViews WorkspaceTaskView[]
 
   @@index([createdById])
   @@map("workspaces")
@@ -332,6 +334,22 @@ model ProjectTemplate {
 
   @@index([workspaceId, updatedAt])
   @@map("project_templates")
+}
+
+model WorkspaceTaskView {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  createdById String    @db.Uuid
+  name        String    @db.VarChar(60)
+  filters     Json      @db.JsonB
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("TaskViewCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, updatedAt])
+  @@map("workspace_task_views")
 }
 
 model WorkspaceActivity {

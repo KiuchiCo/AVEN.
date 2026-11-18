@@ -24,6 +24,26 @@ export class TasksController {
     return this.productivity.deleteTaskLabel(identity, workspaceId, label);
   }
 
+  @Get('views')
+  views(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
+    return this.productivity.listTaskViews(identity, workspaceId);
+  }
+
+  @Post('views')
+  createView(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
+    return this.productivity.createTaskView(identity, workspaceId, body);
+  }
+
+  @Patch('views/:viewId')
+  updateView(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('viewId', new ParseUUIDPipe()) viewId: string, @Body() body: unknown) {
+    return this.productivity.updateTaskView(identity, workspaceId, viewId, body);
+  }
+
+  @Delete('views/:viewId')
+  removeView(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('viewId', new ParseUUIDPipe()) viewId: string) {
+    return this.productivity.deleteTaskView(identity, workspaceId, viewId);
+  }
+
   @Get()
   list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Query('label') label?: string) {
     return this.productivity.listTasks(identity, workspaceId, label);
