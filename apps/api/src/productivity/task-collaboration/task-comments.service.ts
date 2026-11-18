@@ -22,7 +22,7 @@ export class TaskCommentsService {
     const mentionedUserIds = memberIds(body.mentionedUserIds);
     await this.mentions.validate(workspaceId, mentionedUserIds);
     const comment = await this.prisma.taskComment.create({ data: { workspaceId, taskId, authorId: userId, body: text, mentionedUserIds }, include: { author: { select: { id: true, displayName: true } } } });
-    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_COMMENT', message: `commented on task “${task.title}”`, mentionedUserIds });
+    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_COMMENT', message: `commented on task “${task.title.slice(0, 84)}”: “${text.replace(/\s+/g, ' ').slice(0, 80)}”`, mentionedUserIds });
     return comment;
   }
 
@@ -38,18 +38,18 @@ export class TaskCommentsService {
     const addedMentions = mentionedUserIds.filter((mentionedId) => !comment.mentionedUserIds.includes(mentionedId));
     const updated = await this.prisma.taskComment.update({ where: { id: commentId }, data: { body: text, mentionedUserIds }, include: { author: { select: { id: true, displayName: true } } } });
     if (text !== comment.body || mentionedUserIds.length !== comment.mentionedUserIds.length || addedMentions.length) {
-      await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_COMMENT', message: `updated a comment on task “${task.title}”`, mentionedUserIds: addedMentions });
+      await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_COMMENT', message: `updated comment on task “${task.title.slice(0, 84)}”: “${text.replace(/\s+/g, ' ').slice(0, 80)}”`, mentionedUserIds: addedMentions });
     }
     return updated;
   }
 
   async remove(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, commentId: string) {
     const { userId, task } = await this.access.require(identity, workspaceId, taskId, true);
-    const comment = await this.prisma.taskComment.findFirst({ where: { id: commentId, taskId, workspaceId }, select: { id: true, authorId: true, mentionedUserIds: true } });
+    const comment = await this.prisma.taskComment.findFirst({ where: { id: commentId, taskId, workspaceId }, select: { id: true, authorId: true, body: true, mentionedUserIds: true } });
     if (!comment) throw new NotFoundException('Comment not found on this task.');
     if (comment.authorId !== userId) throw new ForbiddenException('Only the person who wrote a comment can delete it.');
     await this.prisma.taskComment.delete({ where: { id: commentId } });
-    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_COMMENT', message: `deleted a comment from task “${task.title}”`, mentionedUserIds: comment.mentionedUserIds });
+    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_COMMENT', message: `deleted comment from task “${task.title.slice(0, 84)}”: “${comment.body.replace(/\s+/g, ' ').slice(0, 80)}”`, mentionedUserIds: comment.mentionedUserIds });
     return { id: commentId, deleted: true };
   }
 }

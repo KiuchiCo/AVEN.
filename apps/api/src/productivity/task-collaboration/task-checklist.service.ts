@@ -21,7 +21,7 @@ export class TaskChecklistService {
     const count = await this.prisma.taskChecklistItem.count({ where: { workspaceId, taskId } });
     if (count >= 100) throw new BadRequestException('A task can have up to 100 checklist items.');
     const item = await this.prisma.taskChecklistItem.create({ data: { workspaceId, taskId, createdById: userId, title: cleanText(body.title, 'Checklist item', 240), position: checklistPosition(body.position, count) }, include: { createdBy: { select: { id: true, displayName: true } }, completedBy: { select: { id: true, displayName: true } } } });
-    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `added a checklist item to task “${task.title}”` });
+    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `added checklist item “${item.title.slice(0, 64)}” to task “${task.title.slice(0, 100)}”` });
     return item;
   }
 
@@ -42,24 +42,25 @@ export class TaskChecklistService {
     const titleChanged = typeof data.title === 'string' && data.title !== item.title;
     const completionChanged = 'completed' in body && Boolean(item.completedAt) !== body.completed;
     const updated = await this.prisma.taskChecklistItem.update({ where: { id: itemId }, data, include: { createdBy: { select: { id: true, displayName: true } }, completedBy: { select: { id: true, displayName: true } } } });
-    if (titleChanged) await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `renamed a checklist item on task “${task.title}”` });
-    if (completionChanged) await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `${body.completed ? 'completed' : 'reopened'} a checklist item on task “${task.title}”` });
+    if (titleChanged) await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `renamed checklist item to “${updated.title.slice(0, 64)}” on task “${task.title.slice(0, 100)}”` });
+    if (completionChanged) await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `${body.completed ? 'completed' : 'reopened'} checklist item “${updated.title.slice(0, 64)}” on task “${task.title.slice(0, 100)}”` });
     return updated;
   }
 
   async remove(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, itemId: string) {
     const { userId, task } = await this.access.require(identity, workspaceId, taskId, true);
-    const item = await this.prisma.taskChecklistItem.findFirst({ where: { id: itemId, workspaceId, taskId }, select: { id: true } });
+    const item = await this.prisma.taskChecklistItem.findFirst({ where: { id: itemId, workspaceId, taskId }, select: { id: true, title: true } });
     if (!item) throw new NotFoundException('Checklist item not found.');
     await this.prisma.taskChecklistItem.delete({ where: { id: itemId } });
-    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `removed a checklist item from task “${task.title}”` });
+    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `removed checklist item “${item.title.slice(0, 64)}” from task “${task.title.slice(0, 100)}”` });
     return { id: itemId, deleted: true };
   }
 
   async move(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, itemId: string, direction: 'UP' | 'DOWN') {
     const { userId, task } = await this.access.require(identity, workspaceId, taskId, true);
     const result = await this.ordering.move(workspaceId, taskId, itemId, direction);
-    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `reordered the checklist on task “${task.title}”` });
+    const item = await this.prisma.taskChecklistItem.findFirst({ where: { id: itemId, workspaceId, taskId }, select: { title: true } });
+    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_CHECKLIST', message: `moved checklist item “${item?.title.slice(0, 64) ?? 'item'}” ${direction === 'UP' ? 'up' : 'down'} on task “${task.title.slice(0, 100)}”` });
     return result;
   }
 }
