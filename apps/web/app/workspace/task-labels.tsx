@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 
 type TaskLabelsProps = {
@@ -12,9 +12,10 @@ type TaskLabelsProps = {
 };
 
 export function TaskLabels({ labels, taskTitle, disabled = false, onSave, compact = false }: TaskLabelsProps) {
-  const [value, setValue] = useState(labels.join(', '));
+  const baseline = labels.join(', ');
+  const [draft, setDraft] = useState<{ baseline: string; value: string } | null>(null);
+  const value = draft?.baseline === baseline ? draft.value : baseline;
   const inputId = useId();
-  useEffect(() => setValue(labels.join(', ')), [labels]);
   const normalized = value.split(',').map((label) => label.trim().toLocaleLowerCase()).filter(Boolean);
   const invalid = normalized.some((label) => label.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(label)) || new Set(normalized).size > 10;
 
@@ -30,8 +31,8 @@ export function TaskLabels({ labels, taskTitle, disabled = false, onSave, compac
       </div>
       {onSave && <form className="task-labels__editor" onSubmit={submit}>
         <label className="visually-hidden" htmlFor={inputId}>Labels, comma separated{taskTitle ? ` for ${taskTitle}` : ''}</label>
-        <input id={inputId} value={value} disabled={disabled} onChange={(event) => setValue(event.target.value)} placeholder="Add labels, comma separated" maxLength={330} />
-        <button type="submit" disabled={disabled || invalid || value === labels.join(', ')}>Save</button>
+        <input id={inputId} value={value} disabled={disabled} onChange={(event) => setDraft({ baseline, value: event.target.value })} placeholder="Add labels, comma separated" maxLength={330} />
+        <button type="submit" disabled={disabled || invalid || value === baseline}>Save</button>
         {invalid && <span className="task-labels__error" role="status">Use up to 10 labels, each 1–32 letters, numbers, underscores, or hyphens.</span>}
       </form>}
     </div>

@@ -23,12 +23,10 @@ export default function WorkspaceSearchPage() {
   useEffect(() => {
     let cancelled = false;
     const trimmed = query.trim();
-    if (trimmed.length < 2) {
-      setResults([]); setLoading(false); setError('');
-      return;
-    }
-    setLoading(true); setError('');
+    if (trimmed.length < 2) return;
     const timer = window.setTimeout(() => {
+      setLoading(true);
+      setError('');
       void (async () => {
         try {
           const token = await getToken();
@@ -58,10 +56,10 @@ export default function WorkspaceSearchPage() {
       <h1>Search</h1>
       <p className="workspace-section-page__description">Find projects, tasks, documents, databases, records, Knowledge, and calendar events in this workspace.</p>
 
-        <label className="workspace-search-input"><span aria-hidden="true">⌕</span><span className="visually-hidden">Search workspace content</span><input autoFocus type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your workspace…" /></label>
+        <label className="workspace-search-input"><span aria-hidden="true">⌕</span><span className="visually-hidden">Search workspace content</span><input autoFocus type="search" value={query} onChange={(event) => { const next = event.target.value; setQuery(next); setResults([]); setError(''); setLoading(next.trim().length >= 2); }} placeholder="Search your workspace…" /></label>
       {error && <p className="productivity-error" role="alert">{error}</p>}
 
-      <section className="workspace-search-results" aria-live="polite" aria-busy={loading}>
+      <section className="workspace-search-results" aria-live="polite" aria-busy={query.trim().length >= 2 && loading}>
         <div className="workspace-search-filters" role="group" aria-label="Filter search results">{filters.map((item) => <button key={item} type="button" aria-pressed={filter === item} className={filter === item ? 'workspace-search-filter--active' : ''} onClick={() => setFilter(item)}>{({ All: 'All', Project: 'Projects', Task: 'Tasks', Document: 'Documents', Database: 'Databases', Record: 'Records', Knowledge: 'Knowledge', Event: 'Events' } as Record<string, string>)[item]}</button>)}</div>
         {query.trim().length < 2 ? <p className="productivity-message">Type at least two characters to search saved workspace content.</p> : loading ? <p className="productivity-message">Searching your workspace…</p> : visibleResults.length === 0 ? <p className="productivity-message">No matching {filter === 'All' ? 'items' : `${filter.toLowerCase()}s`} found for “{query.trim()}”.</p> : (
           <div className="workspace-search-list">{visibleResults.map((item) => <Link className="workspace-search-result" key={`${item.type}-${item.id}`} href={item.href}>

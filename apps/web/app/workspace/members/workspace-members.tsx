@@ -49,7 +49,20 @@ export function WorkspaceMembers() {
     finally { setLoading(false); }
   }, [request, workspace.id]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    let live = true;
+    async function load() {
+      try {
+        const next = await request(`/workspaces/${workspace.id}/members/management`) as WorkspaceData;
+        if (!live) return;
+        setData(next);
+        setRoleDrafts(Object.fromEntries(next.members.map((member) => [member.userId, member.role])));
+      } catch (reason) { if (live) setError(reason instanceof Error ? reason.message : 'Could not load workspace people.'); }
+      finally { if (live) setLoading(false); }
+    }
+    void load();
+    return () => { live = false; };
+  }, [request, workspace.id]);
 
   async function createInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(''); setInviteLink('');
