@@ -2,7 +2,7 @@
 
 Task followers now receive targeted Inbox updates when someone changes the task, changes its prerequisites, or applies a batch update that includes it. Comments, mentions, and checklist updates continue to notify task followers and mentioned members. The update is stored once in shared workspace activity; recipient receipts control which members see it in Inbox.
 
-Task creation remains a workspace-wide activity item. Editing a task sends an Inbox notification only to its followers, and the actor does not receive their own update. Batch changes send one notification to the distinct followers of all selected tasks.
+Task creation without an assignee remains a workspace-wide Inbox activity. Editing a task sends an Inbox notification to its followers, and the actor does not receive their own update. Batch changes send one notification to the distinct followers of all selected tasks. Section 1.53 adds assignment-specific notifications for previous and new assignees.
 
 ## Database migration
 

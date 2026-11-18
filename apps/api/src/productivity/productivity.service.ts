@@ -287,12 +287,18 @@ export class ProductivityService {
     const matching = await this.prisma.task.count({ where: { workspaceId, id: { in: taskIds } } });
     if (matching !== taskIds.length) throw new NotFoundException('One or more selected tasks are not in this workspace.');
     await this.prisma.$transaction(async (transaction) => {
+      const previousAssignees = 'assigneeId' in data
+        ? await transaction.task.findMany({ where: { workspaceId, id: { in: taskIds } }, select: { id: true, assigneeId: true } })
+        : [];
       const result = await transaction.task.updateMany({ where: { workspaceId, id: { in: taskIds } }, data });
       if (result.count !== taskIds.length) throw new NotFoundException('One or more selected tasks are no longer available.');
-      const activity = await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'TASK', entityId: taskIds[0], message: `bulk updated ${taskIds.length} tasks`, recipientScoped: true } });
-      const followers = await transaction.taskFollower.findMany({ where: { workspaceId, taskId: { in: taskIds }, userId: { not: actorId } }, select: { userId: true } });
-      const recipientIds = [...new Set(followers.map(({ userId }) => userId))];
-      if (recipientIds.length) await transaction.activityReceipt.createMany({ data: recipientIds.map((userId) => ({ activityId: activity.id, userId, isNotificationTarget: true })), skipDuplicates: true });
+      const assignmentRecipients = 'assigneeId' in data
+        ? previousAssignees.filter((task) => task.assigneeId !== data.assigneeId).flatMap((task) => [task.assigneeId, data.assigneeId]).filter((id): id is string => Boolean(id))
+        : [];
+      await this.createActivity(transaction, {
+        workspaceId, actorId, entityType: 'TASK', entityId: taskIds[0],
+        message: `bulk updated ${taskIds.length} tasks`, recipientScoped: true, additionalRecipientIds: assignmentRecipients,
+      });
     });
     return { updated: taskIds.length };
   }
@@ -354,14 +360,14 @@ export class ProductivityService {
       },
       include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
     });
-    await this.recordActivity(workspaceId, userId, 'TASK', task.id, `created task “${task.title}”`);
+    await this.recordActivity(workspaceId, userId, 'TASK', task.id, `created task “${task.title}”`, Boolean(task.assigneeId), task.assigneeId ? [task.assigneeId] : []);
     return task;
   }
 
   async updateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
-    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true } });
+    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true, assigneeId: true } });
     if (!previousTask) throw new NotFoundException('Task not found in this workspace.');
     const data: {
       title?: string;
@@ -410,7 +416,11 @@ export class ProductivityService {
       where: { id: taskId, workspaceId },
       include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
     });
-    await this.recordActivity(workspaceId, actorId, 'TASK', task.id, `updated task “${task.title}”`, true);
+    const assigneeChanged = 'assigneeId' in data && previousTask.assigneeId !== (task.assignee?.id ?? null);
+    const assignmentRecipients = assigneeChanged
+      ? [previousTask.assigneeId, task.assignee?.id].filter((id): id is string => Boolean(id))
+      : [];
+    await this.recordActivity(workspaceId, actorId, 'TASK', task.id, `updated task “${task.title}”`, true, assignmentRecipients);
     return task;
   }
 
@@ -724,15 +734,18 @@ export class ProductivityService {
     return { id: eventId, deleted: true };
   }
 
-  private recordActivity(workspaceId: string, actorId: string, entityType: string, entityId: string, message: string, recipientScoped = false) {
-    return this.prisma.$transaction(async (transaction) => {
-      const activity = await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType, entityId, message, recipientScoped } });
-      if (recipientScoped && entityType === 'TASK') {
-        const followers = await transaction.taskFollower.findMany({ where: { workspaceId, taskId: entityId, userId: { not: actorId } }, select: { userId: true } });
-        if (followers.length) await transaction.activityReceipt.createMany({ data: followers.map(({ userId }) => ({ activityId: activity.id, userId, isNotificationTarget: true })), skipDuplicates: true });
-      }
-      return activity;
-    });
+  private recordActivity(workspaceId: string, actorId: string, entityType: string, entityId: string, message: string, recipientScoped = false, additionalRecipientIds: string[] = []) {
+    return this.prisma.$transaction((transaction) => this.createActivity(transaction, { workspaceId, actorId, entityType, entityId, message, recipientScoped, additionalRecipientIds }));
+  }
+
+  private async createActivity(transaction: Prisma.TransactionClient, input: { workspaceId: string; actorId: string; entityType: string; entityId: string; message: string; recipientScoped: boolean; additionalRecipientIds: string[] }) {
+    const activity = await transaction.workspaceActivity.create({ data: { workspaceId: input.workspaceId, actorId: input.actorId, entityType: input.entityType, entityId: input.entityId, message: input.message, recipientScoped: input.recipientScoped } });
+    const followerIds = input.recipientScoped && input.entityType === 'TASK'
+      ? (await transaction.taskFollower.findMany({ where: { workspaceId: input.workspaceId, taskId: input.entityId }, select: { userId: true } })).map(({ userId }) => userId)
+      : [];
+    const recipientIds = [...new Set([...followerIds, ...input.additionalRecipientIds])].filter((userId) => userId !== input.actorId);
+    if (recipientIds.length) await transaction.activityReceipt.createMany({ data: recipientIds.map((userId) => ({ activityId: activity.id, userId, isNotificationTarget: true })), skipDuplicates: true });
+    return activity;
   }
 
   private async requireMembership(identity: AuthenticatedIdentity, workspaceId: string, write = false) {
