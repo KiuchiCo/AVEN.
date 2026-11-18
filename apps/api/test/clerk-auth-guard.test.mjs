@@ -25,12 +25,13 @@ function contextFor(token) {
 }
 
 async function withClerkConfig(run) {
-  const keys = ['CLERK_JWT_KEY', 'CLERK_SECRET_KEY', 'CLERK_ISSUER', 'WEB_ORIGIN'];
+  const keys = ['CLERK_JWT_KEY', 'CLERK_SECRET_KEY', 'CLERK_ISSUER', 'WEB_ORIGIN', 'DATABASE_URL'];
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   process.env.CLERK_JWT_KEY = jwtKey;
   delete process.env.CLERK_SECRET_KEY;
   process.env.CLERK_ISSUER = issuer;
   process.env.WEB_ORIGIN = party;
+  process.env.DATABASE_URL = 'postgresql://aven:aven@localhost:5432/aven?schema=public';
   try { await run(); }
   finally {
     for (const key of keys) {
@@ -83,6 +84,8 @@ test('Clerk guard reports missing server verification configuration', async () =
 });
 
 test('Clerk guard rejects requests without a bearer token', async () => {
-  const { context } = contextFor(null);
-  await assert.rejects(new ClerkAuthGuard().canActivate(context), UnauthorizedException);
+  await withClerkConfig(async () => {
+    const { context } = contextFor(null);
+    await assert.rejects(new ClerkAuthGuard().canActivate(context), UnauthorizedException);
+  });
 });

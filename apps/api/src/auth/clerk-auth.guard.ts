@@ -2,9 +2,12 @@ import { verifyToken } from '@clerk/backend';
 import { CanActivate, ExecutionContext, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
 import type { AuthenticatedIdentity } from './auth.types.js';
+import { readApiEnvironment } from '../config/api-environment.js';
 
 @Injectable()
 export class ClerkAuthGuard implements CanActivate {
+  private readonly environment = readApiEnvironment();
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const token = request.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
@@ -13,13 +16,7 @@ export class ClerkAuthGuard implements CanActivate {
       throw new UnauthorizedException('A valid sign-in session is required.');
     }
 
-    const jwtKey = process.env.CLERK_JWT_KEY?.replaceAll('\\n', '\n');
-    const secretKey = process.env.CLERK_SECRET_KEY;
-    const issuer = process.env.CLERK_ISSUER;
-    const authorizedParties = (process.env.WEB_ORIGIN ?? 'http://localhost:3000')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean);
+    const { clerkJwtKey: jwtKey, clerkSecretKey: secretKey, clerkIssuer: issuer, webOrigins: authorizedParties } = this.environment;
 
     if ((!jwtKey && !secretKey) || !issuer || authorizedParties.length === 0) {
       throw new ServiceUnavailableException('Clerk API verification is not configured.');

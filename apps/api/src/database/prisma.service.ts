@@ -1,16 +1,13 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
+import { readApiEnvironment } from '../config/api-environment.js';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor() {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error('DATABASE_URL must be configured before starting the API.');
-    }
-
-    super({ adapter: new PrismaPg({ connectionString }) });
+    const { databaseUrl } = readApiEnvironment();
+    super({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
   }
 
   async onModuleDestroy() {

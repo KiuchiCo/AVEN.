@@ -2,13 +2,14 @@ import { createClerkClient } from '@clerk/backend';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import type { AuthenticatedIdentity } from './auth.types.js';
+import { readApiEnvironment } from '../config/api-environment.js';
 
 @Injectable()
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
   async bootstrapWorkspace(identity: AuthenticatedIdentity, preferredWorkspaceId?: unknown) {
-    const secretKey = process.env.CLERK_SECRET_KEY;
+    const { clerkSecretKey: secretKey } = readApiEnvironment();
     if (!secretKey) {
       throw new ServiceUnavailableException('Clerk profile access is not configured.');
     }
