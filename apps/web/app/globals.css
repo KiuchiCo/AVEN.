@@ -1539,6 +1539,10 @@ body {
 .task-followers-panel__people { display: flex; padding: 6px 0 12px; }
 .task-followers-panel__people span { margin-right: -5px; border: 2px solid #fff; }
 .task-activity-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.task-activity-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.task-activity-filters button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid #e8dfd4; border-radius: 999px; background: #fffdfa; color: #6f6559; font: inherit; font-size: 10px; cursor: pointer; }
+.task-activity-filters button[aria-pressed="true"] { border-color: #b59a78; background: #f3eadf; color: #51412e; }
+.task-activity-filters button span { color: #9a8b79; }
 .task-activity-list li { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 8px; padding: 12px 0; border-top: 1px solid #eee8e1; }
 .task-activity-list li > span { color: #9b825f; }
 .task-activity-list p { margin: 0 0 4px; color: #484139; font-size: 12px; }
