@@ -1498,9 +1498,15 @@ body {
 .task-comment-composer { display: grid; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #eee8e1; }
 .task-comment-composer > label { color: #433d34; font-size: 12px; font-weight: 600; }
 .task-comment-composer textarea, .task-checklist-composer input { width: 100%; padding: 10px 12px; border: 1px solid #e3dbd1; border-radius: 9px; background: #fffdfa; color: #322d27; font: inherit; font-size: 12px; resize: vertical; }
-.task-collab__member-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; color: #766d63; font-size: 10px; }
-.task-collab__member-picker select { min-width: 130px; max-width: 220px; padding: 5px 8px; border: 1px solid #e4dcd2; border-radius: 7px; background: #fffdfa; }
-.task-collab__member-picker small { flex-basis: 100%; }
+.task-collab__member-picker { display: grid; gap: 7px; min-width: 0; margin: 0; padding: 8px 10px; border: 1px solid #e4dcd2; border-radius: 9px; color: #766d63; font-size: 10px; }
+.task-collab__member-picker legend { padding: 0 4px; }
+.task-collab__member-picker legend span { margin-left: 5px; color: #9a8a77; }
+.task-collab__member-picker-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 112px; overflow: auto; }
+.task-collab__member-picker-list label { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid #eee6dc; border-radius: 999px; background: #fffdfa; color: #51483e; cursor: pointer; }
+.task-collab__member-picker-list label:has(input:checked) { border-color: #b69a78; background: #f4ece2; }
+.task-collab__member-picker-list input { accent-color: #8d704d; }
+.task-collab__member-picker-list input:disabled { cursor: not-allowed; }
+.task-collab__member-picker small { color: #91877b; }
 .task-comment-composer > div { display: flex; justify-content: space-between; align-items: center; color: #958b7e; font-size: 10px; }
 .task-comment-composer button, .task-checklist-composer button, .task-followers-panel header button { padding: 8px 12px; border: 1px solid #8d704d; border-radius: 8px; background: #8d704d; color: white; font: inherit; font-size: 11px; cursor: pointer; }
 .task-comment-composer button:disabled, .task-checklist-composer button:disabled, .task-followers-panel button:disabled { opacity: .5; cursor: not-allowed; }

@@ -1,5 +1,11 @@
 import type { WorkspaceMember } from '../types';
 
 export function MemberPicker({ members, selected, onChange, disabled = false }: { members: WorkspaceMember[]; selected: string[]; onChange: (ids: string[]) => void; disabled?: boolean }) {
-  return <label className="task-collab__member-picker">Mention people<select multiple value={selected} disabled={disabled} onChange={(event) => onChange(Array.from(event.currentTarget.selectedOptions, (option) => option.value))}>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select><small>Use Command-click or Control-click to select more than one.</small></label>;
+  function toggle(userId: string, checked: boolean) {
+    if (checked) {
+      if (selected.length >= 20) return;
+      onChange([...selected, userId]);
+    } else onChange(selected.filter((id) => id !== userId));
+  }
+  return <fieldset className="task-collab__member-picker" disabled={disabled}><legend>Mention people <span>{selected.length}/20</span></legend>{members.length ? <div className="task-collab__member-picker-list">{members.map((member) => <label key={member.userId}><input type="checkbox" checked={selected.includes(member.userId)} disabled={!selected.includes(member.userId) && selected.length >= 20} onChange={(event) => toggle(member.userId, event.target.checked)} /><span>{member.displayName}</span></label>)}</div> : <small>No other workspace members to mention.</small>}<small>Selected teammates receive a notification when you post.</small></fieldset>;
 }
