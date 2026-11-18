@@ -9,7 +9,7 @@ export type TemplateTaskWorksheet = {
   review: string;
   handoff: string;
 };
-export type TemplateTaskReadinessLevel = { score: number; guidance: string };
+export type TemplateTaskReadinessLevel = { score: number; guidance: string; nextAction: string };
 export type TemplateTaskReadinessDimension = { dimension: string; levels: TemplateTaskReadinessLevel[] };
 export type TemplateTaskCoaching = {
   taskTitle: string;

@@ -1797,6 +1797,7 @@ body {
 .project-template-readiness__scale button { width: 25px; height: 25px; border: 1px solid #ded3c5; border-radius: 50%; background: #fffdfa; color: #554a3c; font: 600 9px Inter,sans-serif; cursor: pointer; }
 .project-template-readiness__scale button[aria-pressed="true"] { border-color: #92704d; background: #92704d; color: white; }
 .project-template-readiness fieldset > p { margin: 0; color: #716b62; font-size: 8px; line-height: 1.5; }
+.project-template-readiness fieldset > .project-template-readiness__action { padding: 6px 7px; border-left: 2px solid #ad8a61; background: #f9f5ee; color: #554a3c; }
 .project-template-readiness > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #716b62; font-size: 8px; }
 .project-template-readiness > footer button { border: 0; background: transparent; color: #746047; font: 600 8px Inter,sans-serif; cursor: pointer; }
 @media (max-width: 720px) { .project-template-preset-picker__filters,.project-template-preset-picker__select { grid-template-columns: 1fr; } .project-template-comparison__table th,.project-template-comparison__table td { min-width: 130px; padding: 7px; } }

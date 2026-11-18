@@ -59,7 +59,7 @@ export function TaskReadinessReview({ presetId, taskIndex, dimensions }: { prese
               <div role="group" aria-label={`${dimension} readiness level`} className="project-template-readiness__scale">
                 {levels.map(({ score }) => <button key={score} type="button" aria-pressed={scores[dimension] === score} aria-label={`${dimension}: level ${score} of 5`} onClick={() => choose(dimension, score)}>{score}</button>)}
               </div>
-              {selected ? <p><strong>Level {selected.score}.</strong> {selected.guidance}</p> : <p>Select a level to see the task-specific review guidance.</p>}
+              {selected ? <><p><strong>Level {selected.score}.</strong> {selected.guidance}</p><p className="project-template-readiness__action"><strong>Suggested next action:</strong> {selected.nextAction}</p></> : <p>Select a level to see the task-specific review guidance.</p>}
             </fieldset>
           );
         })}
