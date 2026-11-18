@@ -17,5 +17,6 @@ export function useTaskChecklist(taskId: string) {
   const toggle = useCallback((item: ChecklistItem) => run(() => request(`/checklist/${item.id}`, { method: 'PATCH', body: JSON.stringify({ completed: !item.completedAt }) })), [request, run]);
   const rename = useCallback((itemId: string, title: string) => run(() => request(`/checklist/${itemId}`, { method: 'PATCH', body: JSON.stringify({ title }) })), [request, run]);
   const remove = useCallback((itemId: string) => run(() => request(`/checklist/${itemId}`, { method: 'DELETE' })), [request, run]);
-  return { items, loading, busy, error, add, toggle, rename, remove };
+  const move = useCallback((itemId: string, direction: 'UP' | 'DOWN') => run(() => request(`/checklist/${itemId}/move`, { method: 'POST', body: JSON.stringify({ direction }) })), [request, run]);
+  return { items, loading, busy, error, add, toggle, rename, remove, move };
 }

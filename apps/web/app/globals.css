@@ -1511,6 +1511,7 @@ body {
 .task-checklist-row.is-complete > label span { color: #928a80; text-decoration: line-through; }
 .task-checklist-row > small { grid-column: 1; color: #92897e; font-size: 10px; }
 .task-checklist-row > div { display: flex; gap: 5px; grid-column: 2; grid-row: 1 / span 2; align-items: center; }
+.task-checklist-row > div button:disabled { cursor: not-allowed; opacity: 0.4; }
 .task-checklist-composer { display: flex; gap: 7px; margin-top: 14px; }
 .task-followers-panel > header button { background: #f6f0e7; color: #624d34; }
 .task-followers-panel p, .task-followers-panel > small, .task-detail__aside p { color: #81786e; font-size: 11px; line-height: 1.55; }
