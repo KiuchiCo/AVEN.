@@ -250,6 +250,21 @@ export function DatabasesWorkspace() {
     finally { setBusy(false); }
   }
 
+  async function updateDatabase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    const form = new FormData(event.currentTarget);
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await request(`/workspaces/${workspace.id}/databases/${selected.id}`, {
+        method: 'PATCH', body: JSON.stringify({ name: form.get('databaseName'), description: form.get('databaseDescription') }),
+      });
+      await reload();
+      setNotice('Database details saved.');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the database.'); }
+    finally { setBusy(false); }
+  }
+
   async function createRecord(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected) return;
@@ -430,6 +445,11 @@ export function DatabasesWorkspace() {
             <div className="database-empty"><span aria-hidden="true">▤</span><h2>Your first table starts here</h2><p>Create a workspace database, then add records as your work takes shape.</p></div>
           ) : <>
             <div className="database-table-heading"><div><p className="workspace-eyebrow">{viewLayout} VIEW</p><h2>{selected.name}</h2><p>{selected.description || 'A structured view of your workspace information.'}</p></div><span>{selected.records.length} records</span></div>
+            <form className="database-add-property" key={`${selected.id}:${selected.name}:${selected.description ?? ''}`} onSubmit={updateDatabase} aria-label="Edit database details">
+              <label>Database name<input name="databaseName" required maxLength={160} defaultValue={selected.name} /></label>
+              <label>Description<input name="databaseDescription" maxLength={500} defaultValue={selected.description ?? ''} /></label>
+              <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save details'}</button>
+            </form>
             <form className="database-add-property" onSubmit={createProperty}>
               <label>New property<input name="propertyName" required maxLength={80} placeholder="Owner, budget, due date…" /></label>
               <label>Type<select name="propertyType" value={newPropertyType} onChange={(event) => setNewPropertyType(event.target.value)}>{propertyTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>

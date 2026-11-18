@@ -33,6 +33,20 @@ export class DatabasesService {
     return this.prisma.workspaceDatabase.create({ data: { workspaceId, name, description } });
   }
 
+  async update(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const data: { name?: string; description?: string | null } = {};
+    if ('name' in body) data.name = textField(body.name, 'Database name', 160);
+    if ('description' in body) data.description = body.description == null || body.description === ''
+      ? null
+      : textField(body.description, 'Database description', 500);
+    if (!Object.keys(data).length) throw new BadRequestException('Provide a database name or description to update.');
+    const result = await this.prisma.workspaceDatabase.updateMany({ where: { id: databaseId, workspaceId }, data });
+    if (result.count !== 1) throw new NotFoundException('Database not found in this workspace.');
+    return this.prisma.workspaceDatabase.findFirstOrThrow({ where: { id: databaseId, workspaceId } });
+  }
+
   async createRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
     await this.requireMembership(identity, workspaceId, true);
     const database = await this.prisma.workspaceDatabase.findFirst({ where: { id: databaseId, workspaceId }, select: { id: true, properties: true } });

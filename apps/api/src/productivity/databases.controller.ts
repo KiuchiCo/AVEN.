@@ -23,6 +23,16 @@ export class DatabasesController {
     return this.databases.create(identity, workspaceId, body);
   }
 
+  @Patch(':databaseId')
+  update(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Body() body: unknown,
+  ) {
+    return this.databases.update(identity, workspaceId, databaseId, body);
+  }
+
   @Post(':databaseId/records')
   createRecord(
     @CurrentIdentity() identity: AuthenticatedIdentity,
