@@ -33,6 +33,16 @@ export class DatabasesController {
     return this.databases.createRecord(identity, workspaceId, databaseId, body);
   }
 
+  @Post(':databaseId/records/:recordId/duplicate')
+  duplicateRecord(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Param('recordId', new ParseUUIDPipe()) recordId: string,
+  ) {
+    return this.databases.duplicateRecord(identity, workspaceId, databaseId, recordId);
+  }
+
   @Post(':databaseId/records/import')
   importRecords(
     @CurrentIdentity() identity: AuthenticatedIdentity,

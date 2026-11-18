@@ -191,6 +191,23 @@ export class DatabasesService {
     return { id: recordId, deleted: true };
   }
 
+  async duplicateRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, recordId: string) {
+    await this.requireMembership(identity, workspaceId, true);
+    const [database, source] = await Promise.all([
+      this.prisma.workspaceDatabase.findFirst({ where: { id: databaseId, workspaceId }, select: { id: true, properties: true } }),
+      this.prisma.databaseRecord.findFirst({
+        where: { id: recordId, databaseId, workspaceId },
+        include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } },
+      }),
+    ]);
+    if (!database) throw new NotFoundException('Database not found in this workspace.');
+    if (!source) throw new NotFoundException('Record not found in this database.');
+    const values = this.withRelationValues(source, database.properties).values as Record<string, unknown>;
+    const nameProperty = propertyList(database.properties).find((property) => property.id === 'name');
+    if (nameProperty && typeof values.name === 'string') values.name = `${values.name} (copy)`.slice(0, 200);
+    return this.createRecord(identity, workspaceId, databaseId, { values });
+  }
+
   private async extractRelationLinks(workspaceId: string, propertiesValue: unknown, values: Record<string, string | number | boolean | null | string[]>) {
     const properties = propertyList(propertiesValue);
     const links: Array<{ propertyId: string; targetRecordId: string }> = [];
