@@ -20,7 +20,7 @@ export function TemplateTaskCoaching({ presetId, taskIndex }: { presetId: string
     <details className="project-template-task-coaching" onToggle={loadChecklist}>
       <summary>Task execution checklist <span>8 reviewable steps</span></summary>
       {loading && <p role="status">Loading checklist…</p>}
-      {coaching && <><ol>{coaching.steps.map((step) => <li key={step.title}><strong>{step.title}</strong><p>{step.guidance}</p></li>)}</ol><TaskWorksheet presetId={presetId} taskIndex={taskIndex} prompts={coaching.worksheet} /></>}
+      {coaching && <><ol>{coaching.steps.map((step) => <li key={step.title}><strong>{step.title}</strong><p>{step.guidance}</p></li>)}</ol><TaskWorksheet presetId={presetId} taskIndex={taskIndex} prompts={coaching.worksheet} readinessRubric={coaching.readinessRubric} /></>}
     </details>
   );
 }

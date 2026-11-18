@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { TemplateTaskWorksheet as WorksheetPrompts } from '../presets/task-coaching/types';
+import type { TemplateTaskReadinessDimension, TemplateTaskWorksheet as WorksheetPrompts } from '../presets/task-coaching/types';
+import { TaskReadinessReview } from './TaskReadinessReview';
 
 const fields: { key: keyof WorksheetPrompts; title: string; placeholder: string }[] = [
   { key: 'outcome', title: 'Outcome', placeholder: 'Describe the result and how the team will recognize it.' },
@@ -20,7 +21,7 @@ function storageKey(presetId: string, taskIndex: number) {
   return `aven:template-workpad:${presetId}:${taskIndex}`;
 }
 
-export function TaskWorksheet({ presetId, taskIndex, prompts }: { presetId: string; taskIndex: number; prompts: WorksheetPrompts }) {
+export function TaskWorksheet({ presetId, taskIndex, prompts, readinessRubric }: { presetId: string; taskIndex: number; prompts: WorksheetPrompts; readinessRubric: TemplateTaskReadinessDimension[] }) {
   const [values, setValues] = useState<WorksheetValues>(() => Object.fromEntries(fields.map(({ key }) => [key, ''])) as WorksheetValues);
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState('');
@@ -89,6 +90,7 @@ export function TaskWorksheet({ presetId, taskIndex, prompts }: { presetId: stri
           </label>
         ))}
       </div>
+      <TaskReadinessReview presetId={presetId} taskIndex={taskIndex} dimensions={readinessRubric} />
       <p className="project-template-task-worksheet__status" role="status" aria-live="polite">{message || (saved ? 'Draft saved in this browser.' : 'Changes save locally as you type.')}</p>
     </details>
   );
