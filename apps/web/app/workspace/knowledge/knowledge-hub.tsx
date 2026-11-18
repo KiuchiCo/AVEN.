@@ -41,16 +41,20 @@ export function KnowledgeHub() {
     return response.json();
   }, [getToken]);
 
-  const reload = useCallback(async (page = 1, append = false) => {
-    const sequence = ++loadSequence.current;
-    if (append) setLoadingMore(true); else setLoading(true);
-    setError('');
+  const fetchPage = useCallback(async (page = 1) => {
     const params = new URLSearchParams({ archived: String(showArchived), page: String(page) });
     if (debouncedSearch.trim().length >= 2) params.set('q', debouncedSearch.trim());
     if (projectFilter) params.set('projectId', projectFilter);
     if (tagFilter.trim()) params.set('tag', tagFilter.trim());
+    return await request(`/workspaces/${workspace.id}/knowledge?${params.toString()}`) as { items: KnowledgeItem[]; total: number; page: number; hasMore: boolean };
+  }, [debouncedSearch, projectFilter, request, showArchived, tagFilter, workspace.id]);
+
+  const reload = useCallback(async (page = 1, append = false) => {
+    const sequence = ++loadSequence.current;
+    if (append) setLoadingMore(true); else setLoading(true);
+    setError('');
     try {
-      const result = await request(`/workspaces/${workspace.id}/knowledge?${params.toString()}`) as { items: KnowledgeItem[]; total: number; page: number; hasMore: boolean };
+      const result = await fetchPage(page);
       if (sequence === loadSequence.current) {
         setItems((current) => append ? [...current, ...result.items] : result.items);
         setHasMore(result.hasMore); setTotal(result.total);
@@ -58,9 +62,20 @@ export function KnowledgeHub() {
     }
     catch (reason) { if (sequence === loadSequence.current) setError(reason instanceof Error ? reason.message : 'Could not load Knowledge.'); }
     finally { if (sequence === loadSequence.current) { setLoading(false); setLoadingMore(false); } }
-  }, [debouncedSearch, projectFilter, request, showArchived, tagFilter, workspace.id]);
+  }, [fetchPage]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    const sequence = ++loadSequence.current;
+    async function load() {
+      try {
+        const result = await fetchPage();
+        if (sequence === loadSequence.current) { setItems(result.items); setHasMore(result.hasMore); setTotal(result.total); }
+      } catch (reason) { if (sequence === loadSequence.current) setError(reason instanceof Error ? reason.message : 'Could not load Knowledge.'); }
+      finally { if (sequence === loadSequence.current) { setLoading(false); setLoadingMore(false); } }
+    }
+    void load();
+    return () => { if (sequence === loadSequence.current) loadSequence.current += 1; };
+  }, [fetchPage]);
   useEffect(() => { const timer = window.setTimeout(() => setDebouncedSearch(search), 250); return () => window.clearTimeout(timer); }, [search]);
   useEffect(() => {
     void Promise.all([

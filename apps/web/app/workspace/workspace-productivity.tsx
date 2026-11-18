@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabelFilter, TaskLabels } from './task-labels';
@@ -84,12 +84,14 @@ function useWorkspaceProductivity() {
 export function MyTasksWorkspace() {
   const { tasks, projects, loading, savingId, error, updateStatus } = useWorkspaceProductivity();
   const [filter, setFilter] = useState('OPEN');
-  const [labelFilter, setLabelFilter] = useState('');
+  const urlLabel = useSyncExternalStore(
+    (notify) => { window.addEventListener('popstate', notify); return () => window.removeEventListener('popstate', notify); },
+    () => new URLSearchParams(window.location.search).get('label')?.trim().toLocaleLowerCase() ?? '',
+    () => '',
+  );
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+  const labelFilter = selectedLabel ?? urlLabel;
   const allLabels = useMemo(() => [...new Set(tasks.flatMap((task) => task.labels))].sort(), [tasks]);
-  useEffect(() => {
-    const initialLabel = new URLSearchParams(window.location.search).get('label')?.trim().toLocaleLowerCase();
-    if (initialLabel) setLabelFilter(initialLabel);
-  }, []);
   const visibleTasks = useMemo(() => {
     const matching = labelFilter ? tasks.filter((task) => task.labels.includes(labelFilter)) : tasks;
     if (filter === 'ALL') return matching;
@@ -105,7 +107,7 @@ export function MyTasksWorkspace() {
       {error && <p className="productivity-error" role="alert">{error}</p>}
       <section className="task-list-panel" aria-labelledby="my-tasks-title">
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{projects.length} PROJECTS · {tasks.length} TASKS</p><h2 id="my-tasks-title">All workspace tasks</h2></div>
-          <div className="task-filter-group"><label className="task-filter">Show<select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="OPEN">Open</option><option value="ALL">All</option><option value="COMPLETED">Completed</option></select></label><TaskLabelFilter labels={allLabels} value={labelFilter} onChange={setLabelFilter} /></div>
+          <div className="task-filter-group"><label className="task-filter">Show<select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="OPEN">Open</option><option value="ALL">All</option><option value="COMPLETED">Completed</option></select></label><TaskLabelFilter labels={allLabels} value={labelFilter} onChange={setSelectedLabel} /></div>
         </div>
         {loading ? <p className="productivity-message">Loading your tasks…</p> : visibleTasks.length === 0 ? (
           <div className="task-list-empty"><span aria-hidden="true">☑</span><h3>{filter === 'COMPLETED' ? 'No completed tasks yet.' : 'A clear slate.'}</h3><p>{filter === 'COMPLETED' ? 'Completed tasks will be collected here.' : 'Create a task from your projects board and it will appear here.'}</p><Link href="/workspace/projects">Open projects <span aria-hidden="true">→</span></Link></div>
@@ -160,19 +162,21 @@ export function InboxWorkspace() {
     { key: 'ALL_OPEN', label: 'All open', count: openTasks.length },
   ];
 
-  const reloadUpdates = useCallback(async () => {
+  const fetchUpdates = useCallback(async () => {
     const token = await getToken();
     if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
     const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/inbox`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
     if (!response.ok) throw new Error('Could not load workspace updates.');
-    setUpdates(await response.json());
+    return response.json();
   }, [getToken, workspace.id]);
+
+  const reloadUpdates = useCallback(async () => setUpdates(await fetchUpdates()), [fetchUpdates]);
 
   useEffect(() => {
     let cancelled = false;
-    void reloadUpdates().catch((reason) => { if (!cancelled) setUpdatesError(reason instanceof Error ? reason.message : 'Could not load workspace updates.'); });
+    void fetchUpdates().then((rows) => { if (!cancelled) setUpdates(rows); }).catch((reason) => { if (!cancelled) setUpdatesError(reason instanceof Error ? reason.message : 'Could not load workspace updates.'); });
     return () => { cancelled = true; };
-  }, [reloadUpdates]);
+  }, [fetchUpdates]);
 
   async function updateReadState(activityId: string, read: boolean) {
     setUpdatesBusy(true); setUpdatesError('');

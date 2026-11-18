@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { TemplateTaskReadinessDimension } from '../presets/task-coaching/types';
+import { useBrowserStorageValue, writeBrowserStorageValue } from '../browser-storage';
 
 type Scores = Record<string, number>;
 
@@ -10,38 +11,19 @@ function storageKey(presetId: string, taskIndex: number) {
 }
 
 export function TaskReadinessReview({ presetId, taskIndex, dimensions }: { presetId: string; taskIndex: number; dimensions: TemplateTaskReadinessDimension[] }) {
-  const [scores, setScores] = useState<Scores>({});
   const [message, setMessage] = useState('Choose a level for each dimension; scores are a planning aid, not an automatic approval.');
   const key = storageKey(presetId, taskIndex);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored) setScores(JSON.parse(stored) as Scores);
-    } catch {
-      setMessage('Could not load saved ratings from this browser. You can still assess this task.');
-    }
-  }, [key]);
+  const storedScores = useBrowserStorageValue(key);
+  let scores: Scores = {};
+  try { if (storedScores) scores = JSON.parse(storedScores) as Scores; } catch { /* Invalid saved data is ignored and can be replaced by a new rating. */ }
 
   function choose(dimension: string, score: number) {
     const next = { ...scores, [dimension]: score };
-    setScores(next);
-    try {
-      localStorage.setItem(key, JSON.stringify(next));
-      setMessage('Ratings saved in this browser.');
-    } catch {
-      setMessage('Could not save these ratings locally.');
-    }
+    setMessage(writeBrowserStorageValue(key, JSON.stringify(next)) ? 'Ratings saved in this browser.' : 'Could not save these ratings locally.');
   }
 
   function clear() {
-    setScores({});
-    try {
-      localStorage.removeItem(key);
-      setMessage('Ratings cleared.');
-    } catch {
-      setMessage('Ratings cleared from view, but the saved copy could not be removed.');
-    }
+    setMessage(writeBrowserStorageValue(key, null) ? 'Ratings cleared.' : 'Ratings cleared from view, but the saved copy could not be removed.');
   }
 
   const rated = dimensions.filter(({ dimension }) => scores[dimension] >= 1 && scores[dimension] <= 5);

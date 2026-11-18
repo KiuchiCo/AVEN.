@@ -153,7 +153,7 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!selectedProject) { setMilestones([]); return; }
+    if (!selectedProject) return;
     void request(`/workspaces/${workspace.id}/projects/${selectedProject}/milestones`)
       .then((rows: Milestone[]) => { if (!cancelled) setMilestones(rows); })
       .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load project milestones.'); });

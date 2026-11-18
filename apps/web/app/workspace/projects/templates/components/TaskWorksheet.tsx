@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { TemplateTaskReadinessDimension, TemplateTaskWorksheet as WorksheetPrompts } from '../presets/task-coaching/types';
 import { TaskReadinessReview } from './TaskReadinessReview';
+import { useBrowserStorageValue, writeBrowserStorageValue } from '../browser-storage';
 
 const fields: { key: keyof WorksheetPrompts; title: string; placeholder: string }[] = [
   { key: 'outcome', title: 'Outcome', placeholder: 'Describe the result and how the team will recognize it.' },
@@ -22,41 +23,31 @@ function storageKey(presetId: string, taskIndex: number) {
 }
 
 export function TaskWorksheet({ presetId, taskIndex, prompts, readinessRubric }: { presetId: string; taskIndex: number; prompts: WorksheetPrompts; readinessRubric: TemplateTaskReadinessDimension[] }) {
-  const [values, setValues] = useState<WorksheetValues>(() => Object.fromEntries(fields.map(({ key }) => [key, ''])) as WorksheetValues);
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState('');
   const key = storageKey(presetId, taskIndex);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored) setValues((current) => ({ ...current, ...JSON.parse(stored) }));
-    } catch {
-      setMessage('This browser could not load a saved worksheet. You can still edit the fields here.');
-    }
-  }, [key]);
+  const storedValues = useBrowserStorageValue(key);
+  const blankValues = Object.fromEntries(fields.map(({ key: field }) => [field, ''])) as WorksheetValues;
+  let values = blankValues;
+  try { if (storedValues) values = { ...blankValues, ...JSON.parse(storedValues) as Partial<WorksheetValues> }; } catch { /* Invalid saved data is ignored and can be overwritten. */ }
 
   function updateField(field: keyof WorksheetPrompts, value: string) {
     const next = { ...values, [field]: value };
-    setValues(next);
-    try {
-      localStorage.setItem(key, JSON.stringify(next));
+    const success = writeBrowserStorageValue(key, JSON.stringify(next));
+    if (success) {
       setSaved(true);
       setMessage('Draft saved in this browser.');
-    } catch {
+    } else {
       setSaved(false);
       setMessage('Could not save locally. Copy your notes before closing this page.');
     }
   }
 
   function clearWorksheet() {
-    const blank = Object.fromEntries(fields.map(({ key: field }) => [field, ''])) as WorksheetValues;
-    setValues(blank);
-    try {
-      localStorage.removeItem(key);
+    if (writeBrowserStorageValue(key, null)) {
       setSaved(false);
       setMessage('Worksheet cleared.');
-    } catch {
+    } else {
       setMessage('The worksheet is blank, but this browser could not clear its saved copy.');
     }
   }
