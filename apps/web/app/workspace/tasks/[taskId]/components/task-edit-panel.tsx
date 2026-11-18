@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import type { TaskSummary, WorkspaceMember } from '../types';
 
 type Draft = { title: string; description: string; assigneeId: string };
@@ -13,8 +13,6 @@ export function TaskEditPanel({ task, members, busy, onSave }: { task: TaskSumma
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => fromTask(task));
   const [error, setError] = useState('');
-
-  useEffect(() => setDraft(fromTask(task)), [task]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,7 +27,7 @@ export function TaskEditPanel({ task, members, busy, onSave }: { task: TaskSumma
 
   return (
     <section className="task-edit-panel" aria-label="Task details">
-      <div className="task-edit-panel__heading"><div><p className="workspace-eyebrow">TASK DETAILS</p><h2>Title, description, and owner</h2></div><button type="button" aria-expanded={open} onClick={() => { setError(''); setOpen((value) => !value); }}>{open ? 'Close editor' : 'Edit details'}</button></div>
+      <div className="task-edit-panel__heading"><div><p className="workspace-eyebrow">TASK DETAILS</p><h2>Title, description, and owner</h2></div><button type="button" aria-expanded={open} onClick={() => { setError(''); if (!open) setDraft(fromTask(task)); setOpen((value) => !value); }}>{open ? 'Close editor' : 'Edit details'}</button></div>
       {open && <form className="task-edit-panel__form" onSubmit={submit}>
         <label>Task title<input autoFocus required maxLength={200} value={draft.title} onChange={(event) => setDraft((value) => ({ ...value, title: event.target.value }))} /></label>
         <label>Description <span>(optional)</span><textarea rows={4} maxLength={5000} value={draft.description} onChange={(event) => setDraft((value) => ({ ...value, description: event.target.value }))} placeholder="Add context, expected outcome, or acceptance notes." /><small>{draft.description.length} / 5,000</small></label>

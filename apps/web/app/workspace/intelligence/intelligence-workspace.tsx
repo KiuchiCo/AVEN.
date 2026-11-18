@@ -56,7 +56,16 @@ export function IntelligenceWorkspace() {
     finally { setLoading(false); }
   }, [request, workspace.id]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    let live = true;
+    async function load() {
+      try { const next = await request(`/workspaces/${workspace.id}/intelligence/briefing`) as Briefing; if (live) setBriefing(next); }
+      catch (reason) { if (live) setError(reason instanceof Error ? reason.message : 'Could not load your briefing.'); }
+      finally { if (live) setLoading(false); }
+    }
+    void load();
+    return () => { live = false; };
+  }, [request, workspace.id]);
 
   async function ask(event?: FormEvent<HTMLFormElement>, suggested?: string) {
     event?.preventDefault();

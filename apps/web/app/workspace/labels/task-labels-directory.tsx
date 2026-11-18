@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 
 type LabelCount = { label: string; taskCount: number };
@@ -14,14 +14,22 @@ export function TaskLabelsDirectory() {
   const [labels, setLabels] = useState<LabelCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const reload = useCallback(async () => {
-    const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
-    const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/labels`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new Error('Could not load task labels.');
-    setLabels(await response.json() as LabelCount[]);
+  useEffect(() => {
+    let live = true;
+    async function load() {
+      try {
+        const token = await getToken();
+        if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+        const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/labels`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) throw new Error('Could not load task labels.');
+        const next = await response.json() as LabelCount[];
+        if (live) setLabels(next);
+      } catch (reason) { if (live) setError(reason instanceof Error ? reason.message : 'Could not load task labels.'); }
+      finally { if (live) setLoading(false); }
+    }
+    void load();
+    return () => { live = false; };
   }, [getToken, workspace.id]);
-  useEffect(() => { void reload().catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load task labels.')).finally(() => setLoading(false)); }, [reload]);
 
   return <div className="workspace-section-page task-label-directory">
     <p className="workspace-eyebrow">YOUR WORKSPACE · ORGANISE</p><h1>Task Labels</h1>

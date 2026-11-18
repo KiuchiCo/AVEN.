@@ -3,7 +3,7 @@
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWorkspaceSession } from '../../workspace-shell';
 import { TaskDetailError } from './components/task-detail-error';
 import { TaskDetailLoading } from './components/task-detail-loading';
@@ -15,13 +15,22 @@ const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>(); const router = useRouter(); const { getToken } = useAuth(); const { workspace, user } = useWorkspaceSession();
   const { members } = useTaskMembers(); const { task, loading, error, reload } = useTaskDetail(taskId); const [errorMessage, setErrorMessage] = useState(''); const [busy, setBusy] = useState(false); const [projectTasks, setProjectTasks] = useState<{ id: string; title: string; status: string; project: { id: string; name: string } | null }[]>([]);
-  const loadProjectTasks = useCallback(async () => {
-    const token = await getToken(); if (!token || !apiBase) return;
-    const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new Error('Could not load project tasks for dependencies.');
-    setProjectTasks(await response.json());
-  }, [getToken, workspace.id]);
-  useEffect(() => { if (task?.project) void loadProjectTasks().catch((reason) => setErrorMessage(reason instanceof Error ? reason.message : 'Could not load project tasks.')); }, [loadProjectTasks, task?.id, task?.project]);
+  useEffect(() => {
+    if (!task?.project) return;
+    let live = true;
+    async function loadProjectTasks() {
+      try {
+        const token = await getToken();
+        if (!token || !apiBase) return;
+        const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) throw new Error('Could not load project tasks for dependencies.');
+        const rows = await response.json();
+        if (live) setProjectTasks(rows);
+      } catch (reason) { if (live) setErrorMessage(reason instanceof Error ? reason.message : 'Could not load project tasks.'); }
+    }
+    void loadProjectTasks();
+    return () => { live = false; };
+  }, [getToken, task?.id, task?.project, workspace.id]);
   async function updateTask(fields: Record<string, string | null>) { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(fields) }); if (!response.ok) throw new Error('Could not update this task.'); await reload(); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : 'Could not update this task.'); } finally { setBusy(false); } }
   async function duplicateTask() { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}/duplicate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => null) as { id?: string; message?: string } | null; if (!response.ok || !body?.id) throw new Error(body?.message ?? 'Could not duplicate this task.'); router.push(`/workspace/tasks/${body.id}`); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : 'Could not duplicate this task.'); } finally { setBusy(false); } }
   async function deleteTask() { if (!window.confirm('Delete this task? Its checklist, comments, and follower links will also be removed.')) return; const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => null) as { message?: string } | null; if (!response.ok) throw new Error(body?.message ?? 'Could not delete this task.'); router.push(task?.project ? `/workspace/projects/${task.project.id}` : '/workspace/tasks'); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : 'Could not delete this task.'); } finally { setBusy(false); } }

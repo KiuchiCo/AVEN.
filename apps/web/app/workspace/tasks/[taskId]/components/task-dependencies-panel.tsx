@@ -1,24 +1,25 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { TaskDependency, TaskSummary } from '../types';
 
 type TaskOption = { id: string; title: string; status: string; project: { id: string; name: string } | null };
 
 export function TaskDependenciesPanel({ task, tasks, busy, onSave }: { task: TaskSummary; tasks: TaskOption[]; busy: boolean; onSave: (ids: string[]) => void }) {
   const [search, setSearch] = useState('');
-  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
-  useEffect(() => setSelectedIds(null), [task.id, task.dependsOn]);
-  const currentIds = selectedIds ?? task.dependsOn.map((item) => item.id);
+  const [selection, setSelection] = useState<{ baseline: string; ids: string[] } | null>(null);
+  const baselineIds = task.dependsOn.map((item) => item.id);
+  const baseline = [...baselineIds].sort().join('|');
+  const currentIds = selection?.baseline === baseline ? selection.ids : baselineIds;
   const candidates = useMemo(() => tasks
     .filter((item) => item.id !== task.id && item.project?.id === task.project?.id)
     .filter((item) => item.title.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
     .sort((a, b) => a.title.localeCompare(b.title)), [search, task.id, task.project?.id, tasks]);
   const dirty = currentIds.length !== task.dependsOn.length || currentIds.some((id) => !task.dependsOn.some((item) => item.id === id));
-  const toggle = (id: string) => setSelectedIds((ids) => {
-    const current = ids ?? task.dependsOn.map((item) => item.id);
-    return current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+  const toggle = (id: string) => setSelection((currentSelection) => {
+    const ids = currentSelection?.baseline === baseline ? currentSelection.ids : baselineIds;
+    return { baseline, ids: ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id] };
   });
   const taskLink = (dependency: TaskDependency) => <li key={dependency.id}><Link href={`/workspace/tasks/${dependency.id}`}>{dependency.title}</Link><span className={`task-dependency-status task-dependency-status--${dependency.status.toLowerCase()}`}>{dependency.status.replaceAll('_', ' ').toLowerCase()}</span></li>;
 

@@ -42,7 +42,16 @@ export function AutomationsWorkspace() {
     finally { setLoading(false); }
   }, [request, workspace.id]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    let live = true;
+    async function load() {
+      try { const next = await request(`/workspaces/${workspace.id}/automations`) as AutomationData; if (live) setData(next); }
+      catch (reason) { if (live) setError(reason instanceof Error ? reason.message : 'Could not load automations.'); }
+      finally { if (live) setLoading(false); }
+    }
+    void load();
+    return () => { live = false; };
+  }, [request, workspace.id]);
 
   async function createRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

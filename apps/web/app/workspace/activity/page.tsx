@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 
 type ActivityEntry = { id: string; entityType: string; entityId: string; message: string; createdAt: string; actor: { displayName: string } };
@@ -18,19 +18,23 @@ export default function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const reload = useCallback(async () => {
-    const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
-    const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new Error('Could not load workspace activity.');
-    setEntries(await response.json() as ActivityEntry[]);
-  }, [getToken, workspace.id]);
-
   useEffect(() => {
     let cancelled = false;
-    void reload().catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load workspace activity.'); }).finally(() => { if (!cancelled) setLoading(false); });
+    async function load() {
+      try {
+        const token = await getToken();
+        if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+        const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) throw new Error('Could not load workspace activity.');
+        const savedEntries = await response.json() as ActivityEntry[];
+        if (!cancelled) setEntries(savedEntries);
+      } catch (reason) {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load workspace activity.');
+      } finally { if (!cancelled) setLoading(false); }
+    }
+    void load();
     return () => { cancelled = true; };
-  }, [reload]);
+  }, [getToken, workspace.id]);
 
   const visibleEntries = useMemo(() => filter === 'ALL' ? entries : entries.filter((entry) => entry.entityType === filter), [entries, filter]);
 
