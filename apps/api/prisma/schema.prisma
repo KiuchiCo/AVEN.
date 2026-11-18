@@ -260,6 +260,8 @@ model ProjectTemplate {
   description       String?  @db.Text
   taskTemplates     Json     @default("[]") @db.JsonB
   milestoneTemplates Json    @default("[]") @db.JsonB
+  useCount          Int      @default(0)
+  lastUsedAt        DateTime? @db.Timestamptz(3)
   createdAt         DateTime @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime @updatedAt @db.Timestamptz(3)
   workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

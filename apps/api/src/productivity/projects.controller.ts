@@ -24,6 +24,11 @@ export class ProjectsController {
     return this.productivity.applyProjectTemplate(identity, workspaceId, templateId, body);
   }
 
+  @Patch('project-templates/:templateId')
+  updateTemplate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('templateId', new ParseUUIDPipe()) templateId: string, @Body() body: unknown) {
+    return this.productivity.updateProjectTemplate(identity, workspaceId, templateId, body);
+  }
+
   @Delete('project-templates/:templateId')
   deleteTemplate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('templateId', new ParseUUIDPipe()) templateId: string) {
     return this.productivity.deleteProjectTemplate(identity, workspaceId, templateId);

@@ -1,0 +1,3 @@
+ALTER TABLE "project_templates"
+  ADD COLUMN "useCount" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN "lastUsedAt" TIMESTAMPTZ(3);

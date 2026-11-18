@@ -9,7 +9,9 @@ type Project = { id: string; name: string; description: string | null; status: s
 type Member = { userId: string; displayName: string; role: string };
 type Task = { id: string; title: string; description: string | null; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
-type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; createdBy: { displayName: string } };
+type TemplateTask = { title: string; description: string | null; priority: string };
+type TemplateMilestone = { title: string };
+type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; taskTemplates: TemplateTask[]; milestoneTemplates: TemplateMilestone[]; useCount: number; lastUsedAt: string | null; createdBy: { displayName: string } };
 
 const columns = [
   { status: 'TODO', title: 'To do' },
@@ -30,6 +32,11 @@ export default function ProjectsPage() {
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
+  const [editingTemplateId, setEditingTemplateId] = useState('');
+  const [templateDraftName, setTemplateDraftName] = useState('');
+  const [templateDraftDescription, setTemplateDraftDescription] = useState('');
+  const [templateDraftTasks, setTemplateDraftTasks] = useState<TemplateTask[]>([]);
+  const [templateDraftMilestones, setTemplateDraftMilestones] = useState<TemplateMilestone[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -137,8 +144,27 @@ export default function ProjectsPage() {
     try {
       await request(`/workspaces/${workspace.id}/projects/project-templates/${template.id}`, { method: 'DELETE' });
       if (selectedTemplate === template.id) { setSelectedTemplate(''); setNewProjectName(''); }
+      if (editingTemplateId === template.id) setEditingTemplateId('');
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete this template.'); }
+    finally { setBusy(false); }
+  }
+
+  function editTemplate(template: ProjectTemplate) {
+    setEditingTemplateId(template.id); setTemplateDraftName(template.name); setTemplateDraftDescription(template.description ?? '');
+    setTemplateDraftTasks(template.taskTemplates.map((task) => ({ ...task })));
+    setTemplateDraftMilestones(template.milestoneTemplates.map((milestone) => ({ ...milestone })));
+  }
+
+  async function saveTemplateEdits(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/project-templates/${editingTemplateId}`, {
+        method: 'PATCH', body: JSON.stringify({ name: templateDraftName, description: templateDraftDescription || null, taskTemplates: templateDraftTasks, milestoneTemplates: templateDraftMilestones }),
+      });
+      setEditingTemplateId(''); await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this project template.'); }
     finally { setBusy(false); }
   }
 
@@ -253,14 +279,29 @@ export default function ProjectsPage() {
 
       <section className="project-template-library" aria-labelledby="project-template-title">
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">REPEATABLE WORKFLOWS</p><h2 id="project-template-title">Project templates</h2></div><span>{templates.length} saved</span></div>
-        <p className="project-template-library__intro">Save a project’s description, tasks, priorities, and milestones as a starter. Dates, assignees, and completion states are left fresh for each new project.</p>
+        <p className="project-template-library__intro">Save a project’s description, tasks, priorities, and milestones as a starter. Up to 100 tasks and 50 milestones are copied; dates, assignees, and completion states are left fresh for each new project.</p>
         {selectedProject ? <form className="project-template-save" onSubmit={saveSelectedTemplate}><label>Save “{selectedProjectName}” as a template<input name="templateName" required maxLength={160} placeholder="e.g. Website launch" /></label><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save template'}</button></form> : <p className="productivity-message">Create a project first, then save it here as a reusable template.</p>}
         {templates.length === 0 ? <p className="productivity-message">No templates yet. Save a project above and reuse its setup in this workspace.</p> : <div className="project-template-grid">{templates.map((template) => <article className={`project-template-card${selectedTemplate === template.id ? ' project-template-card--selected' : ''}`} key={template.id}>
           <div><span className="workspace-eyebrow">PROJECT STARTER</span><h3>{template.name}</h3><p>{template.description || 'A reusable project setup for your workspace.'}</p></div>
-          <div className="project-template-card__counts"><span>{template.taskCount} tasks</span><span>{template.milestoneCount} milestones</span></div>
-          <footer><button type="button" disabled={busy} onClick={() => { setSelectedTemplate(template.id); setNewProjectName(`${template.name} project`); }}>{selectedTemplate === template.id ? 'Selected' : 'Use template'}</button><button type="button" disabled={busy} onClick={() => void deleteTemplate(template)}>Delete</button></footer>
+          <div className="project-template-card__counts"><span>{template.taskCount} tasks</span><span>{template.milestoneCount} milestones</span><span>Used {template.useCount}×</span></div>
+          {template.lastUsedAt && <small className="project-template-card__last-used">Last used {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(template.lastUsedAt))}</small>}
+          <footer><button type="button" disabled={busy} onClick={() => editTemplate(template)}>{editingTemplateId === template.id ? 'Editing' : 'Edit'}</button><button type="button" disabled={busy} onClick={() => { setSelectedTemplate(template.id); setNewProjectName(`${template.name} project`); }}>{selectedTemplate === template.id ? 'Selected' : 'Use template'}</button><button type="button" disabled={busy} onClick={() => void deleteTemplate(template)}>Delete</button></footer>
         </article>)}</div>}
         {selectedTemplate && <form className="project-template-launch" onSubmit={applyTemplate}><div><strong>Start from {templates.find((template) => template.id === selectedTemplate)?.name}</strong><span>Creates a project with fresh, open tasks and milestones.</span></div><label>New project name<input required maxLength={160} value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} /></label><button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create project'}</button><button type="button" onClick={() => setSelectedTemplate('')}>Cancel</button></form>}
+        {editingTemplateId && <form className="project-template-editor" onSubmit={saveTemplateEdits}>
+          <div className="project-template-editor__heading"><div><p className="workspace-eyebrow">UPDATE YOUR STARTER</p><h3>Edit project template</h3></div><button type="button" onClick={() => setEditingTemplateId('')}>Cancel</button></div>
+          <label>Template name<input required maxLength={160} value={templateDraftName} onChange={(event) => setTemplateDraftName(event.target.value)} /></label>
+          <label>Project description<textarea maxLength={5000} rows={2} value={templateDraftDescription} onChange={(event) => setTemplateDraftDescription(event.target.value)} /></label>
+          <div className="project-template-editor__section"><div><strong>Starter tasks</strong><button type="button" disabled={templateDraftTasks.length >= 100} onClick={() => setTemplateDraftTasks((rows) => [...rows, { title: '', description: null, priority: 'MEDIUM' }])}>＋ Add task</button></div>
+            {templateDraftTasks.length === 0 && <p>No starter tasks. Add a task or save an existing project with tasks.</p>}
+            {templateDraftTasks.map((task, index) => <article key={index}><label>Task title<input required maxLength={200} value={task.title} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, title: event.target.value } : row))} /></label><label>Description<input maxLength={5000} value={task.description ?? ''} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, description: event.target.value || null } : row))} /></label><label>Priority<select value={task.priority} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, priority: event.target.value } : row))}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><button type="button" aria-label={`Remove task ${index + 1}`} onClick={() => setTemplateDraftTasks((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>Remove</button></article>)}
+          </div>
+          <div className="project-template-editor__section"><div><strong>Milestones</strong><button type="button" disabled={templateDraftMilestones.length >= 50} onClick={() => setTemplateDraftMilestones((rows) => [...rows, { title: '' }])}>＋ Add milestone</button></div>
+            {templateDraftMilestones.length === 0 && <p>No starter milestones. Add checkpoints for the new project.</p>}
+            {templateDraftMilestones.map((milestone, index) => <article key={index}><label>Milestone title<input required maxLength={160} value={milestone.title} onChange={(event) => setTemplateDraftMilestones((rows) => rows.map((row, rowIndex) => rowIndex === index ? { title: event.target.value } : row))} /></label><button type="button" aria-label={`Remove milestone ${index + 1}`} onClick={() => setTemplateDraftMilestones((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>Remove</button></article>)}
+          </div>
+          <button className="project-template-editor__save" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save template changes'}</button>
+        </form>}
       </section>
 
       <section className="productivity-projects" aria-labelledby="projects-list-title">

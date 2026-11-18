@@ -33,6 +33,22 @@ export class ProductivityService {
     return templates.map((template) => ({ ...template, taskCount: parseTemplateTasks(template.taskTemplates).length, milestoneCount: parseTemplateMilestones(template.milestoneTemplates).length }));
   }
 
+  async updateProjectTemplate(identity: AuthenticatedIdentity, workspaceId: string, templateId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const data: Prisma.ProjectTemplateUpdateManyMutationInput = {};
+    if ('name' in body) data.name = textField(body.name, 'Template name', 160);
+    if ('description' in body) data.description = optionalText(body.description, 'Template description', 5000);
+    if ('taskTemplates' in body) data.taskTemplates = parseTemplateTasks(body.taskTemplates as Prisma.JsonValue) as Prisma.InputJsonValue;
+    if ('milestoneTemplates' in body) data.milestoneTemplates = parseTemplateMilestones(body.milestoneTemplates as Prisma.JsonValue) as Prisma.InputJsonValue;
+    if (!Object.keys(data).length) throw new BadRequestException('Provide at least one template field to update.');
+    const result = await this.prisma.projectTemplate.updateMany({ where: { id: templateId, workspaceId }, data });
+    if (result.count !== 1) throw new NotFoundException('Project template not found in this workspace.');
+    const template = await this.prisma.projectTemplate.findFirstOrThrow({ where: { id: templateId, workspaceId }, include: { createdBy: { select: { displayName: true } } } });
+    await this.recordActivity(workspaceId, actorId, 'PROJECT', template.id, `updated the “${template.name}” project template`);
+    return { ...template, taskCount: parseTemplateTasks(template.taskTemplates).length, milestoneCount: parseTemplateMilestones(template.milestoneTemplates).length };
+  }
+
   async createProjectTemplate(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
@@ -63,6 +79,8 @@ export class ProductivityService {
       const project = await transaction.project.create({ data: { workspaceId, createdById: actorId, name, description: template.description, status: 'PLANNING' } });
       if (tasks.length) await transaction.task.createMany({ data: tasks.map((task) => ({ workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, status: 'TODO' as const })) });
       if (milestones.length) await transaction.projectMilestone.createMany({ data: milestones.map((milestone) => ({ workspaceId, projectId: project.id, title: milestone.title })) });
+      const usageUpdate = await transaction.projectTemplate.updateMany({ where: { id: templateId, workspaceId }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
+      if (usageUpdate.count !== 1) throw new NotFoundException('Project template is no longer available in this workspace.');
       await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'PROJECT', entityId: project.id, message: `created project “${name}” from the “${template.name}” template` } });
       return { ...project, taskCount: tasks.length, milestoneCount: milestones.length };
     });
@@ -758,8 +776,8 @@ function parseTemplateTasks(value: Prisma.JsonValue): ProjectTaskTemplate[] {
   return value.map((entry) => {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') throw new BadRequestException('This project template has invalid task data.');
     const task = entry as Record<string, Prisma.JsonValue>;
-    if (typeof task.title !== 'string' || !task.title.trim() || task.title.length > 200 || (task.description !== null && task.description !== undefined && typeof task.description !== 'string') || typeof task.priority !== 'string' || !taskPriorities.includes(task.priority as TaskPriority)) throw new BadRequestException('This project template has invalid task data.');
-    return { title: task.title, description: typeof task.description === 'string' ? task.description : null, priority: task.priority as TaskPriority };
+    if (typeof task.title !== 'string' || !task.title.trim() || task.title.length > 200 || (task.description !== null && task.description !== undefined && (typeof task.description !== 'string' || task.description.length > 5000)) || typeof task.priority !== 'string' || !taskPriorities.includes(task.priority as TaskPriority)) throw new BadRequestException('This project template has invalid task data.');
+    return { title: task.title.trim(), description: typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null, priority: task.priority as TaskPriority };
   });
 }
 
@@ -769,7 +787,7 @@ function parseTemplateMilestones(value: Prisma.JsonValue): ProjectMilestoneTempl
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') throw new BadRequestException('This project template has invalid milestone data.');
     const milestone = entry as Record<string, Prisma.JsonValue>;
     if (typeof milestone.title !== 'string' || !milestone.title.trim() || milestone.title.length > 160) throw new BadRequestException('This project template has invalid milestone data.');
-    return { title: milestone.title };
+    return { title: milestone.title.trim() };
   });
 }
 
