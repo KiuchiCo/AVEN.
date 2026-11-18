@@ -161,6 +161,16 @@ export function DocumentsWorkspace() {
     finally { setBusy(false); }
   }
 
+  async function deleteDocument(document: DocumentRecord) {
+    if (!window.confirm(`Delete “${document.title}”? Its saved versions and comments will also be removed.`)) return;
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/documents/${document.id}`, { method: 'DELETE' });
+      setDocuments((current) => current.filter((item) => item.id !== document.id));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the document.'); }
+    finally { setBusy(false); }
+  }
+
   return (
     <div className="workspace-section-page connected-page">
       <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
@@ -180,7 +190,7 @@ export function DocumentsWorkspace() {
           {loading ? <p className="productivity-message">Loading documents…</p> : documents.length === 0 ? <p className="productivity-message">No documents yet. Create your first note and optionally link it to a project.</p> : (
             <div className="connected-record-stack">{documents.map((document) => (
               <article className="connected-record" key={document.id}>
-                <div className="connected-record__meta"><span>DOCUMENT</span>{document.project && <span className="connected-link-pill">{document.project.name}</span>}<Link className="connected-record__edit" href={`/workspace/documents/${document.id}`}>Open editor →</Link></div>
+                <div className="connected-record__meta"><span>DOCUMENT</span>{document.project && <span className="connected-link-pill">{document.project.name}</span>}<Link className="connected-record__edit" href={`/workspace/documents/${document.id}`}>Open editor →</Link><button className="connected-record__edit" type="button" disabled={busy} onClick={() => void deleteDocument(document)}>Delete</button></div>
                 <h3>{document.title}</h3><p>{documentPreview(document.content) || 'This document is empty.'}</p>
                 <small>Updated {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(document.updatedAt))}</small>
               </article>

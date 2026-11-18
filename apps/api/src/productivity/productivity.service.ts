@@ -778,6 +778,16 @@ export class ProductivityService {
     });
   }
 
+  async deleteDocument(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const document = await this.prisma.document.findFirst({ where: { id: documentId, workspaceId }, select: { id: true, title: true } });
+    if (!document) throw new NotFoundException('Document not found in this workspace.');
+    const result = await this.prisma.document.deleteMany({ where: { id: documentId, workspaceId } });
+    if (result.count !== 1) throw new NotFoundException('Document not found in this workspace.');
+    await this.recordActivity(workspaceId, actorId, 'DOCUMENT', document.id, `deleted document “${document.title}”`);
+    return { id: document.id, deleted: true };
+  }
+
   async createDocument(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
