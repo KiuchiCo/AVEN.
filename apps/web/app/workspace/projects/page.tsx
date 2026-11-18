@@ -306,6 +306,15 @@ export default function ProjectsPage() {
     finally { setBusy(false); }
   }
 
+  async function createTemplate(template: Pick<ProjectTemplate, 'name' | 'description' | 'taskTemplates' | 'milestoneTemplates'>) {
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/project-templates`, { method: 'POST', body: JSON.stringify(template) });
+      await reload(); setNotice(`Created “${template.name}”.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create this template.'); throw reason; }
+    finally { setBusy(false); }
+  }
+
   async function renameWorkspaceTaskLabel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!renameLabelFrom || !renameLabelTo.trim()) return;
@@ -537,7 +546,7 @@ export default function ProjectsPage() {
       <section aria-labelledby="project-template-title">
         <p className="project-template-library__intro">Save a project’s description, task dependencies, and milestones as a starter. Task and milestone due dates are stored as day offsets and recalculated for each new project; completion states and assignees start fresh.</p>
         {selectedProject ? <form className="project-template-save" onSubmit={saveSelectedTemplate}><label>Save “{selectedProjectName}” as a template<input name="templateName" required maxLength={160} placeholder="e.g. Website launch" /></label><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save template'}</button></form> : <p className="productivity-message">Create a project first, then save it here as a reusable template.</p>}
-        <TemplateLibrary templates={templates} busy={busy} selectedId={selectedTemplate} onEdit={editTemplate} onUse={(template) => { setSelectedTemplate(template.id); setNewProjectName(`${template.name} project`); }} onDuplicate={duplicateTemplate} onDelete={(template) => void deleteTemplate(template)} onImport={importTemplate} />
+        <TemplateLibrary templates={templates} busy={busy} selectedId={selectedTemplate} onEdit={editTemplate} onUse={(template) => { setSelectedTemplate(template.id); setNewProjectName(`${template.name} project`); }} onDuplicate={duplicateTemplate} onDelete={(template) => void deleteTemplate(template)} onImport={importTemplate} onCreate={createTemplate} />
         {selectedTemplate && <form className="project-template-launch" onSubmit={applyTemplate}><div><strong>Start from {templates.find((template) => template.id === selectedTemplate)?.name}</strong><span>Creates fresh tasks and milestones with the template’s relative schedule.</span></div><label>New project name<input required maxLength={160} value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} /></label><button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create project'}</button><button type="button" onClick={() => setSelectedTemplate('')}>Cancel</button></form>}
         {editingTemplateId && <TemplateEditor name={templateDraftName} description={templateDraftDescription} tasks={templateDraftTasks} milestones={templateDraftMilestones} busy={busy} onName={setTemplateDraftName} onDescription={setTemplateDraftDescription} onTasks={setTemplateDraftTasks} onMilestones={setTemplateDraftMilestones} onSubmit={saveTemplateEdits} onCancel={() => setEditingTemplateId('')} />}
       </section>

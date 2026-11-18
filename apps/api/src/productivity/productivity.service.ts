@@ -134,6 +134,21 @@ export class ProductivityService {
     return { ...template, taskCount: tasks.length, milestoneCount: milestones.length };
   }
 
+  async createProjectTemplateFromData(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const name = textField(body.name, 'Template name', 160);
+    const description = optionalText(body.description, 'Template description', 5000);
+    const tasks = parseTemplateTasks(body.taskTemplates as Prisma.JsonValue);
+    const milestones = parseTemplateMilestones(body.milestoneTemplates as Prisma.JsonValue);
+    const template = await this.prisma.projectTemplate.create({
+      data: { workspaceId, createdById: actorId, name, description, taskTemplates: tasks as Prisma.InputJsonValue, milestoneTemplates: milestones as Prisma.InputJsonValue },
+      include: { createdBy: { select: { displayName: true } } },
+    });
+    await this.recordActivity(workspaceId, actorId, 'PROJECT', template.id, `created the “${name}” project template`);
+    return { ...template, taskCount: tasks.length, milestoneCount: milestones.length };
+  }
+
   async listWorkspaceMembers(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.requireMembership(identity, workspaceId);
     const members = await this.prisma.workspaceMember.findMany({

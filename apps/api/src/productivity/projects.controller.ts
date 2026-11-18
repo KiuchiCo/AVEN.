@@ -19,6 +19,11 @@ export class ProjectsController {
     return this.productivity.listProjectTemplates(identity, workspaceId);
   }
 
+  @Post('project-templates')
+  createTemplateFromScratch(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
+    return this.productivity.createProjectTemplateFromData(identity, workspaceId, body);
+  }
+
   @Post('project-templates/import')
   importTemplate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
     return this.productivity.importProjectTemplate(identity, workspaceId, body);
