@@ -8,13 +8,13 @@ import { TaskLabels } from '../task-labels';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Member = { userId: string; displayName: string; role: string };
-type Task = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null };
+type Task = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
 type TaskImportRow = { id?: string | null; title: string; description: string | null; status: string; priority: string; dueAt: string | null; labels: string[]; projectId?: string | null; assigneeId?: string | null };
 type TemplateTask = { title: string; description: string | null; priority: string; labels: string[] };
 type TemplateMilestone = { title: string };
 type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; taskTemplates: TemplateTask[]; milestoneTemplates: TemplateMilestone[]; useCount: number; lastUsedAt: string | null; createdBy: { displayName: string } };
-type TaskViewFilters = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; sort: string };
+type TaskViewFilters = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; dependency: string; sort: string };
 type SavedTaskView = { id: string; name: string; filters: TaskViewFilters; createdBy?: { id: string; displayName: string } };
 type TaskLabelUsage = { label: string; taskCount: number };
 
@@ -54,6 +54,7 @@ export default function ProjectsPage() {
   const [assigneeFilter, setAssigneeFilter] = useState('ALL');
   const [labelFilter, setLabelFilter] = useState('');
   const [dueFilter, setDueFilter] = useState('ALL');
+  const [dependencyFilter, setDependencyFilter] = useState('ALL');
   const [taskSort, setTaskSort] = useState('DUE_ASC');
   const [savedTaskViews, setSavedTaskViews] = useState<SavedTaskView[]>([]);
   const [legacyViewsRemaining, setLegacyViewsRemaining] = useState(0);
@@ -177,6 +178,12 @@ export default function ProjectsPage() {
       if (dueFilter === 'OVERDUE' && (!due || due >= today || ['COMPLETED', 'CANCELLED'].includes(task.status))) return false;
       if (dueFilter === 'TODAY' && due !== today) return false;
       if (dueFilter === 'NEXT_7_DAYS' && (!due || due < today || due > week)) return false;
+      const isBlocked = task.dependsOn.some((item) => item.status !== 'COMPLETED');
+      const isBlocking = task.blocks.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status));
+      if (dependencyFilter === 'BLOCKED' && !isBlocked) return false;
+      if (dependencyFilter === 'BLOCKING' && !isBlocking) return false;
+      if (dependencyFilter === 'HAS_DEPENDENCIES' && !task.dependsOn.length && !task.blocks.length) return false;
+      if (dependencyFilter === 'NONE' && (task.dependsOn.length || task.blocks.length)) return false;
       return true;
     });
     const priorityRank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
@@ -184,19 +191,19 @@ export default function ProjectsPage() {
       : taskSort === 'PRIORITY' ? priorityRank[a.priority] - priorityRank[b.priority] || a.title.localeCompare(b.title)
         : taskSort === 'DUE_DESC' ? (b.dueAt ?? '').localeCompare(a.dueAt ?? '') || a.title.localeCompare(b.title)
           : (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999') || a.title.localeCompare(b.title));
-  }, [tasks, selectedProject, priorityFilter, statusFilter, assigneeFilter, labelFilter, taskSearch, dueFilter, taskSort]);
+  }, [tasks, selectedProject, priorityFilter, statusFilter, assigneeFilter, labelFilter, taskSearch, dueFilter, dependencyFilter, taskSort]);
   const completedTasks = selectedProjectTasks.filter((task) => task.status === 'COMPLETED').length;
   const taskProgress = selectedProjectTasks.length ? Math.round((completedTasks / selectedProjectTasks.length) * 100) : 0;
 
   function currentTaskViewFilters(): TaskViewFilters {
-    return { projectId: selectedProject, search: taskSearch, status: statusFilter, priority: priorityFilter, assigneeId: assigneeFilter, label: labelFilter, due: dueFilter, sort: taskSort };
+    return { projectId: selectedProject, search: taskSearch, status: statusFilter, priority: priorityFilter, assigneeId: assigneeFilter, label: labelFilter, due: dueFilter, dependency: dependencyFilter, sort: taskSort };
   }
 
   function applyTaskView(view: SavedTaskView) {
     const filters = view.filters;
     setSelectedProject(projects.some((project) => project.id === filters.projectId) ? filters.projectId : '');
     setTaskSearch(filters.search ?? ''); setStatusFilter(filters.status ?? 'ALL'); setPriorityFilter(filters.priority ?? 'ALL');
-    setAssigneeFilter(filters.assigneeId ?? 'ALL'); setLabelFilter(filters.label ?? ''); setDueFilter(filters.due ?? 'ALL'); setTaskSort(filters.sort ?? 'DUE_ASC');
+    setAssigneeFilter(filters.assigneeId ?? 'ALL'); setLabelFilter(filters.label ?? ''); setDueFilter(filters.due ?? 'ALL'); setDependencyFilter(filters.dependency ?? 'ALL'); setTaskSort(filters.sort ?? 'DUE_ASC');
     setSelectedTaskIds([]); setNotice(`Applied “${view.name}”.`);
   }
 
@@ -581,7 +588,8 @@ export default function ProjectsPage() {
           <label>Label<select value={labelFilter} onChange={(event) => { setLabelFilter(event.target.value); setSelectedTaskIds([]); }}><option value="">All labels</option>{[...new Set(tasks.flatMap((task) => task.labels))].sort().map((label) => <option key={label} value={label}>#{label}</option>)}</select></label>
           <label>Due date<select value={dueFilter} onChange={(event) => { setDueFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">Any date</option><option value="OVERDUE">Overdue</option><option value="TODAY">Due today</option><option value="NEXT_7_DAYS">Next 7 days</option><option value="NO_DATE">No due date</option></select></label>
           <label>Sort<select value={taskSort} onChange={(event) => setTaskSort(event.target.value)}><option value="DUE_ASC">Due date · earliest</option><option value="DUE_DESC">Due date · latest</option><option value="PRIORITY">Priority · highest</option><option value="TITLE">Title · A–Z</option></select></label>
-          <button type="button" onClick={() => { setTaskSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); setAssigneeFilter('ALL'); setLabelFilter(''); setDueFilter('ALL'); setTaskSort('DUE_ASC'); setSelectedTaskIds([]); }}>Clear filters</button>
+          <label>Dependency<select value={dependencyFilter} onChange={(event) => { setDependencyFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">Any dependency state</option><option value="BLOCKED">Blocked by unfinished prerequisites</option><option value="BLOCKING">Blocking other open tasks</option><option value="HAS_DEPENDENCIES">Has dependencies</option><option value="NONE">No dependencies</option></select></label>
+          <button type="button" onClick={() => { setTaskSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); setAssigneeFilter('ALL'); setLabelFilter(''); setDueFilter('ALL'); setDependencyFilter('ALL'); setTaskSort('DUE_ASC'); setSelectedTaskIds([]); }}>Clear filters</button>
           <form onSubmit={saveCurrentTaskView}><label>{taskViewChoice ? 'Update shared view' : 'Save current view'}<input required maxLength={60} value={taskViewName} onChange={(event) => setTaskViewName(event.target.value)} placeholder="e.g. My overdue work" /></label><button type="submit" disabled={busy || (!taskViewChoice && savedTaskViews.length >= 20)}>{busy ? 'Saving…' : taskViewChoice ? 'Update view' : 'Save view'}</button></form>
           {savedTaskViews.length > 0 && <div className="task-view-tools__saved"><label>Workspace views<select value={taskViewChoice} onChange={(event) => { setTaskViewChoice(event.target.value); setTaskViewName(savedTaskViews.find((view) => view.id === event.target.value)?.name ?? ''); }}><option value="">Choose a saved view</option>{savedTaskViews.map((view) => <option key={view.id} value={view.id}>{view.name}{view.createdBy?.displayName ? ` · ${view.createdBy.displayName}` : ''}</option>)}</select></label><button type="button" disabled={!taskViewChoice || busy} onClick={() => { const view = savedTaskViews.find((item) => item.id === taskViewChoice); if (view) applyTaskView(view); }}>Apply view</button><button type="button" disabled={!taskViewChoice || busy} onClick={() => void deleteSavedTaskView()}>Delete view</button><button type="button" disabled={busy} onClick={() => { setTaskViewChoice(''); setTaskViewName(''); }}>New view</button></div>}
           <p>{savedTaskViews.length} / 20 shared views. Everyone in this workspace can apply or update them.</p>
@@ -610,6 +618,7 @@ export default function ProjectsPage() {
                 <label className="project-task-select"><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={(event) => { if (event.target.checked && selectedTaskIds.length >= 500) { setError('Bulk actions support up to 500 selected tasks.'); return; } setSelectedTaskIds((ids) => event.target.checked ? [...ids, task.id] : ids.filter((id) => id !== task.id)); }} /><span>Select task</span></label>
                 <Link href={`/workspace/tasks/${task.id}`} className="productivity-task__title">{task.title}</Link>
                 {task.project && <span className="productivity-task__project">{task.project.name}</span>}
+                {(task.dependsOn.some((item) => item.status !== 'COMPLETED') || task.blocks.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status))) && <div className="productivity-task__dependency-hints">{task.dependsOn.some((item) => item.status !== 'COMPLETED') && <span className="is-blocked">Blocked by {task.dependsOn.filter((item) => item.status !== 'COMPLETED').length} prerequisite{task.dependsOn.filter((item) => item.status !== 'COMPLETED').length === 1 ? '' : 's'}</span>}{task.blocks.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)) && <span>Blocks {task.blocks.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length} open task{task.blocks.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length === 1 ? '' : 's'}</span>}</div>}
                 <TaskLabels labels={task.labels} taskTitle={task.title} disabled={busy} onSave={(labels) => void updateTask(task, 'labels', labels)} compact />
                 <label className="productivity-task__assignee">Assignee<select aria-label={`Assignee for ${task.title}`} value={task.assignee?.id ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'assigneeId', event.target.value)}><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
                 <div className="productivity-task__footer"><label className="visually-hidden" htmlFor={`priority-${task.id}`}>Priority for {task.title}</label><select className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`} id={`priority-${task.id}`} value={task.priority} disabled={busy} onChange={(event) => void updateTask(task, 'priority', event.target.value)}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select><label className="visually-hidden" htmlFor={`status-${task.id}`}>Status for {task.title}</label><select id={`status-${task.id}`} value={task.status} disabled={busy} onChange={(event) => void changeStatus(task, event.target.value)}>{columns.map((option) => <option key={option.status} value={option.status}>{option.title}</option>)}</select></div>

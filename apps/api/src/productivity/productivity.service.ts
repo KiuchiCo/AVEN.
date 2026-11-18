@@ -13,10 +13,11 @@ const calendarEventTypes = ['MEETING', 'FOCUS', 'PERSONAL', 'REMINDER', 'OTHER']
 type ProjectStatus = (typeof projectStatuses)[number];
 type TaskStatus = (typeof taskStatuses)[number];
 type TaskPriority = (typeof taskPriorities)[number];
-type TaskViewFilterSet = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; sort: string };
+type TaskViewFilterSet = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; dependency: string; sort: string };
 const taskViewStatuses = ['ALL', ...taskStatuses] as const;
 const taskViewPriorities = ['ALL', ...taskPriorities] as const;
 const taskViewDueFilters = ['ALL', 'OVERDUE', 'TODAY', 'NEXT_7_DAYS', 'NO_DATE'] as const;
+const taskViewDependencyFilters = ['ALL', 'BLOCKED', 'BLOCKING', 'HAS_DEPENDENCIES', 'NONE'] as const;
 const taskViewSorts = ['DUE_ASC', 'DUE_DESC', 'PRIORITY', 'TITLE'] as const;
 
 @Injectable()
@@ -1131,6 +1132,7 @@ function taskViewFilters(value: unknown): TaskViewFilterSet {
     assigneeId,
     label,
     due: enumField(input.due, taskViewDueFilters, 'Task view due date filter', 'ALL'),
+    dependency: enumField(input.dependency, taskViewDependencyFilters, 'Task view dependency filter', 'ALL'),
     sort: enumField(input.sort, taskViewSorts, 'Task view sort order', 'DUE_ASC'),
   };
 }

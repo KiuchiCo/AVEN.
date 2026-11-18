@@ -79,6 +79,12 @@ export default function ProjectWorkspacePage() {
 
   const completedCount = tasks.filter((task) => task.status === 'COMPLETED').length;
   const openTasks = tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
+  const blockedTasks = openTasks.filter((task) => task.dependsOn.some((item) => item.status !== 'COMPLETED'));
+  const readyTasks = openTasks.filter((task) => !task.dependsOn.some((item) => item.status !== 'COMPLETED'))
+    .sort((a, b) => {
+      const priorityRank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+      return priorityRank[a.priority] - priorityRank[b.priority] || (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999') || a.title.localeCompare(b.title);
+    });
   const progress = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
   const timelineItems = useMemo(() => [
     ...tasks.filter((task) => task.dueAt).map((task) => ({ id: task.id, title: task.title, date: task.dueAt as string, type: 'Task', state: task.status })),
@@ -134,9 +140,15 @@ export default function ProjectWorkspacePage() {
         {tab === 'OVERVIEW' && <>
           <section className="project-hub__stats" aria-label="Project summary">
             <article><span>Task progress</span><strong>{progress}%</strong><div className="project-hub__progress"><span style={{ width: `${progress}%` }} /></div><small>{completedCount} of {tasks.length} tasks done</small></article>
-            <article><span>Open tasks</span><strong>{openTasks.length}</strong><small>Across this project</small></article>
+            <article><span>Ready to start</span><strong>{readyTasks.length}</strong><small>Prerequisites complete</small></article>
+            <article><span>Blocked</span><strong className={blockedTasks.length ? 'project-hub__blocked-count' : ''}>{blockedTasks.length}</strong><small>Waiting on prerequisites</small></article>
             <article><span>Milestones</span><strong>{milestones.filter((item) => item.completedAt).length}/{milestones.length}</strong><small>Completed checkpoints</small></article>
             <article><span>Deadline</span><strong className="project-hub__date">{formatDate(project.dueAt)}</strong><small>Project target</small></article>
+          </section>
+          <section className="project-hub__ready-queue"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DEPENDENCY-AWARE QUEUE</p><h2>Ready next</h2></div><span>{readyTasks.length} ready · {blockedTasks.length} blocked</span></div>
+            <div className="project-hub__ready-columns"><div>{readyTasks.length ? readyTasks.slice(0, 4).map((task) => <article key={task.id}><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link><small>{task.assignee?.displayName ?? 'Unassigned'} · Due {formatDate(task.dueAt)}</small>{task.status === 'TODO' ? <button type="button" disabled={saving} onClick={() => void updateTaskStatus(task.id, 'IN_PROGRESS')}>{saving ? 'Starting…' : 'Start task →'}</button> : <span className="project-hub__ready-state">Already in progress</span>}</article>) : <p className="productivity-message">No ready tasks right now. Complete prerequisites or add an open task to this project.</p>}</div>
+              <div className="project-hub__blocked-list"><h3>Waiting on</h3>{blockedTasks.length ? blockedTasks.slice(0, 4).map((task) => <article key={task.id}><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link><small>Blocked by {task.dependsOn.filter((item) => item.status !== 'COMPLETED').map((item) => item.title).join(', ')}</small></article>) : <p>No tasks are waiting on prerequisites.</p>}</div>
+            </div>
           </section>
           <div className="project-hub__overview-grid">
             <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DELIVERY · SEQUENCING</p><h2>Project tasks</h2></div><button type="button" onClick={() => setTab('TIMELINE')}>View timeline →</button></div>
