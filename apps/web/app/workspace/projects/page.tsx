@@ -48,6 +48,9 @@ export default function ProjectsPage() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [bulkPriority, setBulkPriority] = useState('');
   const [bulkAssignee, setBulkAssignee] = useState('');
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkDueMode, setBulkDueMode] = useState<'KEEP' | 'SET' | 'CLEAR'>('KEEP');
+  const [bulkDueDate, setBulkDueDate] = useState('');
   const [importRows, setImportRows] = useState<TaskImportRow[]>([]);
   const [importFileName, setImportFileName] = useState('');
 
@@ -231,11 +234,16 @@ export default function ProjectsPage() {
     const changes: Record<string, unknown> = {};
     if (bulkPriority) changes.priority = bulkPriority;
     if (bulkAssignee) changes.assigneeId = bulkAssignee === '__clear__' ? null : bulkAssignee;
-    if (!Object.keys(changes).length) { setError('Choose a bulk priority or assignee change first.'); return; }
+    if (bulkStatus) changes.status = bulkStatus;
+    if (bulkDueMode === 'SET') {
+      if (!bulkDueDate) { setError('Choose a date or select Clear due date.'); return; }
+      changes.dueAt = bulkDueDate;
+    } else if (bulkDueMode === 'CLEAR') changes.dueAt = null;
+    if (!Object.keys(changes).length) { setError('Choose at least one bulk change first.'); return; }
     setBusy(true); setError('');
     try {
       const result = await request(`/workspaces/${workspace.id}/tasks/bulk`, { method: 'PATCH', body: JSON.stringify({ taskIds: selectedTaskIds, ...changes }) }) as { updated: number };
-      setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); await reload();
+      setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); setBulkStatus(''); setBulkDueMode('KEEP'); setBulkDueDate(''); await reload();
       setNotice(`Updated ${result.updated} tasks.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the selected tasks.'); }
     finally { setBusy(false); }
@@ -247,7 +255,7 @@ export default function ProjectsPage() {
     setBusy(true); setError(''); setNotice('');
     try {
       const result = await request(`/workspaces/${workspace.id}/tasks/bulk/duplicate`, { method: 'POST', body: JSON.stringify({ taskIds: selectedTaskIds }) }) as { duplicated: number; checklistItemsCopied: number };
-      setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); await reload();
+      setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); setBulkStatus(''); setBulkDueMode('KEEP'); setBulkDueDate(''); await reload();
       setNotice(`Duplicated ${result.duplicated} tasks and copied ${result.checklistItemsCopied} checklist items.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not duplicate the selected tasks.'); }
     finally { setBusy(false); }
@@ -414,7 +422,7 @@ export default function ProjectsPage() {
       <section className="productivity-board" aria-labelledby="task-board-title">
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div><label className="productivity-board__filter">Priority <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label></div>
         <div className="project-task-tools"><div className="project-task-tools__top"><span>{boardTasks.length} tasks in this view</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice('Selected the first 500 visible tasks; narrow the view to select a different batch.'); }}>Select visible (up to 500)</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>Clear selection</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>Export CSV</button></div></div>
-          {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Set priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? 'Working…' : 'Duplicate with checklists'}</button>{selectedTaskIds.length > 100 && <small>Choose 100 or fewer tasks to duplicate them.</small>}</form>}
+          {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Status<select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">Keep current</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.title}</option>)}</select></label><label>Priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<select value={bulkDueMode} onChange={(event) => setBulkDueMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">Keep current</option><option value="SET">Set date</option><option value="CLEAR">Clear date</option></select></label>{bulkDueMode === 'SET' && <label>New due date<input type="date" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>}<button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? 'Working…' : 'Duplicate with checklists'}</button>{selectedTaskIds.length > 100 && <small>Choose 100 or fewer tasks to duplicate them.</small>}</form>}
           <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} tasks · {selectedProjectName ? `will be added to ${selectedProjectName}` : 'will be added to the workspace'}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt, labels. Separate multiple labels with semicolons. Up to 200 tasks per import.</small></form>
         </div>
         {loading ? <p className="productivity-message">Loading tasks…</p> : (
