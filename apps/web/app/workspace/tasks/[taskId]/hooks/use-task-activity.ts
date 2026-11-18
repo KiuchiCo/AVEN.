@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTaskCollaborationApi } from '../api';
 import type { TaskActivityEntry } from '../types';
+import { listenForTaskActivity } from '../lib/task-activity-events';
 
 export function useTaskActivity(taskId: string) {
   const request = useTaskCollaborationApi(taskId);
@@ -15,8 +16,12 @@ export function useTaskActivity(taskId: string) {
   }, [request]);
   useEffect(() => {
     let live = true;
-    void reload().catch((reason) => { if (live) setError(reason instanceof Error ? reason.message : 'Could not load task activity.'); }).finally(() => { if (live) setLoading(false); });
-    return () => { live = false; };
-  }, [reload]);
+    const reportError = (reason: unknown) => { if (live) setError(reason instanceof Error ? reason.message : 'Could not load task activity.'); };
+    void reload().catch(reportError).finally(() => { if (live) setLoading(false); });
+    const unsubscribe = listenForTaskActivity(taskId, () => { void reload().catch(reportError); });
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void reload().catch(reportError); };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => { live = false; unsubscribe(); document.removeEventListener('visibilitychange', onVisibilityChange); };
+  }, [reload, taskId]);
   return { entries, loading, error, reload };
 }

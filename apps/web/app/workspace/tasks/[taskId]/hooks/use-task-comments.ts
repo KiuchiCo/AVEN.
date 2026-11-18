@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTaskCollaborationApi } from '../api';
 import type { TaskComment } from '../types';
+import { notifyTaskActivityChanged } from '../lib/task-activity-events';
 
 export function useTaskComments(taskId: string) {
   const request = useTaskCollaborationApi(taskId);
@@ -12,7 +13,7 @@ export function useTaskComments(taskId: string) {
   const [error, setError] = useState('');
   const reload = useCallback(async () => setComments(await request<TaskComment[]>('/comments')), [request]);
   useEffect(() => { let live = true; void reload().catch((reason) => { if (live) setError(reason instanceof Error ? reason.message : 'Could not load comments.'); }).finally(() => { if (live) setLoading(false); }); return () => { live = false; }; }, [reload]);
-  const run = useCallback(async (operation: () => Promise<unknown>) => { setBusy(true); setError(''); try { await operation(); await reload(); return true; } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save this comment.'); return false; } finally { setBusy(false); } }, [reload]);
+  const run = useCallback(async (operation: () => Promise<unknown>) => { setBusy(true); setError(''); try { await operation(); notifyTaskActivityChanged(taskId); await reload(); return true; } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save this comment.'); return false; } finally { setBusy(false); } }, [reload, taskId]);
   const add = useCallback(async (body: string, mentionedUserIds: string[]) => { await run(() => request('/comments', { method: 'POST', body: JSON.stringify({ body, mentionedUserIds }) })); }, [request, run]);
   const edit = useCallback((comment: TaskComment, body: string, mentionedUserIds: string[]) => run(() => request(`/comments/${comment.id}`, { method: 'PATCH', body: JSON.stringify({ body, mentionedUserIds }) })), [request, run]);
   const remove = useCallback(async (commentId: string) => { await run(() => request(`/comments/${commentId}`, { method: 'DELETE' })); }, [request, run]);
