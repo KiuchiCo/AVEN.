@@ -172,18 +172,11 @@ export class ProductivityService {
   async listWorkspaceNotifications(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
     const rows = await this.prisma.workspaceActivity.findMany({
-      where: {
-        workspaceId,
-        actorId: { not: userId },
-        OR: [
-          { recipientScoped: false, entityType: { notIn: ['TASK_COMMENT', 'TASK_CHECKLIST'] } },
-          { receipts: { some: { userId, isNotificationTarget: true } } },
-        ],
-      },
+      where: workspaceNotificationWhere(workspaceId, userId),
       orderBy: { createdAt: 'desc' }, take: 50,
       include: { actor: { select: { displayName: true } }, receipts: { where: { userId }, select: { readAt: true, dismissedAt: true } } },
     });
-    return rows.filter((row) => !row.receipts[0]?.dismissedAt).map(({ receipts, ...row }) => ({ ...row, isRead: Boolean(receipts[0]?.readAt) }));
+    return rows.map(({ receipts, ...row }) => ({ ...row, isRead: Boolean(receipts[0]?.readAt) }));
   }
 
   async markWorkspaceActivityRead(identity: AuthenticatedIdentity, workspaceId: string, activityId: string, read: boolean) {
@@ -212,12 +205,16 @@ export class ProductivityService {
 
   async markAllWorkspaceActivityRead(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
-    const activities = await this.prisma.workspaceActivity.findMany({ where: { workspaceId, actorId: { not: userId } }, select: { id: true } });
+    const activities = await this.prisma.workspaceActivity.findMany({ where: workspaceNotificationWhere(workspaceId, userId), select: { id: true } });
     const now = new Date();
-    await this.prisma.$transaction(async (transaction) => {
-      await transaction.activityReceipt.createMany({ data: activities.map(({ id }) => ({ activityId: id, userId, readAt: now })), skipDuplicates: true });
-      await transaction.activityReceipt.updateMany({ where: { userId, activityId: { in: activities.map(({ id }) => id) } }, data: { readAt: now } });
-    });
+    const batchSize = 500;
+    for (let offset = 0; offset < activities.length; offset += batchSize) {
+      const activityIds = activities.slice(offset, offset + batchSize).map(({ id }) => id);
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.activityReceipt.createMany({ data: activityIds.map((activityId) => ({ activityId, userId, readAt: now })), skipDuplicates: true });
+        await transaction.activityReceipt.updateMany({ where: { userId, activityId: { in: activityIds } }, data: { readAt: now } });
+      });
+    }
     return { markedRead: activities.length };
   }
 
@@ -1090,6 +1087,18 @@ export class ProductivityService {
     if (write && membership.role === 'GUEST') throw new ForbiddenException('Guest members have read-only access to this workspace.');
     return user.id;
   }
+}
+
+function workspaceNotificationWhere(workspaceId: string, userId: string): Prisma.WorkspaceActivityWhereInput {
+  return {
+    workspaceId,
+    actorId: { not: userId },
+    OR: [
+      { recipientScoped: false, entityType: { notIn: ['TASK_COMMENT', 'TASK_CHECKLIST'] } },
+      { receipts: { some: { userId, isNotificationTarget: true } } },
+    ],
+    NOT: { receipts: { some: { userId, dismissedAt: { not: null } } } },
+  };
 }
 
 function objectInput(input: unknown): Record<string, unknown> {
