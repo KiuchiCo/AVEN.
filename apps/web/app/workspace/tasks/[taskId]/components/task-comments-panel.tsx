@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTaskComments } from '../hooks/use-task-comments';
 import type { TaskComment, WorkspaceMember } from '../types';
 import { CommentComposer } from './comment-composer';
@@ -15,6 +15,12 @@ export function TaskCommentsPanel({ taskId, currentUserId, members }: { taskId: 
     const needle = query.trim().toLocaleLowerCase();
     return comments.filter((comment) => !needle || comment.body.toLocaleLowerCase().includes(needle) || comment.author.displayName.toLocaleLowerCase().includes(needle) || comment.mentionedUserIds.some((id) => members.find((member) => member.userId === id)?.displayName.toLocaleLowerCase().includes(needle))).sort((a, b) => order === 'oldest' ? a.createdAt.localeCompare(b.createdAt) : b.createdAt.localeCompare(a.createdAt));
   }, [comments, members, order, query]);
+  useEffect(() => {
+    if (loading || !window.location.hash.startsWith('#task-comment-')) return;
+    const targetId = decodeURIComponent(window.location.hash.slice(1));
+    const frame = window.requestAnimationFrame(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [comments, loading]);
   async function removeComment(comment: TaskComment) { if (window.confirm('Delete this comment?')) await remove(comment.id); }
   return <section className="task-collab-panel" aria-labelledby="task-discussion-title"><header><div><p className="workspace-eyebrow">KEEP EVERYONE IN THE LOOP</p><h2 id="task-discussion-title">Discussion <span>{comments.length}</span></h2></div></header>{error && <TaskDetailError message={error} />}{!loading && comments.length > 0 && <div className="task-comment-tools"><label><span className="sr-only">Search discussion</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search comments, authors, or mentions" /></label><label>Order<select value={order} onChange={(event) => setOrder(event.target.value as 'oldest' | 'newest')}><option value="oldest">Oldest first</option><option value="newest">Newest first</option></select></label></div>}{loading ? <p className="productivity-message">Loading discussion…</p> : visibleComments.length === 0 && comments.length > 0 ? <div className="task-collab__empty"><strong>No comments match “{query}”</strong><p>Try another search or clear the field.</p><button type="button" onClick={() => setQuery('')}>Clear search</button></div> : <CommentList comments={visibleComments} currentUserId={currentUserId} members={members} disabled={busy} onEdit={edit} onRemove={(comment) => void removeComment(comment)} />}<CommentComposer members={members} busy={busy} onSubmit={add} /></section>;
 }

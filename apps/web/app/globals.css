@@ -1488,8 +1488,11 @@ body {
 .task-comment-tools label { display: grid; gap: 4px; color: #756b60; font-size: 10px; }
 .task-comment-tools input, .task-comment-tools select { min-width: 120px; padding: 8px 10px; border: 1px solid #e3dbd1; border-radius: 8px; background: #fffdfa; color: #403a32; font: inherit; font-size: 11px; }
 .task-comment-card { display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 10px; padding: 12px 0; border-top: 1px solid #eee8e1; }
+.task-comment-card:target { border-radius: 10px; background: #f8f1e8; box-shadow: 0 0 0 8px #f8f1e8; }
 .task-comment-card__avatar, .task-followers-panel__people span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #eee4d6; color: #765b3a; font-weight: 700; }
 .task-comment-card__body > header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.task-comment-card__header-tools { display: flex; align-items: center; gap: 8px; }
+.task-comment-card__copy { padding: 0; border: 0; background: transparent; color: #79654d; font: inherit; font-size: 10px; cursor: pointer; }
 .task-comment-card__body strong { color: #332e27; font-size: 12px; }
 .task-comment-card time, .task-comment-card small { color: #91877b; font-size: 10px; }
 .task-comment-card p { margin: 7px 0; color: #49433b; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
