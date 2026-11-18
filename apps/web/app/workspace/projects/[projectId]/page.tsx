@@ -8,7 +8,7 @@ import { useWorkspaceSession } from '../../workspace-shell';
 import { TaskLabels } from '../../task-labels';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; budgetTotalCents: number | null; budgetSpentCents: number };
-type ProjectTask = { id: string; title: string; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; events: { id: string }[]; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
+type ProjectTask = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; events: { id: string }[]; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
 type ProjectDocument = { id: string; title: string; updatedAt: string; project: { id: string; name: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
 type ActivityEntry = { id: string; entityType: string; entityId: string; message: string; createdAt: string; actor: { displayName: string } };
@@ -154,6 +154,23 @@ export default function ProjectWorkspacePage() {
     finally { setSaving(false); }
   }
 
+  function exportProjectTasks() {
+    if (!project || tasks.length === 0) return;
+    const headers = ['id', 'title', 'description', 'status', 'priority', 'dueAt', 'projectId', 'assigneeId', 'labels'];
+    const rows = tasks.map((task) => [task.id, task.title, task.description ?? '', task.status, task.priority, task.dueAt ?? '', project.id, task.assignee?.id ?? '', task.labels.join(';')]);
+    const csvCell = (value: string) => {
+      const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+      return `"${safe.replaceAll('"', '""')}"`;
+    };
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${project.name.replace(/[^a-z0-9-_]+/gi, '-').toLocaleLowerCase() || 'aven-project'}-tasks.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function updateTaskLabels(taskId: string, labels: string[]) {
     setSaving(true); setError('');
     try { await request(`/workspaces/${workspace.id}/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify({ labels }) }); await reload(); }
@@ -272,7 +289,7 @@ export default function ProjectWorkspacePage() {
             </div>
           </section>
           <div className="project-hub__overview-grid">
-            <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DELIVERY · SEQUENCING</p><h2>Project tasks</h2></div><div className="project-hub__task-actions"><button type="button" onClick={() => setTab('TIMELINE')}>View timeline →</button><button type="button" aria-expanded={showTaskForm} onClick={() => setShowTaskForm((value) => !value)}>{showTaskForm ? 'Close' : '＋ Add task'}</button></div></div>
+            <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DELIVERY · SEQUENCING</p><h2>Project tasks</h2></div><div className="project-hub__task-actions"><button type="button" onClick={exportProjectTasks} disabled={!tasks.length}>Export CSV</button><button type="button" onClick={() => setTab('TIMELINE')}>View timeline →</button><button type="button" aria-expanded={showTaskForm} onClick={() => setShowTaskForm((value) => !value)}>{showTaskForm ? 'Close' : '＋ Add task'}</button></div></div>
               {showTaskForm && <form className="project-hub__task-create" onSubmit={createTask}><label>Task name<input name="title" required maxLength={200} placeholder="Describe the next action" /></label><label>Description <span>(optional)</span><textarea name="description" rows={2} maxLength={5000} placeholder="Add context or acceptance notes" /></label><div><label>Priority<select name="priority" defaultValue="MEDIUM"><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assignee<select name="assigneeId" defaultValue=""><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<input name="dueAt" type="date" /></label></div><button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create task'}</button></form>}
               {tasks.length > 0 && <div className="project-hub__task-filters"><label>Find tasks<input type="search" value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="Search title, assignee, label" /></label><label>Status<select value={taskFilter} onChange={(event) => setTaskFilter(event.target.value as typeof taskFilter)}><option value="ALL">All tasks</option><option value="OPEN">Open</option><option value="BLOCKED">Blocked</option><option value="OVERDUE">Overdue</option><option value="COMPLETED">Completed</option></select></label><label>Priority<select value={taskPriorityFilter} onChange={(event) => setTaskPriorityFilter(event.target.value)}><option value="ALL">All priorities</option><option value="URGENT">Urgent</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option></select></label></div>}
               {tasks.length > 0 && <div className="project-hub__bulk-tools"><label><input type="checkbox" checked={visibleProjectTasks.length > 0 && visibleProjectTasks.every((task) => selectedTaskIds.includes(task.id))} onChange={(event) => setSelectedTaskIds((current) => event.target.checked ? [...new Set([...current, ...visibleProjectTasks.map((task) => task.id)])] : current.filter((id) => !visibleProjectTasks.some((task) => task.id === id)))} />Select {visibleProjectTasks.length} visible tasks</label>{selectedTaskIds.length > 0 && <form onSubmit={bulkUpdateProjectTasks}><strong>{selectedTaskIds.length} selected</strong><select name="status" defaultValue=""><option value="">Status unchanged</option>{taskStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select><select name="priority" defaultValue=""><option value="">Priority unchanged</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select><select name="assigneeId" defaultValue=""><option value="">Assignee unchanged</option><option value="__CLEAR__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select><select name="dueMode" defaultValue=""><option value="">Dates unchanged</option><option value="SET">Set due date</option><option value="CLEAR">Clear due dates</option></select><input aria-label="Due date for selected tasks" name="dueAt" type="date" /><button type="submit" disabled={saving}>{saving ? 'Updating…' : 'Apply changes'}</button><button type="button" disabled={saving} onClick={() => setSelectedTaskIds([])}>Clear selection</button></form>}</div>}
