@@ -7,6 +7,14 @@ export type TemplatePreset = {
   description: string;
   tasks: TemplateTask[];
   milestones: TemplateMilestone[];
+  operatingGuide?: TemplatePresetGuide;
+};
+
+export type TemplatePresetGuide = {
+  preparation: string[];
+  qualityChecks: string[];
+  riskSignals: string[];
+  handoff: string[];
 };
 
 export function presetTask(title: string, priority: string, offset: number, labels: string[], dependsOnIndexes: number[] = [], description: string | null = null): TemplateTask {

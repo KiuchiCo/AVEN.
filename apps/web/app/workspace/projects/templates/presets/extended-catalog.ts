@@ -2,14 +2,36 @@ import type { TemplatePreset } from './types';
 import { presetTask } from './types';
 
 // Curated, ready-to-edit starter plans for common workspace and personal workflows.
-// Descriptions are intentionally stored with each task so the guidance follows a
-// template when it is edited, duplicated, or exported to another workspace.
+// Descriptions and operating guides travel with each preset so teams can inspect
+// preparation, quality, risk, and handoff expectations before choosing a plan.
 export const extendedTemplatePresets: TemplatePreset[] = [
   {
     id: "product",
     category: "Product",
     name: "Product roadmap",
     description: "A reusable product roadmap plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting product roadmap, agree how this plan serves Product leads and functional partners planning a roadmap that connects customer evidence, company objectives, team capacity, and accountable delivery, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Review strategy and planning horizon”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Rank opportunities against criteria” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For product roadmap, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Publish proposed roadmap and risks”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Review strategy and planning horizon", "HIGH", 0, ["product", "frame"], [], "Frame the step for “Review strategy and planning horizon” in Product roadmap. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Product leads and functional partners planning a roadmap that connects customer evidence, company objectives, team capacity, and accountable delivery. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Collect customer evidence and requests", "MEDIUM", 2, ["product", "evidence"], [0], "Gather evidence for “Collect customer evidence and requests” in Product roadmap. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Product leads and functional partners planning a roadmap that connects customer evidence, company objectives, team capacity, and accountable delivery. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -29,6 +51,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Feature delivery",
     description: "A reusable feature delivery plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting feature delivery, agree how this plan serves Design, engineering, product, and support partners delivering a customer-facing capability with a clear scope and observable outcome, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Confirm user problem and scope”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Design accessible interaction flows” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For feature delivery, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Run quality and accessibility checks”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Confirm user problem and scope", "HIGH", 0, ["feature_delivery", "frame"], [], "Frame the step for “Confirm user problem and scope” in Feature delivery. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Design, engineering, product, and support partners delivering a customer-facing capability with a clear scope and observable outcome. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Write acceptance criteria and edge cases", "MEDIUM", 2, ["feature_delivery", "evidence"], [0], "Gather evidence for “Write acceptance criteria and edge cases” in Feature delivery. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Design, engineering, product, and support partners delivering a customer-facing capability with a clear scope and observable outcome. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -48,6 +92,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Bug triage",
     description: "A reusable bug triage plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting bug triage, agree how this plan serves Engineering and support partners handling reported defects while protecting customers, communicating impact, and preserving a reliable audit trail, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Capture report and impact”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Assess severity and affected users” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For bug triage, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Verify regression and neighboring behavior”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Capture report and impact", "HIGH", 0, ["bug_triage", "frame"], [], "Frame the step for “Capture report and impact” in Bug triage. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Engineering and support partners handling reported defects while protecting customers, communicating impact, and preserving a reliable audit trail. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Reproduce issue in supported environments", "MEDIUM", 2, ["bug_triage", "evidence"], [0], "Gather evidence for “Reproduce issue in supported environments” in Bug triage. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Engineering and support partners handling reported defects while protecting customers, communicating impact, and preserving a reliable audit trail. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -67,6 +133,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Release readiness",
     description: "A reusable release readiness plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting release readiness, agree how this plan serves Release owners coordinating engineering, product, operations, support, and communications before exposing a change to its intended audience, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Set release scope and owners”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Complete security and compatibility review” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For release readiness, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Run go or no-go review”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Set release scope and owners", "HIGH", 0, ["release_readiness", "frame"], [], "Frame the step for “Set release scope and owners” in Release readiness. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Release owners coordinating engineering, product, operations, support, and communications before exposing a change to its intended audience. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Confirm code and data readiness", "MEDIUM", 2, ["release_readiness", "evidence"], [0], "Gather evidence for “Confirm code and data readiness” in Release readiness. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Release owners coordinating engineering, product, operations, support, and communications before exposing a change to its intended audience. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -86,6 +174,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Customer onboarding",
     description: "A reusable customer onboarding plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting customer onboarding, agree how this plan serves Customer success, product, and implementation partners helping a new customer reach value while documenting access, goals, blockers, and responsibilities, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Confirm goals and stakeholders”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Configure workspace for agreed workflow” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For customer onboarding, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Confirm first useful outcome”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Confirm goals and stakeholders", "HIGH", 0, ["customer_onboarding", "frame"], [], "Frame the step for “Confirm goals and stakeholders” in Customer onboarding. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Customer success, product, and implementation partners helping a new customer reach value while documenting access, goals, blockers, and responsibilities. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Prepare account and access", "MEDIUM", 2, ["customer_onboarding", "evidence"], [0], "Gather evidence for “Prepare account and access” in Customer onboarding. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Customer success, product, and implementation partners helping a new customer reach value while documenting access, goals, blockers, and responsibilities. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -105,6 +215,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Pricing experiment",
     description: "A reusable pricing experiment plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting pricing experiment, agree how this plan serves Product, finance, legal, and go-to-market partners evaluating a pricing hypothesis without losing sight of customer trust and revenue quality, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “State pricing hypothesis and guardrails”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Model packages and expected economics” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For pricing experiment, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Run controlled experiment”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("State pricing hypothesis and guardrails", "HIGH", 0, ["pricing_test", "frame"], [], "Frame the step for “State pricing hypothesis and guardrails” in Pricing experiment. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Product, finance, legal, and go-to-market partners evaluating a pricing hypothesis without losing sight of customer trust and revenue quality. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Review customer and market evidence", "MEDIUM", 2, ["pricing_test", "evidence"], [0], "Gather evidence for “Review customer and market evidence” in Pricing experiment. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Product, finance, legal, and go-to-market partners evaluating a pricing hypothesis without losing sight of customer trust and revenue quality. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -124,6 +256,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Accessibility remediation",
     description: "A reusable accessibility remediation plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting accessibility remediation, agree how this plan serves Design, engineering, content, and accessibility reviewers improving a product journey for people using assistive technology and varied input methods, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Choose journeys and conformance scope”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Prioritize barriers by user impact” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For accessibility remediation, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Retest with representative users”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Choose journeys and conformance scope", "HIGH", 0, ["accessibility_remediation", "frame"], [], "Frame the step for “Choose journeys and conformance scope” in Accessibility remediation. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Design, engineering, content, and accessibility reviewers improving a product journey for people using assistive technology and varied input methods. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Audit keyboard and assistive technology use", "MEDIUM", 2, ["accessibility_remediation", "evidence"], [0], "Gather evidence for “Audit keyboard and assistive technology use” in Accessibility remediation. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Design, engineering, content, and accessibility reviewers improving a product journey for people using assistive technology and varied input methods. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -143,6 +297,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Design system update",
     description: "A reusable design system update plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting design system update, agree how this plan serves Design system maintainers, product designers, and engineers aligning reusable components with documented behavior, accessible defaults, and migration needs, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Identify component need and users”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Specify tokens and accessible behavior” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For design system update, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Validate adoption in consuming product”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Identify component need and users", "HIGH", 0, ["design_system", "frame"], [], "Frame the step for “Identify component need and users” in Design system update. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Design system maintainers, product designers, and engineers aligning reusable components with documented behavior, accessible defaults, and migration needs. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Collect existing patterns and variants", "MEDIUM", 2, ["design_system", "evidence"], [0], "Gather evidence for “Collect existing patterns and variants” in Design system update. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Design system maintainers, product designers, and engineers aligning reusable components with documented behavior, accessible defaults, and migration needs. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -162,6 +338,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Vendor integration",
     description: "A reusable vendor integration plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting vendor integration, agree how this plan serves Technical and business owners assessing a vendor integration while considering data flow, reliability, security, cost, and the path to disconnect safely, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Define use case and data boundary”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Review security and contractual controls” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For vendor integration, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Exercise failure and recovery behavior”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Define use case and data boundary", "HIGH", 0, ["integration", "frame"], [], "Frame the step for “Define use case and data boundary” in Vendor integration. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Technical and business owners assessing a vendor integration while considering data flow, reliability, security, cost, and the path to disconnect safely. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Compare provider fit and limitations", "MEDIUM", 2, ["integration", "evidence"], [0], "Gather evidence for “Compare provider fit and limitations” in Vendor integration. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Technical and business owners assessing a vendor integration while considering data flow, reliability, security, cost, and the path to disconnect safely. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -181,6 +379,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Security review",
     description: "A reusable security review plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting security review, agree how this plan serves Security reviewers and delivery owners evaluating likely abuse paths and protecting confidential information throughout a change lifecycle, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Describe assets and trust boundaries”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Prioritize risk and required controls” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For security review, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Test controls and document evidence”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Describe assets and trust boundaries", "HIGH", 0, ["security_review", "frame"], [], "Frame the step for “Describe assets and trust boundaries” in Security review. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Security reviewers and delivery owners evaluating likely abuse paths and protecting confidential information throughout a change lifecycle. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Map threats and misuse scenarios", "MEDIUM", 2, ["security_review", "evidence"], [0], "Gather evidence for “Map threats and misuse scenarios” in Security review. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Security reviewers and delivery owners evaluating likely abuse paths and protecting confidential information throughout a change lifecycle. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -200,6 +420,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Research",
     name: "User survey",
     description: "A reusable user survey plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting user survey, agree how this plan serves Research and product partners collecting user feedback with clear sampling, accessible questions, careful interpretation, and transparent limitations, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Frame research questions and audience”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Draft clear accessible questionnaire” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For user survey, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Analyze patterns and uncertainty”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Frame research questions and audience", "HIGH", 0, ["user_survey", "frame"], [], "Frame the step for “Frame research questions and audience” in User survey. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Research and product partners collecting user feedback with clear sampling, accessible questions, careful interpretation, and transparent limitations. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Choose sample and recruitment plan", "MEDIUM", 2, ["user_survey", "evidence"], [0], "Gather evidence for “Choose sample and recruitment plan” in User survey. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Research and product partners collecting user feedback with clear sampling, accessible questions, careful interpretation, and transparent limitations. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -219,6 +461,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Research",
     name: "Usability study",
     description: "A reusable usability study plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting usability study, agree how this plan serves Researchers, designers, and product owners observing representative users complete meaningful tasks without steering them toward expected answers, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Set study goals and participant profile”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Write realistic tasks and neutral prompts” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For usability study, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Synthesize friction and confidence levels”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Set study goals and participant profile", "HIGH", 0, ["usability_study", "frame"], [], "Frame the step for “Set study goals and participant profile” in Usability study. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Researchers, designers, and product owners observing representative users complete meaningful tasks without steering them toward expected answers. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Recruit and prepare consent materials", "MEDIUM", 2, ["usability_study", "evidence"], [0], "Gather evidence for “Recruit and prepare consent materials” in Usability study. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Researchers, designers, and product owners observing representative users complete meaningful tasks without steering them toward expected answers. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -238,6 +502,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Research",
     name: "Literature review",
     description: "A reusable literature review plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting literature review, agree how this plan serves Researchers and subject matter experts organizing relevant publications, distinguishing evidence strength, and connecting findings to an explicit decision question, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Define question and inclusion criteria”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Screen sources and log exclusions” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For literature review, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Synthesize themes and disagreement”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Define question and inclusion criteria", "HIGH", 0, ["literature_review", "frame"], [], "Frame the step for “Define question and inclusion criteria” in Literature review. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Researchers and subject matter experts organizing relevant publications, distinguishing evidence strength, and connecting findings to an explicit decision question. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Search databases and record queries", "MEDIUM", 2, ["literature_review", "evidence"], [0], "Gather evidence for “Search databases and record queries” in Literature review. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Researchers and subject matter experts organizing relevant publications, distinguishing evidence strength, and connecting findings to an explicit decision question. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -257,6 +543,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Research",
     name: "Competitive analysis",
     description: "A reusable competitive analysis plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting competitive analysis, agree how this plan serves Product and strategy partners comparing alternatives from the customer perspective rather than treating feature counts as a substitute for evidence, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Define customer segment and decision”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Compare journey and capabilities” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For competitive analysis, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Identify unmet needs and tradeoffs”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Define customer segment and decision", "HIGH", 0, ["competitive_analysis", "frame"], [], "Frame the step for “Define customer segment and decision” in Competitive analysis. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Product and strategy partners comparing alternatives from the customer perspective rather than treating feature counts as a substitute for evidence. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Select relevant alternatives and sources", "MEDIUM", 2, ["competitive_analysis", "evidence"], [0], "Gather evidence for “Select relevant alternatives and sources” in Competitive analysis. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Product and strategy partners comparing alternatives from the customer perspective rather than treating feature counts as a substitute for evidence. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -276,6 +584,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Research",
     name: "Data quality improvement",
     description: "A reusable data quality improvement plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting data quality improvement, agree how this plan serves Data producers and consumers maintaining trusted reporting through explicit definitions, tested transformations, accountable stewardship, and documented exceptions, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Name critical dataset and consumers”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Trace defects to producing systems” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For data quality improvement, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Correct records and add controls”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Name critical dataset and consumers", "HIGH", 0, ["data_quality", "frame"], [], "Frame the step for “Name critical dataset and consumers” in Data quality improvement. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Data producers and consumers maintaining trusted reporting through explicit definitions, tested transformations, accountable stewardship, and documented exceptions. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Profile completeness and consistency", "MEDIUM", 2, ["data_quality", "evidence"], [0], "Gather evidence for “Profile completeness and consistency” in Data quality improvement. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Data producers and consumers maintaining trusted reporting through explicit definitions, tested transformations, accountable stewardship, and documented exceptions. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -295,6 +625,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Research",
     name: "Customer interview study",
     description: "A reusable customer interview study plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting customer interview study, agree how this plan serves Researchers and product partners learning from customers using open questions, consent, consistent notes, and careful separation of evidence from interpretation, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Clarify decisions the study informs”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Prepare consent and interview guide” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For customer interview study, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Code themes and contrary evidence”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Clarify decisions the study informs", "HIGH", 0, ["interview_study", "frame"], [], "Frame the step for “Clarify decisions the study informs” in Customer interview study. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Researchers and product partners learning from customers using open questions, consent, consistent notes, and careful separation of evidence from interpretation. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Recruit varied relevant participants", "MEDIUM", 2, ["interview_study", "evidence"], [0], "Gather evidence for “Recruit varied relevant participants” in Customer interview study. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Researchers and product partners learning from customers using open questions, consent, consistent notes, and careful separation of evidence from interpretation. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -314,6 +666,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Research",
     name: "Customer advisory session",
     description: "A reusable customer advisory session plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting customer advisory session, agree how this plan serves Customer-facing teams hosting an advisory group with respect for participants’ time and a clear route from discussion to follow-up, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Set session objective and attendee mix”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Confirm accessibility and logistics” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For customer advisory session, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Synthesize feedback without overgeneralizing”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Set session objective and attendee mix", "HIGH", 0, ["advisory_board", "frame"], [], "Frame the step for “Set session objective and attendee mix” in Customer advisory session. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Customer-facing teams hosting an advisory group with respect for participants’ time and a clear route from discussion to follow-up. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Prepare topics and pre-read", "MEDIUM", 2, ["advisory_board", "evidence"], [0], "Gather evidence for “Prepare topics and pre-read” in Customer advisory session. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Customer-facing teams hosting an advisory group with respect for participants’ time and a clear route from discussion to follow-up. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -333,6 +707,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Marketing",
     name: "SEO content refresh",
     description: "A reusable seo content refresh plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting seo content refresh, agree how this plan serves Content, search, and subject matter partners improving discovery without sacrificing accuracy, readability, usefulness, or brand voice, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Select page and search opportunity”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Verify facts, sources, and freshness” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For seo content refresh, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Review accessibility and internal links”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Select page and search opportunity", "HIGH", 0, ["seo_refresh", "frame"], [], "Frame the step for “Select page and search opportunity” in SEO content refresh. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Content, search, and subject matter partners improving discovery without sacrificing accuracy, readability, usefulness, or brand voice. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Review intent and current performance", "MEDIUM", 2, ["seo_refresh", "evidence"], [0], "Gather evidence for “Review intent and current performance” in SEO content refresh. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Content, search, and subject matter partners improving discovery without sacrificing accuracy, readability, usefulness, or brand voice. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -352,6 +748,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Marketing",
     name: "Newsletter production",
     description: "A reusable newsletter production plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting newsletter production, agree how this plan serves Editorial, design, and marketing partners creating a useful newsletter with accurate links, audience consent, consistent delivery, and measurable learning, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Set audience and editorial objective”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Draft copy and calls to action” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For newsletter production, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Test delivery and send campaign”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Set audience and editorial objective", "HIGH", 0, ["newsletter", "frame"], [], "Frame the step for “Set audience and editorial objective” in Newsletter production. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Editorial, design, and marketing partners creating a useful newsletter with accurate links, audience consent, consistent delivery, and measurable learning. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Choose stories and source material", "MEDIUM", 2, ["newsletter", "evidence"], [0], "Gather evidence for “Choose stories and source material” in Newsletter production. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Editorial, design, and marketing partners creating a useful newsletter with accurate links, audience consent, consistent delivery, and measurable learning. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -371,6 +789,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Marketing",
     name: "Social launch campaign",
     description: "A reusable social launch campaign plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting social launch campaign, agree how this plan serves Social, product, and communications partners preparing platform-specific content that respects community context and avoids unsupported claims, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Confirm launch story and audience”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Draft platform-specific copy and media” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For social launch campaign, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Publish with moderation coverage”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Confirm launch story and audience", "HIGH", 0, ["social_launch", "frame"], [], "Frame the step for “Confirm launch story and audience” in Social launch campaign. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Social, product, and communications partners preparing platform-specific content that respects community context and avoids unsupported claims. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Build channel schedule and asset list", "MEDIUM", 2, ["social_launch", "evidence"], [0], "Gather evidence for “Build channel schedule and asset list” in Social launch campaign. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Social, product, and communications partners preparing platform-specific content that respects community context and avoids unsupported claims. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -390,6 +830,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Marketing",
     name: "Webinar delivery",
     description: "A reusable webinar delivery plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting webinar delivery, agree how this plan serves Event, subject matter, and marketing partners delivering an online session that works for attendees before, during, and after the live event, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Define promise and target attendees”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Prepare accessible slides and run sheet” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For webinar delivery, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Host session and manage questions”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Define promise and target attendees", "HIGH", 0, ["webinar", "frame"], [], "Frame the step for “Define promise and target attendees” in Webinar delivery. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Event, subject matter, and marketing partners delivering an online session that works for attendees before, during, and after the live event. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Confirm speakers and platform owner", "MEDIUM", 2, ["webinar", "evidence"], [0], "Gather evidence for “Confirm speakers and platform owner” in Webinar delivery. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Event, subject matter, and marketing partners delivering an online session that works for attendees before, during, and after the live event. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -409,6 +871,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Marketing",
     name: "Brand campaign",
     description: "A reusable brand campaign plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting brand campaign, agree how this plan serves Brand, creative, legal, and channel owners ensuring campaign expression remains recognizable, factual, and adapted to each audience context, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Set objective and brand guardrails”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Develop creative concepts and copy” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For brand campaign, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Launch approved channel assets”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Set objective and brand guardrails", "HIGH", 0, ["brand_campaign", "frame"], [], "Frame the step for “Set objective and brand guardrails” in Brand campaign. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Brand, creative, legal, and channel owners ensuring campaign expression remains recognizable, factual, and adapted to each audience context. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Gather audience and channel insight", "MEDIUM", 2, ["brand_campaign", "evidence"], [0], "Gather evidence for “Gather audience and channel insight” in Brand campaign. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Brand, creative, legal, and channel owners ensuring campaign expression remains recognizable, factual, and adapted to each audience context. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -428,6 +912,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Marketing",
     name: "Customer case study",
     description: "A reusable customer case study plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting customer case study, agree how this plan serves Marketing, customer success, and legal partners documenting outcomes in a way that is useful, verifiable, and approved by the customer, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Select customer and outcome story”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Interview customer and gather context” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For customer case study, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Obtain customer and legal approval”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Select customer and outcome story", "HIGH", 0, ["case_study", "frame"], [], "Frame the step for “Select customer and outcome story” in Customer case study. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Marketing, customer success, and legal partners documenting outcomes in a way that is useful, verifiable, and approved by the customer. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Confirm permissions and evidence sources", "MEDIUM", 2, ["case_study", "evidence"], [0], "Gather evidence for “Confirm permissions and evidence sources” in Customer case study. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Marketing, customer success, and legal partners documenting outcomes in a way that is useful, verifiable, and approved by the customer. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -447,6 +953,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Marketing",
     name: "Content library refresh",
     description: "A reusable content library refresh plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting content library refresh, agree how this plan serves Content owners improving a body of material so readers can find current, accurate, accessible information and teams can maintain it over time, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Define library scope and owner”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Choose keep, update, merge, or retire” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For content library refresh, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Review subject matter and accessibility”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Define library scope and owner", "HIGH", 0, ["content_refresh", "frame"], [], "Frame the step for “Define library scope and owner” in Content library refresh. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Content owners improving a body of material so readers can find current, accurate, accessible information and teams can maintain it over time. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Inventory age, traffic, and accuracy", "MEDIUM", 2, ["content_refresh", "evidence"], [0], "Gather evidence for “Inventory age, traffic, and accuracy” in Content library refresh. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Content owners improving a body of material so readers can find current, accurate, accessible information and teams can maintain it over time. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -466,6 +994,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Marketing",
     name: "Market launch",
     description: "A reusable market launch plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting market launch, agree how this plan serves Regional, product, finance, legal, and customer teams validating readiness for a new geography or segment before scaling investment, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Define market assumptions and success”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Confirm legal, tax, and privacy needs” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For market launch, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Run limited market introduction”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Define market assumptions and success", "HIGH", 0, ["market_launch", "frame"], [], "Frame the step for “Define market assumptions and success” in Market launch. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Regional, product, finance, legal, and customer teams validating readiness for a new geography or segment before scaling investment. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Research customer and competitor context", "MEDIUM", 2, ["market_launch", "evidence"], [0], "Gather evidence for “Research customer and competitor context” in Market launch. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Regional, product, finance, legal, and customer teams validating readiness for a new geography or segment before scaling investment. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -485,6 +1035,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Quarterly planning",
     description: "A reusable quarterly planning plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting quarterly planning, agree how this plan serves Leaders and delivery teams balancing strategic objectives, measurable outcomes, cross-team dependencies, and actual capacity for the quarter, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Review prior quarter and strategy”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Estimate effort and team capacity” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For quarterly planning, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Publish plan and communication notes”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Review prior quarter and strategy", "HIGH", 0, ["quarterly_planning", "frame"], [], "Frame the step for “Review prior quarter and strategy” in Quarterly planning. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Leaders and delivery teams balancing strategic objectives, measurable outcomes, cross-team dependencies, and actual capacity for the quarter. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Propose measurable outcomes and owners", "MEDIUM", 2, ["quarterly_planning", "evidence"], [0], "Gather evidence for “Propose measurable outcomes and owners” in Quarterly planning. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Leaders and delivery teams balancing strategic objectives, measurable outcomes, cross-team dependencies, and actual capacity for the quarter. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -504,6 +1076,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Budget planning",
     description: "A reusable budget planning plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting budget planning, agree how this plan serves Finance and budget owners creating an understandable forecast that ties requests to goals and exposes uncertainty before commitments are made, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Set planning assumptions and calendar”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Model scenarios and constraints” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For budget planning, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Publish approved allocations and owners”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Set planning assumptions and calendar", "HIGH", 0, ["budget_cycle", "frame"], [], "Frame the step for “Set planning assumptions and calendar” in Budget planning. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Finance and budget owners creating an understandable forecast that ties requests to goals and exposes uncertainty before commitments are made. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Collect owner proposals and evidence", "MEDIUM", 2, ["budget_cycle", "evidence"], [0], "Gather evidence for “Collect owner proposals and evidence” in Budget planning. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Finance and budget owners creating an understandable forecast that ties requests to goals and exposes uncertainty before commitments are made. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -523,6 +1117,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Hiring plan",
     description: "A reusable hiring plan plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting hiring plan, agree how this plan serves Hiring managers, recruiters, and interviewers running a fair, structured process with clear criteria and timely candidate communication, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Confirm role scope and approval”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Publish role and source candidates” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For hiring plan, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Decide, check references, and make offer”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Confirm role scope and approval", "HIGH", 0, ["hiring_plan", "frame"], [], "Frame the step for “Confirm role scope and approval” in Hiring plan. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Hiring managers, recruiters, and interviewers running a fair, structured process with clear criteria and timely candidate communication. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Write description and evaluation criteria", "MEDIUM", 2, ["hiring_plan", "evidence"], [0], "Gather evidence for “Write description and evaluation criteria” in Hiring plan. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Hiring managers, recruiters, and interviewers running a fair, structured process with clear criteria and timely candidate communication. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -542,6 +1158,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Employee onboarding",
     description: "A reusable employee onboarding plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting employee onboarding, agree how this plan serves People operations, managers, IT, and teammates giving a new employee the context, tools, and relationships needed to contribute safely, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Confirm start details and contacts”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Share team context and expectations” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For employee onboarding, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Check early goals and remove blockers”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Confirm start details and contacts", "HIGH", 0, ["employee_onboarding", "frame"], [], "Frame the step for “Confirm start details and contacts” in Employee onboarding. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: People operations, managers, IT, and teammates giving a new employee the context, tools, and relationships needed to contribute safely. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Prepare equipment, accounts, and access", "MEDIUM", 2, ["employee_onboarding", "evidence"], [0], "Gather evidence for “Prepare equipment, accounts, and access” in Employee onboarding. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: People operations, managers, IT, and teammates giving a new employee the context, tools, and relationships needed to contribute safely. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -561,6 +1199,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Process improvement",
     description: "A reusable process improvement plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting process improvement, agree how this plan serves Process owners and front-line participants reducing avoidable friction while protecting quality, accountability, and the needs of people using the process, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Choose process and improvement signal”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Find delays, rework, and failure modes” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For process improvement, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Pilot change with affected participants”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Choose process and improvement signal", "HIGH", 0, ["process_improvement", "frame"], [], "Frame the step for “Choose process and improvement signal” in Process improvement. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Process owners and front-line participants reducing avoidable friction while protecting quality, accountability, and the needs of people using the process. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Map actual steps and handoffs", "MEDIUM", 2, ["process_improvement", "evidence"], [0], "Gather evidence for “Map actual steps and handoffs” in Process improvement. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Process owners and front-line participants reducing avoidable friction while protecting quality, accountability, and the needs of people using the process. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -580,6 +1240,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Procurement evaluation",
     description: "A reusable procurement evaluation plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting procurement evaluation, agree how this plan serves Requestors, procurement, security, and finance comparing supplier fit, total cost, contractual terms, and operational ownership, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Describe need and must-have criteria”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Compare capability, cost, and risk” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For procurement evaluation, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Approve selection and transition plan”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Describe need and must-have criteria", "HIGH", 0, ["procurement", "frame"], [], "Frame the step for “Describe need and must-have criteria” in Procurement evaluation. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Requestors, procurement, security, and finance comparing supplier fit, total cost, contractual terms, and operational ownership. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Identify providers and invite proposals", "MEDIUM", 2, ["procurement", "evidence"], [0], "Gather evidence for “Identify providers and invite proposals” in Procurement evaluation. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Requestors, procurement, security, and finance comparing supplier fit, total cost, contractual terms, and operational ownership. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -599,6 +1281,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Incident response",
     description: "A reusable incident response plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting incident response, agree how this plan serves Incident leads and technical, support, and communications partners reducing harm while maintaining a reliable timeline and clear decision ownership, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Detect incident and assign lead”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Contain impact and protect evidence” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For incident response, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Verify service restoration and follow-up”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Detect incident and assign lead", "HIGH", 0, ["incident_response", "frame"], [], "Frame the step for “Detect incident and assign lead” in Incident response. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Incident leads and technical, support, and communications partners reducing harm while maintaining a reliable timeline and clear decision ownership. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Assess scope and establish timeline", "MEDIUM", 2, ["incident_response", "evidence"], [0], "Gather evidence for “Assess scope and establish timeline” in Incident response. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Incident leads and technical, support, and communications partners reducing harm while maintaining a reliable timeline and clear decision ownership. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -618,6 +1322,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Policy rollout",
     description: "A reusable policy rollout plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting policy rollout, agree how this plan serves Policy owners, legal, people teams, and managers aligning a clear rule with practical guidance and a fair support path, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Define policy goal and scope”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Draft rules and practical examples” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For policy rollout, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Publish training and support channel”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Define policy goal and scope", "HIGH", 0, ["policy_rollout", "frame"], [], "Frame the step for “Define policy goal and scope” in Policy rollout. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Policy owners, legal, people teams, and managers aligning a clear rule with practical guidance and a fair support path. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Review legal and operational implications", "MEDIUM", 2, ["policy_rollout", "evidence"], [0], "Gather evidence for “Review legal and operational implications” in Policy rollout. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Policy owners, legal, people teams, and managers aligning a clear rule with practical guidance and a fair support path. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -637,6 +1363,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Office move",
     description: "A reusable office move plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting office move, agree how this plan serves Facilities, IT, people operations, and team leads moving work safely while preserving access, equipment continuity, and clear arrival instructions, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Set move date and constraints”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Plan seating, network, and logistics” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For office move, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Communicate move-day instructions”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Set move date and constraints", "HIGH", 0, ["office_move", "frame"], [], "Frame the step for “Set move date and constraints” in Office move. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Facilities, IT, people operations, and team leads moving work safely while preserving access, equipment continuity, and clear arrival instructions. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Inventory people, equipment, and needs", "MEDIUM", 2, ["office_move", "evidence"], [0], "Gather evidence for “Inventory people, equipment, and needs” in Office move. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Facilities, IT, people operations, and team leads moving work safely while preserving access, equipment continuity, and clear arrival instructions. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -656,6 +1404,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Performance review cycle",
     description: "A reusable performance review cycle plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting performance review cycle, agree how this plan serves Managers and people partners supporting thoughtful feedback with shared expectations, specific examples, privacy, and useful development commitments, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Confirm cycle scope and guidance”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Invite employee reflection and input” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For performance review cycle, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Document agreements and growth actions”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Confirm cycle scope and guidance", "HIGH", 0, ["performance_cycle", "frame"], [], "Frame the step for “Confirm cycle scope and guidance” in Performance review cycle. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Managers and people partners supporting thoughtful feedback with shared expectations, specific examples, privacy, and useful development commitments. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Gather role expectations and examples", "MEDIUM", 2, ["performance_cycle", "evidence"], [0], "Gather evidence for “Gather role expectations and examples” in Performance review cycle. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Managers and people partners supporting thoughtful feedback with shared expectations, specific examples, privacy, and useful development commitments. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -675,6 +1445,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Education",
     name: "Study term plan",
     description: "A reusable study term plan plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting study term plan, agree how this plan serves A student balancing classes, assessments, review sessions, wellbeing, and practical deadlines while keeping each week adaptable, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “List course outcomes and deadlines”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Create repeatable weekly study blocks” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For study term plan, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Submit work and prepare for exams”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("List course outcomes and deadlines", "HIGH", 0, ["study_term", "frame"], [], "Frame the step for “List course outcomes and deadlines” in Study term plan. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: A student balancing classes, assessments, review sessions, wellbeing, and practical deadlines while keeping each week adaptable. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Break assessments into work sessions", "MEDIUM", 2, ["study_term", "evidence"], [0], "Gather evidence for “Break assessments into work sessions” in Study term plan. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: A student balancing classes, assessments, review sessions, wellbeing, and practical deadlines while keeping each week adaptable. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -694,6 +1486,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Education",
     name: "Exam preparation",
     description: "A reusable exam preparation plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting exam preparation, agree how this plan serves A learner building confidence through retrieval practice, spaced review, clear coverage, and enough recovery time before the examination, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Map topics and exam format”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Schedule spaced active-recall sessions” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For exam preparation, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Review errors and target weak areas”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Map topics and exam format", "HIGH", 0, ["exam_preparation", "frame"], [], "Frame the step for “Map topics and exam format” in Exam preparation. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: A learner building confidence through retrieval practice, spaced review, clear coverage, and enough recovery time before the examination. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Diagnose strengths and knowledge gaps", "MEDIUM", 2, ["exam_preparation", "evidence"], [0], "Gather evidence for “Diagnose strengths and knowledge gaps” in Exam preparation. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: A learner building confidence through retrieval practice, spaced review, clear coverage, and enough recovery time before the examination. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -713,6 +1527,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Career",
     name: "Job search plan",
     description: "A reusable job search plan plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting job search plan, agree how this plan serves A job seeker organizing target roles, application materials, outreach, interview preparation, and personal boundaries, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Choose role criteria and target list”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Tailor application for each opportunity” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For job search plan, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Prepare stories and interview practice”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Choose role criteria and target list", "HIGH", 0, ["job_search", "frame"], [], "Frame the step for “Choose role criteria and target list” in Job search plan. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: A job seeker organizing target roles, application materials, outreach, interview preparation, and personal boundaries. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Refresh resume and portfolio evidence", "MEDIUM", 2, ["job_search", "evidence"], [0], "Gather evidence for “Refresh resume and portfolio evidence” in Job search plan. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: A job seeker organizing target roles, application materials, outreach, interview preparation, and personal boundaries. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -732,6 +1568,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Personal",
     name: "Moving home checklist",
     description: "A reusable moving home checklist plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting moving home checklist, agree how this plan serves A household organizing dates, services, packing, records, and essential first-day needs while sharing work across everyone involved, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Confirm date and moving arrangements”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Transfer utilities and important records” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For moving home checklist, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Complete key handover and travel”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Confirm date and moving arrangements", "HIGH", 0, ["moving_home", "frame"], [], "Frame the step for “Confirm date and moving arrangements” in Moving home checklist. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: A household organizing dates, services, packing, records, and essential first-day needs while sharing work across everyone involved. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Inventory belongings and packing needs", "MEDIUM", 2, ["moving_home", "evidence"], [0], "Gather evidence for “Inventory belongings and packing needs” in Moving home checklist. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: A household organizing dates, services, packing, records, and essential first-day needs while sharing work across everyone involved. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -751,6 +1609,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Finance",
     name: "Personal finance review",
     description: "A reusable personal finance review plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting personal finance review, agree how this plan serves An individual or household reviewing financial goals, recurring costs, savings, and upcoming obligations with realistic, low-friction habits, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Gather balances, income, and recurring bills”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Review spending patterns and exceptions” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For personal finance review, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Automate safe recurring transfers”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Gather balances, income, and recurring bills", "HIGH", 0, ["personal_finance_review", "frame"], [], "Frame the step for “Gather balances, income, and recurring bills” in Personal finance review. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: An individual or household reviewing financial goals, recurring costs, savings, and upcoming obligations with realistic, low-friction habits. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Set priorities and near-term goals", "MEDIUM", 2, ["personal_finance_review", "evidence"], [0], "Gather evidence for “Set priorities and near-term goals” in Personal finance review. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: An individual or household reviewing financial goals, recurring costs, savings, and upcoming obligations with realistic, low-friction habits. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -770,6 +1650,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Personal",
     name: "Personal productivity reset",
     description: "A reusable personal productivity reset plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting personal productivity reset, agree how this plan serves A person clearing accumulated commitments, choosing a few meaningful priorities, and building a sustainable routine with buffer time, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Collect tasks, promises, and reminders”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Choose weekly outcomes and owners” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For personal productivity reset, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Set up capture and review habits”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Collect tasks, promises, and reminders", "HIGH", 0, ["productivity_reset", "frame"], [], "Frame the step for “Collect tasks, promises, and reminders” in Personal productivity reset. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: A person clearing accumulated commitments, choosing a few meaningful priorities, and building a sustainable routine with buffer time. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Decide what to stop or defer", "MEDIUM", 2, ["productivity_reset", "evidence"], [0], "Gather evidence for “Decide what to stop or defer” in Personal productivity reset. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: A person clearing accumulated commitments, choosing a few meaningful priorities, and building a sustainable routine with buffer time. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -789,6 +1691,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Personal",
     name: "Weekly meal planning",
     description: "A reusable weekly meal planning plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting weekly meal planning, agree how this plan serves A household planning balanced meals with budget, preferences, schedule, pantry inventory, and enough flexibility for changes, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Check calendar and dietary needs”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Choose meals by effort and budget” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For weekly meal planning, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Prepare components and store safely”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Check calendar and dietary needs", "HIGH", 0, ["meal_plan", "frame"], [], "Frame the step for “Check calendar and dietary needs” in Weekly meal planning. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: A household planning balanced meals with budget, preferences, schedule, pantry inventory, and enough flexibility for changes. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Inventory pantry and use soon items", "MEDIUM", 2, ["meal_plan", "evidence"], [0], "Gather evidence for “Inventory pantry and use soon items” in Weekly meal planning. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: A household planning balanced meals with budget, preferences, schedule, pantry inventory, and enough flexibility for changes. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -808,6 +1732,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Health",
     name: "Fitness goal plan",
     description: "A reusable fitness goal plan plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting fitness goal plan, agree how this plan serves A person planning consistent exercise around current ability, recovery, available equipment, and appropriate professional advice when needed, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Define goal and current baseline”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Schedule gradual progression and recovery” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For fitness goal plan, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Review effort and adjust load”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Define goal and current baseline", "HIGH", 0, ["fitness_goal", "frame"], [], "Frame the step for “Define goal and current baseline” in Fitness goal plan. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: A person planning consistent exercise around current ability, recovery, available equipment, and appropriate professional advice when needed. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Choose suitable activity and frequency", "MEDIUM", 2, ["fitness_goal", "evidence"], [0], "Gather evidence for “Choose suitable activity and frequency” in Fitness goal plan. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: A person planning consistent exercise around current ability, recovery, available equipment, and appropriate professional advice when needed. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -827,6 +1773,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Community",
     name: "Community event plan",
     description: "A reusable community event plan plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting community event plan, agree how this plan serves Organizers, community partners, and volunteers creating a safe, accessible gathering with clear roles, communication, and contingency plans, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Set purpose and invite community input”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Assign partners, volunteers, and resources” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For community event plan, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Host event and support participants”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Set purpose and invite community input", "HIGH", 0, ["community_event", "frame"], [], "Frame the step for “Set purpose and invite community input” in Community event plan. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Organizers, community partners, and volunteers creating a safe, accessible gathering with clear roles, communication, and contingency plans. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Choose accessible venue and timing", "MEDIUM", 2, ["community_event", "evidence"], [0], "Gather evidence for “Choose accessible venue and timing” in Community event plan. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Organizers, community partners, and volunteers creating a safe, accessible gathering with clear roles, communication, and contingency plans. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -846,6 +1814,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Community",
     name: "Grant application",
     description: "A reusable grant application plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting grant application, agree how this plan serves Program, finance, and community owners aligning a funding request to eligibility, measurable need, feasible delivery, and reporting commitments, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Confirm eligibility and funding priorities”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Design outcomes, activities, and measures” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For grant application, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Review application against every criterion”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Confirm eligibility and funding priorities", "HIGH", 0, ["grant_application", "frame"], [], "Frame the step for “Confirm eligibility and funding priorities” in Grant application. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Program, finance, and community owners aligning a funding request to eligibility, measurable need, feasible delivery, and reporting commitments. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Collect needs evidence and community input", "MEDIUM", 2, ["grant_application", "evidence"], [0], "Gather evidence for “Collect needs evidence and community input” in Grant application. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Program, finance, and community owners aligning a funding request to eligibility, measurable need, feasible delivery, and reporting commitments. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -865,6 +1855,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Product migration",
     description: "A reusable product migration plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting product migration, agree how this plan serves Engineering, product, support, and operations partners coordinating a migration with tested data handling and a clear customer recovery route, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Define migration cohort and invariants”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Build rehearsal and rollback tooling” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For product migration, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Communicate schedule and support route”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Define migration cohort and invariants", "HIGH", 0, ["product_migration", "frame"], [], "Frame the step for “Define migration cohort and invariants” in Product migration. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Engineering, product, support, and operations partners coordinating a migration with tested data handling and a clear customer recovery route. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Map data and compatibility requirements", "MEDIUM", 2, ["product_migration", "evidence"], [0], "Gather evidence for “Map data and compatibility requirements” in Product migration. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Engineering, product, support, and operations partners coordinating a migration with tested data handling and a clear customer recovery route. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -884,6 +1896,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Analytics dashboard",
     description: "A reusable analytics dashboard plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting analytics dashboard, agree how this plan serves Analytics and business owners making key measures understandable, consistent, and actionable for the people making decisions from them, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Identify decisions and dashboard audience”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Model reliable transformations and access” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For analytics dashboard, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Validate totals against source records”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Identify decisions and dashboard audience", "HIGH", 0, ["analytics_dashboard", "frame"], [], "Frame the step for “Identify decisions and dashboard audience” in Analytics dashboard. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Analytics and business owners making key measures understandable, consistent, and actionable for the people making decisions from them. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Agree metric definitions and sources", "MEDIUM", 2, ["analytics_dashboard", "evidence"], [0], "Gather evidence for “Agree metric definitions and sources” in Analytics dashboard. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Analytics and business owners making key measures understandable, consistent, and actionable for the people making decisions from them. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -903,6 +1937,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Product",
     name: "Internal tool delivery",
     description: "A reusable internal tool delivery plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting internal tool delivery, agree how this plan serves Internal product, IT, and operations owners reducing repetitive work without adding hidden support burden or unsafe access, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Observe workflow and recurring friction”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Prototype with representative examples” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For internal tool delivery, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Pilot with a small team”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Observe workflow and recurring friction", "HIGH", 0, ["internal_tool", "frame"], [], "Frame the step for “Observe workflow and recurring friction” in Internal tool delivery. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Internal product, IT, and operations owners reducing repetitive work without adding hidden support burden or unsafe access. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Define users, permissions, and outcome", "MEDIUM", 2, ["internal_tool", "evidence"], [0], "Gather evidence for “Define users, permissions, and outcome” in Internal tool delivery. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Internal product, IT, and operations owners reducing repetitive work without adding hidden support burden or unsafe access. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -922,6 +1978,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Knowledge base launch",
     description: "A reusable knowledge base launch plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting knowledge base launch, agree how this plan serves Content stewards and subject experts making essential guidance discoverable, current, and easy to own across the organization, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Identify audiences and common questions”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Draft authoritative reference articles” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For knowledge base launch, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Publish launch guide and team training”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Identify audiences and common questions", "HIGH", 0, ["knowledge_base", "frame"], [], "Frame the step for “Identify audiences and common questions” in Knowledge base launch. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Content stewards and subject experts making essential guidance discoverable, current, and easy to own across the organization. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Choose structure, tags, and owners", "MEDIUM", 2, ["knowledge_base", "evidence"], [0], "Gather evidence for “Choose structure, tags, and owners” in Knowledge base launch. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Content stewards and subject experts making essential guidance discoverable, current, and easy to own across the organization. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -941,6 +2019,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Annual planning and review",
     description: "A reusable annual planning and review plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting annual planning and review, agree how this plan serves A team reviewing outcomes and constraints honestly before committing to a manageable, measurable direction for the coming year, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Gather annual goals and outcome evidence”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Review environment and future needs” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For annual planning and review, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Allocate owners, capacity, and budget”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Gather annual goals and outcome evidence", "HIGH", 0, ["annual_review", "frame"], [], "Frame the step for “Gather annual goals and outcome evidence” in Annual planning and review. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: A team reviewing outcomes and constraints honestly before committing to a manageable, measurable direction for the coming year. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Document wins, misses, and causes", "MEDIUM", 2, ["annual_review", "evidence"], [0], "Gather evidence for “Document wins, misses, and causes” in Annual planning and review. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: A team reviewing outcomes and constraints honestly before committing to a manageable, measurable direction for the coming year. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -960,6 +2060,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Customer support improvement",
     description: "A reusable customer support improvement plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting customer support improvement, agree how this plan serves Support, product, and operations owners reducing repeat customer effort while keeping agent guidance accurate and current, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Select support journey and pain signal”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Trace causes across tools and policy” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For customer support improvement, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Pilot with agents and inspect outcomes”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Select support journey and pain signal", "HIGH", 0, ["customer_support_improvement", "frame"], [], "Frame the step for “Select support journey and pain signal” in Customer support improvement. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Support, product, and operations owners reducing repeat customer effort while keeping agent guidance accurate and current. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Sample cases and agent observations", "MEDIUM", 2, ["customer_support_improvement", "evidence"], [0], "Gather evidence for “Sample cases and agent observations” in Customer support improvement. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Support, product, and operations owners reducing repeat customer effort while keeping agent guidance accurate and current. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
@@ -979,6 +2101,28 @@ export const extendedTemplatePresets: TemplatePreset[] = [
     category: "Operations",
     name: "Data retention review",
     description: "A reusable data retention review plan with scoped tasks, review points, and a practical relative schedule.",
+    operatingGuide: {
+      preparation: [
+        "Before starting data retention review, agree how this plan serves Privacy, security, legal, and system owners applying documented retention rules while preserving required records and reducing unnecessary exposure, who owns approval, and what evidence will show that the work remains useful.",
+        "Confirm that every contributor has the access, capacity, decision rights, and support route needed to complete their part safely and on time.",
+        "Record the baseline, target, delivery window, dependencies outside the group, and one person who will maintain the source of truth.",
+      ],
+      qualityChecks: [
+        "For “Inventory data and system owners”, capture the decision and its evidence so a reviewer can verify the outcome without relying on a verbal update.",
+        "Review “Set schedules and deletion criteria” with affected participants, including the people responsible for using or maintaining the result after handoff.",
+        "Check factual accuracy, accessibility, privacy, security, and policy obligations that apply to the work; note explicitly which checks do not apply.",
+        "Keep acceptance criteria observable and traceable to the original goal; record each deliberate exception with its approver, evidence, and reason.",
+      ],
+      riskSignals: [
+        "Watch for changing scope, unavailable owners, late dependencies, or weaker evidence; raise a decision early when any of these signals appears.",
+        "For data retention review, identify the failure that would cause the greatest harm, agree how it is detected, and assign a proportionate response owner.",
+        "Keep a recovery option when delivery could interrupt users, lose information, or create commitments that cannot be reversed quickly.",
+      ],
+      handoff: [
+        "Give the receiving owner the final output from “Verify deletion and preservation behavior”, context, access instructions, unresolved questions, and the date follow-up should be reviewed.",
+        "Close the plan only after recipients know what changed, where progress lives, and whom to contact if the intended outcome does not hold.",
+      ],
+    },
     tasks: [
       presetTask("Inventory data and system owners", "HIGH", 0, ["data_retention", "frame"], [], "Frame the step for “Inventory data and system owners” in Data retention review. Begin by restating the intended outcome, the people affected, and the decisions this work must support. Review existing project context before changing scope. Record known constraints, assumptions that still need evidence, and a named owner for each open question. Use this scenario context: Privacy, security, legal, and system owners applying documented retention rules while preserving required records and reducing unnecessary exposure. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
       presetTask("Map legal and business retention needs", "MEDIUM", 2, ["data_retention", "evidence"], [0], "Gather evidence for “Map legal and business retention needs” in Data retention review. Gather the source materials and direct input needed for this step. Separate observed facts from estimates, check how recent each source is, and note conflicting evidence instead of averaging it away. Keep sensitive details to the minimum the team needs. Use this scenario context: Privacy, security, legal, and system owners applying documented retention rules while preserving required records and reducing unnecessary exposure. Record the outcome, owner, evidence, and next due point so the team can review progress and hand the work forward without losing the reasoning behind its decisions."),
