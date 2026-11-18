@@ -297,6 +297,15 @@ export class ProductivityService {
     return milestone;
   }
 
+  async deleteProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, milestoneId: string) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const milestone = await this.prisma.projectMilestone.findFirst({ where: { id: milestoneId, projectId, workspaceId }, select: { id: true, title: true } });
+    if (!milestone) throw new NotFoundException('Milestone not found in this project.');
+    await this.prisma.projectMilestone.delete({ where: { id: milestone.id } });
+    await this.recordActivity(workspaceId, actorId, 'PROJECT', projectId, `removed milestone “${milestone.title}”`);
+    return { id: milestone.id, deleted: true };
+  }
+
   async listTasks(identity: AuthenticatedIdentity, workspaceId: string, label?: string) {
     await this.requireMembership(identity, workspaceId);
     const normalizedLabel = label?.trim().toLocaleLowerCase();

@@ -123,6 +123,38 @@ export default function ProjectWorkspacePage() {
     finally { setSaving(false); }
   }
 
+  async function createMilestone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setSaving(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/${projectId}/milestones`, { method: 'POST', body: JSON.stringify({ title: form.get('title'), dueAt: form.get('dueAt') || null }) });
+      formElement.reset();
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create this milestone.'); }
+    finally { setSaving(false); }
+  }
+
+  async function updateMilestone(milestone: Milestone, changes: { completed?: boolean; dueAt?: string | null }) {
+    setSaving(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/${projectId}/milestones/${milestone.id}`, { method: 'PATCH', body: JSON.stringify(changes) });
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this milestone.'); }
+    finally { setSaving(false); }
+  }
+
+  async function deleteMilestone(milestone: Milestone) {
+    if (!window.confirm(`Remove the milestone “${milestone.title}” from this project?`)) return;
+    setSaving(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/${projectId}/milestones/${milestone.id}`, { method: 'DELETE' });
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove this milestone.'); }
+    finally { setSaving(false); }
+  }
+
   const tabs = [
     { key: 'OVERVIEW', label: 'Overview' }, { key: 'TIMELINE', label: 'Timeline' },
     { key: 'DOCUMENTS', label: `Documents${documents.length ? ` · ${documents.length}` : ''}` },
@@ -161,9 +193,15 @@ export default function ProjectWorkspacePage() {
           <section className="project-hub__budget-strip"><div><p className="workspace-eyebrow">BUDGET</p><strong>{project.budgetTotalCents === null ? 'Not set' : `${currency.format(project.budgetSpentCents / 100)} / ${currency.format(project.budgetTotalCents / 100)}`}</strong></div><div className="project-hub__progress"><span style={{ width: `${project.budgetTotalCents ? Math.min(100, (project.budgetSpentCents / project.budgetTotalCents) * 100) : 0}%` }} /></div><button type="button" onClick={() => setTab('BUDGET')}>Manage budget →</button></section>
         </>}
 
-        {tab === 'TIMELINE' && <section className="project-hub__panel project-hub__full-panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">TASK DATES · MILESTONES</p><h2>Project timeline</h2></div><span>{timelineItems.length} scheduled items</span></div>
+        {tab === 'TIMELINE' && <>
+          <section className="project-hub__panel project-hub__full-panel project-hub__milestone-manager"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">PROJECT CHECKPOINTS</p><h2>Milestones</h2></div><span>{milestones.filter((item) => item.completedAt).length} of {milestones.length} complete</span></div>
+            <form className="project-hub__milestone-create" onSubmit={createMilestone}><label>Milestone name<input name="title" required maxLength={160} placeholder="e.g. Design approved" /></label><label>Due date <span>(optional)</span><input name="dueAt" type="date" /></label><button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add milestone'}</button></form>
+            {milestones.length ? <ul className="project-hub__milestone-list">{milestones.map((milestone) => <li key={milestone.id} className={milestone.completedAt ? 'is-complete' : ''}><label className="project-hub__milestone-check"><input type="checkbox" checked={Boolean(milestone.completedAt)} disabled={saving} onChange={(event) => void updateMilestone(milestone, { completed: event.target.checked })} /><span>{milestone.title}</span></label><label className="project-hub__milestone-date"><span className="visually-hidden">Due date for {milestone.title}</span><input type="date" value={milestone.dueAt?.slice(0, 10) ?? ''} disabled={saving} onChange={(event) => void updateMilestone(milestone, { dueAt: event.target.value || null })} /></label><button type="button" className="project-hub__milestone-remove" disabled={saving} aria-label={`Remove ${milestone.title}`} onClick={() => void deleteMilestone(milestone)}>Remove</button></li>)}</ul> : <p className="productivity-message">No milestones yet. Add a checkpoint to make key outcomes visible on this timeline.</p>}
+          </section>
+          <section className="project-hub__panel project-hub__full-panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">TASK DATES · MILESTONES</p><h2>Project timeline</h2></div><span>{timelineItems.length} scheduled items</span></div>
           {timelineItems.length === 0 ? <p className="productivity-message">Add due dates to tasks and milestones to build the project timeline.</p> : <div className="project-timeline">{timelineItems.map((item) => <article key={`${item.type}-${item.id}`} className={item.state === 'COMPLETED' ? 'is-complete' : ''}><time>{formatDate(item.date)}</time><span className={`project-timeline__marker project-timeline__marker--${item.type.toLowerCase()}`} /><div><small>{item.type} · {item.state.replaceAll('_', ' ').toLowerCase()}</small>{item.type === 'Task' ? <Link href={`/workspace/tasks/${item.id}`}><strong>{item.title}</strong></Link> : <strong>{item.title}</strong>}</div></article>)}</div>}
-        </section>}
+          </section>
+        </>}
 
         {tab === 'DOCUMENTS' && <section className="project-hub__panel project-hub__full-panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">PROJECT LIBRARY</p><h2>Linked documents</h2></div><Link href="/workspace/documents">Manage documents →</Link></div>
           {documents.length === 0 ? <div className="task-list-empty"><h3>No project documents yet.</h3><p>When you create a document, link it to this project to keep it close to the work.</p><Link href="/workspace/documents">Create a document</Link></div> : <div className="project-hub__document-list">{documents.map((document) => <article key={document.id}><span>▤</span><div><strong>{document.title}</strong><small>Updated {formatDate(document.updatedAt)}</small></div><Link href={`/workspace/documents/${document.id}`}>Open editor →</Link></article>)}</div>}
