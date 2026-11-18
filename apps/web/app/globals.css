@@ -338,10 +338,13 @@ body {
 .inbox-notifications__list article>button:disabled { opacity: .45; }
 .inbox-updates-more { display: inline-block; margin-top: 12px; color: #77654f; font-size: 11px; text-decoration: none; }
 .knowledge-page>h1 { margin-top: 5px; }
-.knowledge-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 22px 0 16px; }
+.knowledge-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 22px 0 16px; }
 .knowledge-search { display: flex; width: min(100%, 470px); align-items: center; gap: 9px; padding: 0 12px; border: 1px solid #e2dacf; border-radius: 10px; background: #fffdfa; }
 .knowledge-search span { color: #88755f; font-size: 21px; }
 .knowledge-search input { width: 100%; height: 40px; border: 0; outline: 0; background: transparent; font: 12px Inter, sans-serif; }
+.knowledge-search small { flex: 0 0 auto; color: #938879; font-size: 9px; }
+.knowledge-filter { display: grid; gap: 4px; color: #827a70; font-size: 9px; }
+.knowledge-filter select,.knowledge-filter input { min-width: 120px; height: 38px; padding: 0 9px; border: 1px solid #e2dacf; border-radius: 9px; background: #fffdfa; color: #504a42; font: 11px Inter,sans-serif; }
 .knowledge-toolbar>div { display: flex; align-items: center; gap: 11px; color: #827a70; font-size: 10px; }
 .knowledge-toolbar>div button,.knowledge-compose__heading>button { padding: 8px 10px; border: 1px solid #e3dbd0; border-radius: 8px; background: #fffdfa; color: #66594a; font: 500 10px Inter, sans-serif; cursor: pointer; }
 .knowledge-toolbar>div button[aria-pressed="true"] { border-color: #d4c2aa; background: #f3ecdf; }
@@ -384,6 +387,8 @@ body {
 .knowledge-card footer>div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
 .knowledge-card footer button { border: 0; border-radius: 6px; background: transparent; color: #75624d; padding: 5px 6px; font: 500 9px Inter,sans-serif; cursor: pointer; }
 .knowledge-card footer button:hover { background: #f4eee6; }
+.knowledge-load-more { display: block; margin: 16px auto 0; padding: 9px 14px; border: 1px solid #e2dacf; border-radius: 9px; background: #fffdfa; color: #705b41; font: 500 11px Inter,sans-serif; cursor: pointer; }
+.knowledge-load-more:disabled { opacity: .55; cursor: default; }
 .knowledge-empty { display: grid; justify-items: center; padding: 40px 18px; border: 1px dashed #ded5c9; border-radius: 14px; background: #fffdfa; text-align: center; }
 .knowledge-empty>span { color: #a7845f; font-size: 28px; }
 .knowledge-empty h2 { margin: 9px 0 5px; color: #39342e; font: 500 19px Georgia,serif; }

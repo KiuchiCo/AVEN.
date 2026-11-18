@@ -10,8 +10,8 @@ export class KnowledgeController {
   constructor(private readonly knowledge: KnowledgeService) {}
 
   @Get()
-  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Query('q') query?: string, @Query('archived') archived?: string) {
-    return this.knowledge.list(identity, workspaceId, { q: query, archived });
+  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Query('q') query?: string, @Query('archived') archived?: string, @Query('projectId') projectId?: string, @Query('tag') tag?: string, @Query('page') page?: string) {
+    return this.knowledge.list(identity, workspaceId, { q: query, archived, projectId, tag, page });
   }
 
   @Post()

@@ -48,6 +48,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.42 · Guest read-only access](docs/sections/42-guest-read-only-access.md) | Enforce read-only Guest permissions across workspace APIs | Complete |
 | [1.43 · Task status automations](docs/sections/43-task-status-automations.md) | Run workspace rules on task status changes and review execution history | Complete |
 | [1.44 · Knowledge connections and history](docs/sections/44-knowledge-connections-history.md) | Link references to workspace records and restore earlier versions | Complete |
+| [1.45 · Knowledge search and filters](docs/sections/45-knowledge-search-filters.md) | Search and filter the Knowledge Hub with workspace-aware paging | Complete |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).
@@ -85,7 +86,7 @@ As of Section 1.35, AVEN has a Next.js and NestJS application with Clerk sign-in
 
 ## Local development
 
-Sections 1.36–1.39 add workspace switching, calendar event management, per-member team notifications, and a shared Knowledge Hub. Section 1.40 adds timezone-aware recurring calendar events. Section 1.41 adds a day timeline, week view, categorized and all-day events, project-linked scheduling, iCalendar export, and Knowledge/event search filters. Section 1.42 makes Guest access read-only at the API and in the workspace shell. Section 1.43 adds immediate task status rules with priority or activity-note actions and execution history. Section 1.44 connects Knowledge items to projects, documents, and tasks, and adds snapshot history with restore. See the [Section 1.44 notes](docs/sections/44-knowledge-connections-history.md) for migration, verification, and commit instructions.
+Sections 1.36–1.39 add workspace switching, calendar event management, per-member team notifications, and a shared Knowledge Hub. Section 1.40 adds timezone-aware recurring calendar events. Section 1.41 adds a day timeline, week view, categorized and all-day events, project-linked scheduling, iCalendar export, and Knowledge/event search filters. Section 1.42 makes Guest access read-only at the API and in the workspace shell. Section 1.43 adds immediate task status rules with priority or activity-note actions and execution history. Section 1.44 connects Knowledge items to projects, documents, and tasks, and adds snapshot history with restore. Section 1.45 adds debounced server-side Knowledge search, project and tag filters, and paginated loading. See the [Section 1.45 notes](docs/sections/45-knowledge-search-filters.md) for verification and commit instructions.
 
 Requires Node.js 24.15.0 or newer and npm. From the repository root:
 

@@ -6,20 +6,30 @@ import { PrismaService } from '../database/prisma.service.js';
 export class KnowledgeService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(identity: AuthenticatedIdentity, workspaceId: string, input: { q?: string; archived?: string }) {
+  async list(identity: AuthenticatedIdentity, workspaceId: string, input: { q?: string; archived?: string; projectId?: string; tag?: string; page?: string }) {
     await this.requireMember(identity, workspaceId);
     const query = input.q?.trim();
     if (query && (query.length < 2 || query.length > 100)) throw new BadRequestException('Search must be between 2 and 100 characters.');
+    const page = input.page === undefined ? 1 : Number(input.page);
+    if (!Number.isInteger(page) || page < 1 || page > 10_000) throw new BadRequestException('Page must be a positive integer.');
+    const projectId = input.projectId ? optionalUuid(input.projectId, 'Project') : null;
+    if (projectId && !await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } })) throw new NotFoundException('Project not found in this workspace.');
+    const tag = input.tag?.trim().toLocaleLowerCase();
+    if (tag && tag.length > 40) throw new BadRequestException('Tag filters must be 40 characters or fewer.');
     const archived = input.archived === 'true';
-    return this.prisma.knowledgeItem.findMany({
-      where: {
-        workspaceId,
-        archivedAt: archived ? { not: null } : null,
-        ...(query ? { OR: [{ title: { contains: query, mode: 'insensitive' } }, { content: { contains: query, mode: 'insensitive' } }, { tags: { has: query.toLocaleLowerCase() } }] } : {}),
-      },
-      orderBy: [{ isPinned: 'desc' }, { updatedAt: 'desc' }], take: 200,
-      include: knowledgeInclude,
-    });
+    const where = {
+      workspaceId,
+      archivedAt: archived ? { not: null } : null,
+      ...(projectId ? { projectId } : {}),
+      ...(tag ? { tags: { has: tag } } : {}),
+      ...(query ? { OR: [{ title: { contains: query, mode: 'insensitive' as const } }, { content: { contains: query, mode: 'insensitive' as const } }, { tags: { has: query.toLocaleLowerCase() } }] } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.knowledgeItem.findMany({ where, orderBy: [{ isPinned: 'desc' }, { updatedAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * 50, take: 51, include: knowledgeInclude }),
+      this.prisma.knowledgeItem.count({ where }),
+    ]);
+    const hasMore = items.length > 50;
+    return { items: hasMore ? items.slice(0, 50) : items, total, page, hasMore };
   }
 
   async create(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {

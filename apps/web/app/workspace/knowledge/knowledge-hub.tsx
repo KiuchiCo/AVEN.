@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 
 type LinkedRecord = { id: string; name?: string; title?: string };
@@ -20,10 +20,17 @@ export function KnowledgeHub() {
   const [versions, setVersions] = useState<Record<string, KnowledgeVersion[]>>({});
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<KnowledgeItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const loadSequence = useRef(0);
   const [error, setError] = useState('');
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
@@ -34,14 +41,27 @@ export function KnowledgeHub() {
     return response.json();
   }, [getToken]);
 
-  const reload = useCallback(async () => {
-    setLoading(true); setError('');
-    try { setItems(await request(`/workspaces/${workspace.id}/knowledge?archived=${showArchived}`) as KnowledgeItem[]); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load Knowledge.'); }
-    finally { setLoading(false); }
-  }, [request, showArchived, workspace.id]);
+  const reload = useCallback(async (page = 1, append = false) => {
+    const sequence = ++loadSequence.current;
+    if (append) setLoadingMore(true); else setLoading(true);
+    setError('');
+    const params = new URLSearchParams({ archived: String(showArchived), page: String(page) });
+    if (debouncedSearch.trim().length >= 2) params.set('q', debouncedSearch.trim());
+    if (projectFilter) params.set('projectId', projectFilter);
+    if (tagFilter.trim()) params.set('tag', tagFilter.trim());
+    try {
+      const result = await request(`/workspaces/${workspace.id}/knowledge?${params.toString()}`) as { items: KnowledgeItem[]; total: number; page: number; hasMore: boolean };
+      if (sequence === loadSequence.current) {
+        setItems((current) => append ? [...current, ...result.items] : result.items);
+        setHasMore(result.hasMore); setTotal(result.total);
+      }
+    }
+    catch (reason) { if (sequence === loadSequence.current) setError(reason instanceof Error ? reason.message : 'Could not load Knowledge.'); }
+    finally { if (sequence === loadSequence.current) { setLoading(false); setLoadingMore(false); } }
+  }, [debouncedSearch, projectFilter, request, showArchived, tagFilter, workspace.id]);
 
   useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => { const timer = window.setTimeout(() => setDebouncedSearch(search), 250); return () => window.clearTimeout(timer); }, [search]);
   useEffect(() => {
     void Promise.all([
       request(`/workspaces/${workspace.id}/projects`),
@@ -51,12 +71,6 @@ export function KnowledgeHub() {
       setProjects(projectData as LinkedRecord[]); setDocuments(documentData as LinkedRecord[]); setTasks(taskData as LinkedRecord[]);
     }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Could not load workspace links.'));
   }, [request, workspace.id]);
-
-  const visibleItems = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    if (!query) return items;
-    return items.filter((item) => `${item.title} ${item.content} ${item.tags.join(' ')}`.toLocaleLowerCase().includes(query));
-  }, [items, search]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); setBusy(true); setError('');
@@ -111,7 +125,7 @@ export function KnowledgeHub() {
     <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p><h1>Knowledge</h1>
     <p className="workspace-section-page__description">Keep useful references, decisions, and notes together. Link them to the work they support, and revisit earlier versions when plans change.</p>
     {error && <p className="productivity-error" role="alert">{error}</p>}
-    <div className="knowledge-toolbar"><label className="knowledge-search"><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search this Knowledge hub…" /></label><div><span>{items.length} {items.length === 1 ? 'item' : 'items'}{!showArchived && ` · ${pinnedCount} pinned`}</span><button type="button" aria-pressed={showArchived} onClick={() => { setShowArchived((value) => !value); setEditing(null); setHistoryId(null); }}>{showArchived ? 'View active' : 'View archive'}</button></div></div>
+    <div className="knowledge-toolbar"><label className="knowledge-search"><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search titles, notes, and tags…" />{search.trim().length === 1 && <small>Type one more character to search.</small>}</label><label className="knowledge-filter">Project<select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}><option value="">All projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label className="knowledge-filter">Tag<input value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} placeholder="Any tag" /></label><div><span>{total} {total === 1 ? 'item' : 'items'}{!showArchived && ` · ${pinnedCount} pinned on this page`}</span><button type="button" aria-pressed={showArchived} onClick={() => { setShowArchived((value) => !value); setEditing(null); setHistoryId(null); }}>{showArchived ? 'View active' : 'View archive'}</button></div></div>
     {!showArchived && <form className="knowledge-compose" key={editing?.id ?? 'new-knowledge'} onSubmit={save}>
       <div className="knowledge-compose__heading"><div><p className="workspace-eyebrow">{editing ? 'UPDATE REFERENCE' : 'BUILD YOUR SHARED LIBRARY'}</p><h2>{editing ? 'Edit Knowledge item' : 'Add to Knowledge'}</h2></div>{editing && <button type="button" onClick={() => setEditing(null)}>Cancel</button>}</div>
       <label>Title<input name="title" defaultValue={editing?.title ?? ''} required maxLength={200} placeholder="A useful reference or team decision" /></label>
@@ -121,7 +135,7 @@ export function KnowledgeHub() {
       <button type="submit" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Save reference'}</button>
     </form>}
     <section className="knowledge-list" aria-label={showArchived ? 'Archived Knowledge items' : 'Knowledge items'}>
-      {loading ? <p className="productivity-message">Loading Knowledge…</p> : visibleItems.length === 0 ? <div className="knowledge-empty"><span aria-hidden="true">◇</span><h2>{search ? 'No matching references' : showArchived ? 'Your archive is empty' : 'Start a shared reference library'}</h2><p>{search ? 'Try a different title, note, or tag.' : showArchived ? 'Archived Knowledge items will be available here.' : 'Save decisions, research notes, and links here so the whole workspace can find them.'}</p></div> : <div className="knowledge-grid">{visibleItems.map((item) => <article className="knowledge-card" key={item.id}>
+      {loading ? <p className="productivity-message">Loading Knowledge…</p> : items.length === 0 ? <div className="knowledge-empty"><span aria-hidden="true">◇</span><h2>{search || projectFilter || tagFilter ? 'No matching references' : showArchived ? 'Your archive is empty' : 'Start a shared reference library'}</h2><p>{search || projectFilter || tagFilter ? 'Adjust your search or filters and try again.' : showArchived ? 'Archived Knowledge items will be available here.' : 'Save decisions, research notes, and links here so the whole workspace can find them.'}</p></div> : <div className="knowledge-grid">{items.map((item) => <article className="knowledge-card" key={item.id}>
         <div className="knowledge-card__meta"><span>{item.isPinned ? '★ PINNED' : 'REFERENCE'}</span><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(item.updatedAt))}</time></div>
         <h2>{item.title}</h2><p>{item.content}</p>
         {item.sourceUrl && <a className="knowledge-card__source" href={item.sourceUrl} target="_blank" rel="noreferrer">Open source ↗</a>}
@@ -130,6 +144,7 @@ export function KnowledgeHub() {
         <footer><small>Added by {item.createdBy.displayName} · {item._count.versions} saved {item._count.versions === 1 ? 'version' : 'versions'}</small><div><button type="button" disabled={busy} onClick={() => void toggleHistory(item)}>History</button>{!showArchived && <button type="button" disabled={busy} onClick={() => void updateItem(item, { isPinned: !item.isPinned })}>{item.isPinned ? 'Unpin' : 'Pin'}</button>}<button type="button" disabled={busy} onClick={() => showArchived ? void archiveItem(item) : setEditing(item)}>{showArchived ? 'Restore' : 'Edit'}</button>{!showArchived && <button type="button" disabled={busy} onClick={() => void archiveItem(item)}>Archive</button>}</div></footer>
         {historyId === item.id && <section className="knowledge-history" aria-label={`Version history for ${item.title}`}><h3>Earlier versions</h3>{!versions[item.id] ? <p>Loading history…</p> : versions[item.id].length === 0 ? <p>No earlier versions have been saved yet. Editing this item will create the first snapshot.</p> : versions[item.id].map((version) => <article key={version.id}><div><strong>{version.title}</strong><small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(version.createdAt))} · {version.createdBy.displayName}</small><p>{version.content}</p></div><button type="button" disabled={busy} onClick={() => void restoreVersion(item, version)}>Restore</button></article>)}</section>}
       </article>)}</div>}
+      {!loading && hasMore && <button type="button" className="knowledge-load-more" disabled={loadingMore} onClick={() => void reload(Math.ceil(items.length / 50) + 1, true)}>{loadingMore ? 'Loading…' : 'Load more references'}</button>}
     </section>
   </div>;
 }
