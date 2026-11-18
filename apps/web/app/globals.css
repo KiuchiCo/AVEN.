@@ -1591,6 +1591,27 @@ body {
 .task-activity-list time { color: #958b7e; font-size: 10px; }
 .task-detail__aside h2 { font-size: 19px; }
 .task-detail__aside a { color: #775b38; }
+.task-dependencies-panel { display: grid; gap: 11px; padding: 18px; border: 1px solid #e9e1d7; border-radius: 15px; background: rgb(255 255 255 / 78%); box-shadow: 0 7px 22px rgb(62 47 30 / 4%); }
+.task-dependencies-panel h2 { margin: 0; color: #2e2923; font: 500 19px Georgia,serif; }
+.task-dependencies-panel__hint, .task-dependencies-panel__empty { margin: 0; color: #81786e; font-size: 11px; line-height: 1.5; }
+.task-dependencies-panel__group { display: grid; gap: 7px; }
+.task-dependencies-panel__group h3 { margin: 0; color: #736c63; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+.task-dependencies-panel__group ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.task-dependencies-panel__group li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 9px; border: 1px solid #eee8e0; border-radius: 9px; background: #fffdfa; }
+.task-dependencies-panel__group a { color: #433a2f; font-size: 11px; text-decoration: none; }
+.task-dependencies-panel__group a:hover { text-decoration: underline; }
+.task-dependency-status { flex: 0 0 auto; color: #81786e; font-size: 9px; text-transform: capitalize; }
+.task-dependency-status--completed { color: #4e7854; }
+.task-dependencies-panel__edit { border-top: 1px solid #eee8e0; padding-top: 9px; }
+.task-dependencies-panel__edit summary { color: #70583d; font-size: 11px; font-weight: 600; cursor: pointer; }
+.task-dependencies-panel__search { display: grid; gap: 5px; margin: 10px 0; color: #81786e; font-size: 10px; }
+.task-dependencies-panel__search input { width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid #e8e0d7; border-radius: 8px; background: #fffdfa; color: #332e27; font: inherit; }
+.task-dependencies-panel__options { display: grid; max-height: 220px; overflow: auto; margin-bottom: 9px; }
+.task-dependencies-panel__options label { display: grid; grid-template-columns: 16px minmax(0,1fr) auto; align-items: center; gap: 7px; padding: 8px 3px; border-bottom: 1px solid #f0ebe5; color: #433a2f; font-size: 10px; }
+.task-dependencies-panel__options input { accent-color: #98764d; }
+.task-dependencies-panel__options small { color: #91877b; font-size: 9px; text-transform: capitalize; }
+.task-dependencies-panel__edit > button { width: 100%; padding: 9px; border: 1px solid #ddd0be; border-radius: 9px; background: #f5efe7; color: #5d4930; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.task-dependencies-panel__edit > button:disabled { opacity: .55; cursor: not-allowed; }
 .task-detail__skeleton { display: grid; gap: 14px; max-width: 700px; }
 .task-detail__skeleton span { height: 70px; border-radius: 12px; background: linear-gradient(90deg,#eee8e0,#f8f5f0,#eee8e0); background-size: 200% 100%; animation: task-shimmer 1.3s infinite linear; }
 .task-detail__skeleton span:nth-child(2) { height: 240px; }

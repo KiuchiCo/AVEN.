@@ -1,4 +1,5 @@
-export type TaskSummary = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null };
+export type TaskDependency = { id: string; title: string; status: string };
+export type TaskSummary = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; dependsOn: TaskDependency[]; blocks: TaskDependency[] };
 export type TaskComment = { id: string; body: string; mentionedUserIds: string[]; createdAt: string; updatedAt: string; author: { id: string; displayName: string } };
 export type TaskActivityEntry = { id: string; entityType: string; message: string; createdAt: string; actor: { id: string; displayName: string } };
 export type ChecklistItem = { id: string; title: string; position: number; completedAt: string | null; createdAt: string; createdBy: { id: string; displayName: string }; completedBy: { id: string; displayName: string } | null };

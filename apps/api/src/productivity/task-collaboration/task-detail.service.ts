@@ -11,6 +11,8 @@ export class TaskDetailService {
     await this.access.require(identity, workspaceId, taskId);
     const task = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, include: {
       project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } },
+      dependsOn: { select: { id: true, title: true, status: true } },
+      blocks: { select: { id: true, title: true, status: true } },
       _count: { select: { comments: true, checklistItems: true, followers: true } },
     } });
     if (!task) return null;
