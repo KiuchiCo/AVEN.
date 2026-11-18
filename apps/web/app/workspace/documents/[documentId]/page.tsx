@@ -69,14 +69,16 @@ export default function DocumentEditorPage() {
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
-      request(`/workspaces/${workspace.id}/documents/${documentId}`) as Promise<Document>, reloadCollaboration(),
-    ]).then(([savedDocument]) => {
+      request(`/workspaces/${workspace.id}/documents/${documentId}`) as Promise<Document>,
+      request(`/workspaces/${workspace.id}/documents/${documentId}/versions`) as Promise<Version[]>,
+      request(`/workspaces/${workspace.id}/documents/${documentId}/comments`) as Promise<Comment[]>,
+    ]).then(([savedDocument, history, threads]) => {
       if (cancelled) return;
-      setDocument(savedDocument); setTitle(savedDocument.title); setBlocks(parseBlocks(savedDocument.content)); setHydrated(true);
+      setDocument(savedDocument); setTitle(savedDocument.title); setBlocks(parseBlocks(savedDocument.content)); setVersions(history); setComments(threads); setHydrated(true);
     }).catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not open document.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [documentId, reloadCollaboration, request, workspace.id]);
+  }, [documentId, request, workspace.id]);
 
   const saveDocument = useCallback(async (): Promise<boolean> => {
     if (!document || saving) return false;

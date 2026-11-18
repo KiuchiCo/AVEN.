@@ -64,7 +64,7 @@ export default function ProjectWorkspacePage() {
     return response.json();
   }, [getToken]);
 
-  const reload = useCallback(async () => {
+  const loadProjectData = useCallback(async () => {
     const [projectRows, taskRows, documentRows, activityRows, milestoneRows, memberRows] = await Promise.all([
       request(`/workspaces/${workspace.id}/projects`) as Promise<Project[]>,
       request(`/workspaces/${workspace.id}/tasks`) as Promise<ProjectTask[]>,
@@ -78,19 +78,20 @@ export default function ProjectWorkspacePage() {
     const projectTasks = taskRows.filter((item) => item.project?.id === projectId);
     const projectDocuments = documentRows.filter((item) => item.project?.id === projectId);
     const relatedIds = new Set([selected.id, ...projectTasks.map((item) => item.id), ...projectTasks.flatMap((item) => item.events.map((event) => event.id)), ...projectDocuments.map((item) => item.id), ...milestoneRows.map((item) => item.id)]);
-    setProject(selected);
-    setTasks(projectTasks);
-    setDocuments(projectDocuments);
-    setMilestones(milestoneRows);
-    setMembers(memberRows);
-    setActivity(activityRows.filter((item) => relatedIds.has(item.entityId)));
+    return { project: selected, tasks: projectTasks, documents: projectDocuments, milestones: milestoneRows, members: memberRows, activity: activityRows.filter((item) => relatedIds.has(item.entityId)) };
   }, [projectId, request, workspace.id]);
+
+  const applyProjectData = useCallback((data: Awaited<ReturnType<typeof loadProjectData>>) => {
+    setProject(data.project); setTasks(data.tasks); setDocuments(data.documents); setMilestones(data.milestones); setMembers(data.members); setActivity(data.activity);
+  }, []);
+
+  const reload = useCallback(async () => applyProjectData(await loadProjectData()), [applyProjectData, loadProjectData]);
 
   useEffect(() => {
     let cancelled = false;
-    void reload().catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load project workspace.'); }).finally(() => { if (!cancelled) setLoading(false); });
+    void loadProjectData().then((data) => { if (!cancelled) applyProjectData(data); }).catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load project workspace.'); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [reload]);
+  }, [applyProjectData, loadProjectData]);
 
   const completedCount = tasks.filter((task) => task.status === 'COMPLETED').length;
   const plannedTaskCount = tasks.filter((task) => task.status !== 'CANCELLED').length;
