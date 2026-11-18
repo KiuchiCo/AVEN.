@@ -92,6 +92,15 @@ export class TasksController {
     return this.productivity.updateTask(identity, workspaceId, taskId, body);
   }
 
+  @Delete(':taskId')
+  remove(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('taskId', new ParseUUIDPipe()) taskId: string,
+  ) {
+    return this.productivity.deleteTask(identity, workspaceId, taskId);
+  }
+
   @Put(':taskId/dependencies')
   setDependencies(
     @CurrentIdentity() identity: AuthenticatedIdentity,

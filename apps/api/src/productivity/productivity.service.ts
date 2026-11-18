@@ -722,6 +722,15 @@ export class ProductivityService {
     return task;
   }
 
+  async deleteTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const task = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { id: true, title: true, projectId: true } });
+    if (!task) throw new NotFoundException('Task not found in this workspace.');
+    await this.prisma.task.delete({ where: { id: task.id } });
+    await this.recordActivity(workspaceId, actorId, task.projectId ? 'PROJECT' : 'TASK', task.projectId ?? task.id, `deleted task “${task.title}”`);
+    return { id: task.id, deleted: true };
+  }
+
   async setTaskDependencies(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);

@@ -914,7 +914,31 @@ body {
 .project-hub__milestone-list li.is-complete .project-hub__milestone-check span { color: #81786d; text-decoration: line-through; }
 .project-hub__milestone-remove { padding: 6px 8px; border: 1px solid #e4ddd3; border-radius: 5px; background: #fffdfa; color: #746047; font: 500 10px Inter,sans-serif; cursor: pointer; }
 .project-hub__milestone-remove:disabled,.project-hub__milestone-create button:disabled { cursor: wait; opacity: .6; }
+.project-hub__task-actions { display: flex; align-items: center; gap: 8px; }
+.project-hub__task-create { display: grid; gap: 10px; margin: 0 0 12px; padding: 12px; border: 1px solid #eee7de; border-radius: 8px; background: #faf8f4; }
+.project-hub__task-create > label,.project-hub__task-create > div label { display: grid; gap: 5px; color: #655d52; font-size: 10px; }
+.project-hub__task-create > label span { color: #8b8378; }
+.project-hub__task-create > div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.project-hub__task-create input,.project-hub__task-create textarea,.project-hub__task-create select { width: 100%; min-width: 0; padding: 8px; border: 1px solid #e4ddd3; border-radius: 6px; background: #fffdfa; color: #302c26; font: 11px Inter,sans-serif; }
+.project-hub__task-create textarea { resize: vertical; }
+.project-hub__task-create > button { justify-self: end; padding: 8px 12px; border: 1px solid #92704d; border-radius: 6px; background: #92704d; color: white; font: 600 10px Inter,sans-serif; cursor: pointer; }
+@media (max-width: 640px) { .project-hub__task-actions { align-items: stretch; flex-direction: column; } .project-hub__task-create > div { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .project-hub__milestone-create { grid-template-columns: 1fr; } .project-hub__milestone-list li { grid-template-columns: minmax(0, 1fr) auto; } .project-hub__milestone-date { grid-column: 1; grid-row: 2; } .project-hub__milestone-remove { grid-column: 2; grid-row: 1 / span 2; } }
+.task-edit-panel { margin: 14px 0; padding: 14px; border: 1px solid #e7ded3; border-radius: 10px; background: #fffdfa; }
+.task-edit-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.task-edit-panel__heading .workspace-eyebrow { margin: 0 0 3px; }
+.task-edit-panel__heading h2 { margin: 0; color: #302c26; font: 500 18px Georgia,serif; }
+.task-edit-panel__heading button,.task-edit-panel__actions button { padding: 8px 11px; border: 1px solid #ded3c5; border-radius: 6px; background: white; color: #554a3c; font: 600 11px Inter,sans-serif; cursor: pointer; }
+.task-edit-panel__form { display: grid; gap: 12px; margin-top: 14px; }
+.task-edit-panel__form label { display: grid; gap: 5px; color: #554a3c; font-size: 11px; font-weight: 600; }
+.task-edit-panel__form label span,.task-edit-panel__form label small { color: #81786d; font-size: 9px; font-weight: 400; }
+.task-edit-panel__form input,.task-edit-panel__form textarea,.task-edit-panel__form select { width: 100%; padding: 9px 10px; border: 1px solid #ded3c5; border-radius: 6px; background: #fff; color: #302c26; font: 12px Inter,sans-serif; }
+.task-edit-panel__form textarea { resize: vertical; }
+.task-edit-panel__form label small { justify-self: end; }
+.task-edit-panel__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.task-edit-panel__actions button[type="submit"] { border-color: #92704d; background: #92704d; color: white; }
+.task-quick-actions__delete { color: #994b43 !important; }
+@media (max-width: 640px) { .task-edit-panel__heading { align-items: flex-start; flex-direction: column; } .task-edit-panel__actions { flex-direction: column-reverse; } }
 .project-hub__document-list { display: grid; }
 .project-hub__document-list article { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid #eee9e2; }
 .project-hub__document-list article > span { display: grid; width: 32px; height: 34px; place-items: center; border-radius: 8px; background: #f2ece3; color: #8d6d49; }

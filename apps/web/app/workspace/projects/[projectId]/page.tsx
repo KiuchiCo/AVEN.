@@ -12,6 +12,7 @@ type ProjectTask = { id: string; title: string; status: string; priority: string
 type ProjectDocument = { id: string; title: string; updatedAt: string; project: { id: string; name: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
 type ActivityEntry = { id: string; entityType: string; entityId: string; message: string; createdAt: string; actor: { displayName: string } };
+type WorkspaceMember = { userId: string; displayName: string };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const taskStatuses = [
   { value: 'TODO', label: 'To do' }, { value: 'IN_PROGRESS', label: 'In progress' },
@@ -32,6 +33,8 @@ export default function ProjectWorkspacePage() {
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [showTaskForm, setShowTaskForm] = useState(false);
   const [tab, setTab] = useState<'OVERVIEW' | 'TIMELINE' | 'DOCUMENTS' | 'ACTIVITY' | 'BUDGET'>('OVERVIEW');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -52,12 +55,13 @@ export default function ProjectWorkspacePage() {
   }, [getToken]);
 
   const reload = useCallback(async () => {
-    const [projectRows, taskRows, documentRows, activityRows, milestoneRows] = await Promise.all([
+    const [projectRows, taskRows, documentRows, activityRows, milestoneRows, memberRows] = await Promise.all([
       request(`/workspaces/${workspace.id}/projects`) as Promise<Project[]>,
       request(`/workspaces/${workspace.id}/tasks`) as Promise<ProjectTask[]>,
       request(`/workspaces/${workspace.id}/documents`) as Promise<ProjectDocument[]>,
       request(`/workspaces/${workspace.id}/activity`) as Promise<ActivityEntry[]>,
       request(`/workspaces/${workspace.id}/projects/${projectId}/milestones`) as Promise<Milestone[]>,
+      request(`/workspaces/${workspace.id}/members`) as Promise<WorkspaceMember[]>,
     ]);
     const selected = projectRows.find((item) => item.id === projectId);
     if (!selected) throw new Error('This project could not be found in the current workspace.');
@@ -68,6 +72,7 @@ export default function ProjectWorkspacePage() {
     setTasks(projectTasks);
     setDocuments(projectDocuments);
     setMilestones(milestoneRows);
+    setMembers(memberRows);
     setActivity(activityRows.filter((item) => relatedIds.has(item.entityId)));
   }, [projectId, request, workspace.id]);
 
@@ -145,6 +150,20 @@ export default function ProjectWorkspacePage() {
     finally { setSaving(false); }
   }
 
+  async function createTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setSaving(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/tasks`, { method: 'POST', body: JSON.stringify({ projectId, title: form.get('title'), description: form.get('description') || null, priority: form.get('priority'), assigneeId: form.get('assigneeId') || null, dueAt: form.get('dueAt') || null }) });
+      formElement.reset();
+      setShowTaskForm(false);
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create this task.'); }
+    finally { setSaving(false); }
+  }
+
   async function deleteMilestone(milestone: Milestone) {
     if (!window.confirm(`Remove the milestone “${milestone.title}” from this project?`)) return;
     setSaving(true); setError('');
@@ -183,7 +202,8 @@ export default function ProjectWorkspacePage() {
             </div>
           </section>
           <div className="project-hub__overview-grid">
-            <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DELIVERY · SEQUENCING</p><h2>Project tasks</h2></div><button type="button" onClick={() => setTab('TIMELINE')}>View timeline →</button></div>
+            <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DELIVERY · SEQUENCING</p><h2>Project tasks</h2></div><div className="project-hub__task-actions"><button type="button" onClick={() => setTab('TIMELINE')}>View timeline →</button><button type="button" aria-expanded={showTaskForm} onClick={() => setShowTaskForm((value) => !value)}>{showTaskForm ? 'Close' : '＋ Add task'}</button></div></div>
+              {showTaskForm && <form className="project-hub__task-create" onSubmit={createTask}><label>Task name<input name="title" required maxLength={200} placeholder="Describe the next action" /></label><label>Description <span>(optional)</span><textarea name="description" rows={2} maxLength={5000} placeholder="Add context or acceptance notes" /></label><div><label>Priority<select name="priority" defaultValue="MEDIUM"><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assignee<select name="assigneeId" defaultValue=""><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<input name="dueAt" type="date" /></label></div><button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create task'}</button></form>}
               {tasks.length === 0 ? <p className="productivity-message">Create tasks from the Projects page to start tracking delivery.</p> : <div className="project-hub__task-list">{tasks.slice().sort((a, b) => (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999')).map((task) => <article key={task.id}><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><div><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link><small>{task.assignee?.displayName ?? 'Unassigned'} · {formatDate(task.dueAt)}{task.dependsOn.length ? ` · ${task.dependsOn.filter((item) => item.status !== 'COMPLETED').length} open prerequisite(s)` : ''}</small><TaskLabels labels={task.labels} taskTitle={task.title} disabled={saving} onSave={(labels) => void updateTaskLabels(task.id, labels)} compact /></div><label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={saving} onChange={(event) => void updateTaskStatus(task.id, event.target.value)}>{taskStatuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select></label><details className="project-hub__dependency"><summary>Prerequisites · {task.dependsOn.length}</summary><div>{tasks.filter((candidate) => candidate.id !== task.id).map((candidate) => <label key={candidate.id}><input type="checkbox" checked={task.dependsOn.some((item) => item.id === candidate.id)} disabled={saving || task.status === 'COMPLETED'} onChange={(event) => void updateDependencies(task.id, event.currentTarget.checked ? [...task.dependsOn.map((item) => item.id), candidate.id] : task.dependsOn.filter((item) => item.id !== candidate.id).map((item) => item.id))} /><span>{candidate.title}{candidate.status === 'COMPLETED' ? ' · done' : ''}</span></label>)}</div></details></article>)}</div>}
             </section>
             <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">PROJECT RECORDS</p><h2>Documents & milestones</h2></div></div>
