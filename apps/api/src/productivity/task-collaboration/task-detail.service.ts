@@ -17,4 +17,13 @@ export class TaskDetailService {
     const { _count, ...record } = task;
     return { ...record, collaboration: { comments: _count.comments, checklistItems: _count.checklistItems, followers: _count.followers } };
   }
+
+  async activity(identity: AuthenticatedIdentity, workspaceId: string, taskId: string) {
+    await this.access.require(identity, workspaceId, taskId);
+    return this.prisma.workspaceActivity.findMany({
+      where: { workspaceId, entityId: taskId, entityType: { in: ['TASK', 'TASK_COMMENT', 'TASK_CHECKLIST'] } },
+      orderBy: { createdAt: 'desc' }, take: 100,
+      select: { id: true, entityType: true, message: true, createdAt: true, actor: { select: { id: true, displayName: true } } },
+    });
+  }
 }

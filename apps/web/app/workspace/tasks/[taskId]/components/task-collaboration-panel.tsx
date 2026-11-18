@@ -1,9 +1,8 @@
 'use client';
 
-import { useTaskComments } from '../hooks/use-task-comments';
-import { useTaskChecklist } from '../hooks/use-task-checklist';
 import type { TaskCollaborationTab } from '../lib/task-collaboration-tabs';
-import type { TaskComment, WorkspaceMember } from '../types';
+import { useTaskActivity } from '../hooks/use-task-activity';
+import type { WorkspaceMember } from '../types';
 import { ChecklistPanel } from './checklist-panel';
 import { TaskCommentsPanel } from './task-comments-panel';
 import { TaskActivityPanel } from './task-activity-panel';
@@ -14,6 +13,6 @@ export function TaskCollaborationPanel({ taskId, currentUserId, members, tab }: 
   return <TaskActivityFeed taskId={taskId} />;
 }
 function TaskActivityFeed({ taskId }: { taskId: string }) {
-  const comments = useTaskComments(taskId); const checklist = useTaskChecklist(taskId);
-  return <TaskActivityPanel comments={comments.comments as TaskComment[]} checklist={checklist.items} />;
+  const { entries, loading, error } = useTaskActivity(taskId);
+  return <TaskActivityPanel entries={entries} loading={loading} error={error} />;
 }
