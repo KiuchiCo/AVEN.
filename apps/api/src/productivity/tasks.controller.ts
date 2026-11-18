@@ -24,6 +24,11 @@ export class TasksController {
     return this.productivity.bulkUpdateTasks(identity, workspaceId, body);
   }
 
+  @Post('bulk/duplicate')
+  bulkDuplicate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
+    return this.productivity.bulkDuplicateTasks(identity, workspaceId, body);
+  }
+
   @Post('import')
   importTasks(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
     return this.productivity.importTasks(identity, workspaceId, body);

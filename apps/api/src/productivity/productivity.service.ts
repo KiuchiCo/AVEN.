@@ -303,6 +303,48 @@ export class ProductivityService {
     return { updated: taskIds.length };
   }
 
+  async bulkDuplicateTasks(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    if (!Array.isArray(body.taskIds) || body.taskIds.length < 1 || body.taskIds.length > 100) throw new BadRequestException('Select between 1 and 100 tasks to duplicate.');
+    const taskIds = body.taskIds.map((value) => {
+      const id = optionalUuid(value, 'Task');
+      if (!id) throw new BadRequestException('Task IDs are required.');
+      return id;
+    });
+    if (new Set(taskIds).size !== taskIds.length) throw new BadRequestException('A task can only be selected once.');
+    const sources = await this.prisma.task.findMany({
+      where: { workspaceId, id: { in: taskIds } },
+      select: { id: true, projectId: true, title: true, description: true, priority: true, labels: true, dueAt: true, checklistItems: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }], select: { title: true, position: true } } },
+    });
+    if (sources.length !== taskIds.length) throw new NotFoundException('One or more selected tasks are not in this workspace.');
+    const byId = new Map(sources.map((source) => [source.id, source]));
+    const orderedSources = taskIds.map((id) => byId.get(id)!);
+
+    return this.prisma.$transaction(async (transaction) => {
+      const copies: { id: string; sourceId: string; title: string; checklistItemCount: number }[] = [];
+      let checklistItemsCopied = 0;
+      for (const source of orderedSources) {
+        const title = `${source.title.slice(0, 194)} (copy)`;
+        const duplicate = await transaction.task.create({ data: {
+          workspaceId, projectId: source.projectId, createdById: actorId, title,
+          description: source.description, status: 'TODO', priority: source.priority,
+          labels: source.labels, dueAt: source.dueAt, completedAt: null,
+        }, select: { id: true } });
+        if (source.checklistItems.length) {
+          await transaction.taskChecklistItem.createMany({ data: source.checklistItems.map((item) => ({ workspaceId, taskId: duplicate.id, createdById: actorId, title: item.title, position: item.position })) });
+        }
+        await this.createActivity(transaction, {
+          workspaceId, actorId, entityType: 'TASK', entityId: duplicate.id,
+          message: `duplicated task “${title.slice(0, 88)}” from “${source.title.slice(0, 88)}”`, recipientScoped: false, additionalRecipientIds: [],
+        });
+        copies.push({ id: duplicate.id, sourceId: source.id, title, checklistItemCount: source.checklistItems.length });
+        checklistItemsCopied += source.checklistItems.length;
+      }
+      return { duplicated: copies.length, checklistItemsCopied, tasks: copies };
+    });
+  }
+
   async importTasks(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
