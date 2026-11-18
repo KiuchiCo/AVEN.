@@ -103,6 +103,7 @@ model User {
   sentWorkspaceInvites WorkspaceInvite[] @relation("WorkspaceInviteCreator")
   activityReceipts    ActivityReceipt[]
   knowledgeItems      KnowledgeItem[] @relation("KnowledgeItemCreator")
+  createdKnowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionCreator")
   createdAutomations AutomationRule[] @relation("AutomationRuleCreator")
 
   @@unique([identityIssuer, identitySubject])
@@ -133,6 +134,7 @@ model Workspace {
   documentComments DocumentComment[]
   invitations     WorkspaceInvite[]
   knowledgeItems  KnowledgeItem[]
+  knowledgeVersions KnowledgeVersion[]
   automations     AutomationRule[]
   automationRuns  AutomationRun[]
 
@@ -191,6 +193,8 @@ model Project {
   createdBy   User          @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
   tasks       Task[]
   documents   Document[]
+  knowledgeItems KnowledgeItem[] @relation("KnowledgeProject")
+  knowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionProject")
   calendarEvents CalendarEvent[]
   milestones  ProjectMilestone[]
 
@@ -219,6 +223,8 @@ model Task {
   assignee    User?           @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   events      CalendarEvent[]
   automationRuns AutomationRun[]
+  knowledgeItems KnowledgeItem[] @relation("KnowledgeTask")
+  knowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionTask")
   dependsOn   Task[]           @relation("TaskDependencies")
   blocks      Task[]           @relation("TaskDependencies")
 
@@ -289,6 +295,8 @@ model Document {
   project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   versions    DocumentVersion[]
   comments    DocumentComment[]
+  knowledgeItems KnowledgeItem[] @relation("KnowledgeDocument")
+  knowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionDocument")
 
   @@index([workspaceId, updatedAt])
   @@index([projectId])
@@ -299,6 +307,9 @@ model KnowledgeItem {
   id          String    @id @default(uuid()) @db.Uuid
   workspaceId String    @db.Uuid
   createdById String    @db.Uuid
+  projectId   String?   @db.Uuid
+  documentId  String?   @db.Uuid
+  taskId      String?   @db.Uuid
   title       String    @db.VarChar(200)
   content     String    @db.Text
   sourceUrl   String?   @db.VarChar(2048)
@@ -309,10 +320,41 @@ model KnowledgeItem {
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy   User      @relation("KnowledgeItemCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  project     Project?  @relation("KnowledgeProject", fields: [projectId], references: [id], onDelete: SetNull)
+  document    Document? @relation("KnowledgeDocument", fields: [documentId], references: [id], onDelete: SetNull)
+  task        Task?     @relation("KnowledgeTask", fields: [taskId], references: [id], onDelete: SetNull)
+  versions    KnowledgeVersion[]
 
   @@index([workspaceId, archivedAt, isPinned, updatedAt])
   @@index([createdById])
+  @@index([projectId])
+  @@index([documentId])
+  @@index([taskId])
   @@map("knowledge_items")
+}
+
+model KnowledgeVersion {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @db.Uuid
+  knowledgeItemId String   @db.Uuid
+  createdById     String   @db.Uuid
+  projectId       String?  @db.Uuid
+  documentId      String?  @db.Uuid
+  taskId          String?  @db.Uuid
+  title           String   @db.VarChar(200)
+  content         String   @db.Text
+  sourceUrl       String?  @db.VarChar(2048)
+  tags            String[] @default([])
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  knowledgeItem   KnowledgeItem @relation(fields: [knowledgeItemId], references: [id], onDelete: Cascade)
+  createdBy       User @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  project         Project? @relation("KnowledgeVersionProject", fields: [projectId], references: [id], onDelete: SetNull)
+  document        Document? @relation("KnowledgeVersionDocument", fields: [documentId], references: [id], onDelete: SetNull)
+  task            Task? @relation("KnowledgeVersionTask", fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, knowledgeItemId, createdAt])
+  @@map("knowledge_versions")
 }
 
 model DocumentVersion {

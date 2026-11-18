@@ -24,6 +24,16 @@ export class KnowledgeController {
     return this.knowledge.update(identity, workspaceId, itemId, body);
   }
 
+  @Get(':itemId/versions')
+  versions(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('itemId', new ParseUUIDPipe()) itemId: string) {
+    return this.knowledge.versions(identity, workspaceId, itemId);
+  }
+
+  @Post(':itemId/versions/:versionId/restore')
+  restoreVersion(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('itemId', new ParseUUIDPipe()) itemId: string, @Param('versionId', new ParseUUIDPipe()) versionId: string) {
+    return this.knowledge.restoreVersion(identity, workspaceId, itemId, versionId);
+  }
+
   @Post(':itemId/archive')
   archive(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('itemId', new ParseUUIDPipe()) itemId: string, @Body() body: unknown) {
     const archived = body && typeof body === 'object' && !Array.isArray(body) ? (body as { archived?: unknown }).archived : undefined;
