@@ -9,6 +9,7 @@ type Project = { id: string; name: string; description: string | null; status: s
 type Member = { userId: string; displayName: string; role: string };
 type Task = { id: string; title: string; description: string | null; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
+type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; createdBy: { displayName: string } };
 
 const columns = [
   { status: 'TODO', title: 'To do' },
@@ -25,7 +26,10 @@ export default function ProjectsPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [newProjectName, setNewProjectName] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -46,15 +50,17 @@ export default function ProjectsPage() {
   }, [getToken]);
 
   const reload = useCallback(async () => {
-    const [projectRows, taskRows, memberRows] = await Promise.all([
+    const [projectRows, taskRows, memberRows, templateRows] = await Promise.all([
       request(`/workspaces/${workspace.id}/projects`),
       request(`/workspaces/${workspace.id}/tasks`),
       request(`/workspaces/${workspace.id}/members`),
-    ]) as [Project[], Task[], Member[]];
+      request(`/workspaces/${workspace.id}/projects/project-templates`),
+    ]) as [Project[], Task[], Member[], ProjectTemplate[]];
     setProjects(projectRows);
     setTasks(taskRows);
     setMembers(memberRows);
-    setSelectedProject((current) => current || projectRows[0]?.id || '');
+    setTemplates(templateRows);
+    setSelectedProject((current) => projectRows.some((project) => project.id === current) ? current : projectRows[0]?.id || '');
   }, [request, workspace.id]);
 
   useEffect(() => {
@@ -100,6 +106,40 @@ export default function ProjectsPage() {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not create the project.');
     } finally { setBusy(false); }
+  }
+
+  async function saveSelectedTemplate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedProject) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/${selectedProject}/template`, { method: 'POST', body: JSON.stringify({ name: form.get('templateName') }) });
+      formElement.reset(); await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save this project template.'); }
+    finally { setBusy(false); }
+  }
+
+  async function applyTemplate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedTemplate) return;
+    setBusy(true); setError('');
+    try {
+      const project = await request(`/workspaces/${workspace.id}/projects/project-templates/${selectedTemplate}/apply`, { method: 'POST', body: JSON.stringify({ name: newProjectName }) }) as Project & { id: string };
+      setSelectedProject(project.id); setSelectedTemplate(''); setNewProjectName(''); await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create a project from this template.'); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteTemplate(template: ProjectTemplate) {
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/project-templates/${template.id}`, { method: 'DELETE' });
+      if (selectedTemplate === template.id) { setSelectedTemplate(''); setNewProjectName(''); }
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete this template.'); }
+    finally { setBusy(false); }
   }
 
   async function submitTask(event: FormEvent<HTMLFormElement>) {
@@ -210,6 +250,18 @@ export default function ProjectsPage() {
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create task'}</button>
         </form>
       </div>
+
+      <section className="project-template-library" aria-labelledby="project-template-title">
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">REPEATABLE WORKFLOWS</p><h2 id="project-template-title">Project templates</h2></div><span>{templates.length} saved</span></div>
+        <p className="project-template-library__intro">Save a project’s description, tasks, priorities, and milestones as a starter. Dates, assignees, and completion states are left fresh for each new project.</p>
+        {selectedProject ? <form className="project-template-save" onSubmit={saveSelectedTemplate}><label>Save “{selectedProjectName}” as a template<input name="templateName" required maxLength={160} placeholder="e.g. Website launch" /></label><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save template'}</button></form> : <p className="productivity-message">Create a project first, then save it here as a reusable template.</p>}
+        {templates.length === 0 ? <p className="productivity-message">No templates yet. Save a project above and reuse its setup in this workspace.</p> : <div className="project-template-grid">{templates.map((template) => <article className={`project-template-card${selectedTemplate === template.id ? ' project-template-card--selected' : ''}`} key={template.id}>
+          <div><span className="workspace-eyebrow">PROJECT STARTER</span><h3>{template.name}</h3><p>{template.description || 'A reusable project setup for your workspace.'}</p></div>
+          <div className="project-template-card__counts"><span>{template.taskCount} tasks</span><span>{template.milestoneCount} milestones</span></div>
+          <footer><button type="button" disabled={busy} onClick={() => { setSelectedTemplate(template.id); setNewProjectName(`${template.name} project`); }}>{selectedTemplate === template.id ? 'Selected' : 'Use template'}</button><button type="button" disabled={busy} onClick={() => void deleteTemplate(template)}>Delete</button></footer>
+        </article>)}</div>}
+        {selectedTemplate && <form className="project-template-launch" onSubmit={applyTemplate}><div><strong>Start from {templates.find((template) => template.id === selectedTemplate)?.name}</strong><span>Creates a project with fresh, open tasks and milestones.</span></div><label>New project name<input required maxLength={160} value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} /></label><button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create project'}</button><button type="button" onClick={() => setSelectedTemplate('')}>Cancel</button></form>}
+      </section>
 
       <section className="productivity-projects" aria-labelledby="projects-list-title">
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">SAVED TO YOUR WORKSPACE</p><h2 id="projects-list-title">Your projects</h2></div><span>{projects.length} {projects.length === 1 ? 'project' : 'projects'}</span></div>

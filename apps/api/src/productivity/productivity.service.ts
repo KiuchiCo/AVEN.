@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { PrismaService } from '../database/prisma.service.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import { AutomationsService } from './automations.service.js';
 
 const projectStatuses = ['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'] as const;
@@ -24,6 +25,54 @@ export class ProductivityService {
       orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
       include: { _count: { select: { tasks: true } } },
     }).then((projects) => projects.map(({ _count, ...project }) => ({ ...project, taskCount: _count.tasks })));
+  }
+
+  async listProjectTemplates(identity: AuthenticatedIdentity, workspaceId: string) {
+    await this.requireMembership(identity, workspaceId);
+    const templates = await this.prisma.projectTemplate.findMany({ where: { workspaceId }, orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }], include: { createdBy: { select: { displayName: true } } } });
+    return templates.map((template) => ({ ...template, taskCount: parseTemplateTasks(template.taskTemplates).length, milestoneCount: parseTemplateMilestones(template.milestoneTemplates).length }));
+  }
+
+  async createProjectTemplate(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const name = textField(body.name, 'Template name', 160);
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true, description: true, name: true } });
+    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    const [tasks, milestones] = await Promise.all([
+      this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { title: true, description: true, priority: true } }),
+      this.prisma.projectMilestone.findMany({ where: { projectId, workspaceId }, orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }], take: 50, select: { title: true } }),
+    ]);
+    const template = await this.prisma.projectTemplate.create({
+      data: { workspaceId, createdById: actorId, name, description: project.description, taskTemplates: tasks as Prisma.InputJsonValue, milestoneTemplates: milestones as Prisma.InputJsonValue },
+      include: { createdBy: { select: { displayName: true } } },
+    });
+    await this.recordActivity(workspaceId, actorId, 'PROJECT', project.id, `saved “${project.name}” as the “${name}” project template`);
+    return { ...template, taskCount: tasks.length, milestoneCount: milestones.length };
+  }
+
+  async applyProjectTemplate(identity: AuthenticatedIdentity, workspaceId: string, templateId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const name = textField(body.name, 'Project name', 160);
+    const template = await this.prisma.projectTemplate.findFirst({ where: { id: templateId, workspaceId } });
+    if (!template) throw new NotFoundException('Project template not found in this workspace.');
+    const tasks = parseTemplateTasks(template.taskTemplates);
+    const milestones = parseTemplateMilestones(template.milestoneTemplates);
+    return this.prisma.$transaction(async (transaction) => {
+      const project = await transaction.project.create({ data: { workspaceId, createdById: actorId, name, description: template.description, status: 'PLANNING' } });
+      if (tasks.length) await transaction.task.createMany({ data: tasks.map((task) => ({ workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, status: 'TODO' as const })) });
+      if (milestones.length) await transaction.projectMilestone.createMany({ data: milestones.map((milestone) => ({ workspaceId, projectId: project.id, title: milestone.title })) });
+      await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'PROJECT', entityId: project.id, message: `created project “${name}” from the “${template.name}” template` } });
+      return { ...project, taskCount: tasks.length, milestoneCount: milestones.length };
+    });
+  }
+
+  async deleteProjectTemplate(identity: AuthenticatedIdentity, workspaceId: string, templateId: string) {
+    await this.requireMembership(identity, workspaceId, true);
+    const result = await this.prisma.projectTemplate.deleteMany({ where: { id: templateId, workspaceId } });
+    if (!result.count) throw new NotFoundException('Project template not found in this workspace.');
+    return { id: templateId, deleted: true };
   }
 
   async listWorkspaceMembers(identity: AuthenticatedIdentity, workspaceId: string) {
@@ -699,6 +748,29 @@ function recordTitle(values: unknown) {
     if (typeof first === 'string') return first;
   }
   return 'Untitled record';
+}
+
+type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority };
+type ProjectMilestoneTemplate = { title: string };
+
+function parseTemplateTasks(value: Prisma.JsonValue): ProjectTaskTemplate[] {
+  if (!Array.isArray(value) || value.length > 100) throw new BadRequestException('This project template has invalid task data.');
+  return value.map((entry) => {
+    if (!entry || Array.isArray(entry) || typeof entry !== 'object') throw new BadRequestException('This project template has invalid task data.');
+    const task = entry as Record<string, Prisma.JsonValue>;
+    if (typeof task.title !== 'string' || !task.title.trim() || task.title.length > 200 || (task.description !== null && task.description !== undefined && typeof task.description !== 'string') || typeof task.priority !== 'string' || !taskPriorities.includes(task.priority as TaskPriority)) throw new BadRequestException('This project template has invalid task data.');
+    return { title: task.title, description: typeof task.description === 'string' ? task.description : null, priority: task.priority as TaskPriority };
+  });
+}
+
+function parseTemplateMilestones(value: Prisma.JsonValue): ProjectMilestoneTemplate[] {
+  if (!Array.isArray(value) || value.length > 50) throw new BadRequestException('This project template has invalid milestone data.');
+  return value.map((entry) => {
+    if (!entry || Array.isArray(entry) || typeof entry !== 'object') throw new BadRequestException('This project template has invalid milestone data.');
+    const milestone = entry as Record<string, Prisma.JsonValue>;
+    if (typeof milestone.title !== 'string' || !milestone.title.trim() || milestone.title.length > 160) throw new BadRequestException('This project template has invalid milestone data.');
+    return { title: milestone.title };
+  });
 }
 
 function optionalUuid(value: unknown, label: string) {

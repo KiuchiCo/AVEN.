@@ -95,6 +95,7 @@ model User {
   memberships       WorkspaceMember[]
   personalWorkspace Workspace?        @relation("PersonalWorkspaceOwner")
   createdProjects   Project[]         @relation("ProjectCreator")
+  createdProjectTemplates ProjectTemplate[] @relation("ProjectTemplateCreator")
   assignedTasks     Task[]            @relation("TaskAssignee")
   createdTasks      Task[]            @relation("TaskCreator")
   activityEntries   WorkspaceActivity[] @relation("ActivityActor")
@@ -129,6 +130,7 @@ model Workspace {
   databaseViews   DatabaseView[]
   recordLinks     DatabaseRecordLink[]
   milestones      ProjectMilestone[]
+  projectTemplates ProjectTemplate[]
   activity        WorkspaceActivity[]
   documentVersions DocumentVersion[]
   documentComments DocumentComment[]
@@ -248,6 +250,23 @@ model ProjectMilestone {
 
   @@index([workspaceId, projectId, dueAt])
   @@map("project_milestones")
+}
+
+model ProjectTemplate {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @db.Uuid
+  createdById       String   @db.Uuid
+  name              String   @db.VarChar(160)
+  description       String?  @db.Text
+  taskTemplates     Json     @default("[]") @db.JsonB
+  milestoneTemplates Json    @default("[]") @db.JsonB
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy         User @relation("ProjectTemplateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, updatedAt])
+  @@map("project_templates")
 }
 
 model WorkspaceActivity {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -12,6 +12,26 @@ export class ProjectsController {
   @Get()
   list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
     return this.productivity.listProjects(identity, workspaceId);
+  }
+
+  @Get('project-templates')
+  listTemplates(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
+    return this.productivity.listProjectTemplates(identity, workspaceId);
+  }
+
+  @Post('project-templates/:templateId/apply')
+  applyTemplate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('templateId', new ParseUUIDPipe()) templateId: string, @Body() body: unknown) {
+    return this.productivity.applyProjectTemplate(identity, workspaceId, templateId, body);
+  }
+
+  @Delete('project-templates/:templateId')
+  deleteTemplate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('templateId', new ParseUUIDPipe()) templateId: string) {
+    return this.productivity.deleteProjectTemplate(identity, workspaceId, templateId);
+  }
+
+  @Post(':projectId/template')
+  createTemplate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('projectId', new ParseUUIDPipe()) projectId: string, @Body() body: unknown) {
+    return this.productivity.createProjectTemplate(identity, workspaceId, projectId, body);
   }
 
   @Post()
