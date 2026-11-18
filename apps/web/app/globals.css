@@ -1439,3 +1439,24 @@ body {
   .workspace-state { width: min(100% - 24px, 900px); margin: 12px auto; padding: 26px 20px; }
   .auth-loading, .auth-setup { padding: 28px 22px; }
 }
+
+.task-labels { display: grid; gap: 6px; min-width: 0; }
+.task-labels--compact { gap: 3px; }
+.task-labels__items { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 18px; }
+.task-label { display: inline-flex; width: fit-content; align-items: center; padding: 3px 7px; border: 1px solid #e9ddcd; border-radius: 999px; background: #f8f0e5; color: #795a37; font-size: 10px; font-weight: 600; line-height: 1.2; text-decoration: none; }
+.task-label:hover { border-color: #c5a77e; background: #f1e5d5; }
+.task-labels__empty { color: #989087; font-size: 10px; }
+.task-labels__editor { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.task-labels__editor input { min-width: 0; width: min(100%, 190px); padding: 6px 8px; border: 1px solid #e6ded4; border-radius: 7px; background: #fffdfa; color: #39342e; font: inherit; font-size: 10px; }
+.task-labels__editor button { padding: 5px 8px; border: 1px solid #e2d7c9; border-radius: 7px; background: #f8f2ea; color: #624b30; font: inherit; font-size: 10px; cursor: pointer; }
+.task-labels__editor button:disabled { opacity: .5; cursor: not-allowed; }
+.task-labels__error { flex-basis: 100%; color: #a33c31; font-size: 10px; }
+.task-filter-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.task-label-directory__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 18px; }
+.task-label-directory__card { display: grid; justify-items: start; gap: 10px; padding: 16px; border: 1px solid #e8e0d7; border-radius: 14px; background: rgb(255 255 255 / 75%); color: #37312a; text-decoration: none; box-shadow: 0 5px 16px rgb(56 44 30 / 4%); }
+.task-label-directory__card:hover { border-color: #c6ab8a; transform: translateY(-1px); }
+.task-label-directory__card strong { font-family: Georgia, serif; font-size: 20px; font-weight: 500; }
+.task-label-directory__card small { color: #82796e; font-size: 11px; }
+.task-labels-callout { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin: 12px 0 -6px; color: #81776b; font-size: 11px; }
+.task-labels-callout a { color: #72583a; font-weight: 600; text-decoration: none; }
+.task-labels-callout a:hover { text-decoration: underline; }

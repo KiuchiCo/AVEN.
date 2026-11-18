@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -9,9 +9,14 @@ import { ProductivityService } from './productivity.service.js';
 export class TasksController {
   constructor(private readonly productivity: ProductivityService) {}
 
+  @Get('labels')
+  labels(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
+    return this.productivity.listTaskLabels(identity, workspaceId);
+  }
+
   @Get()
-  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
-    return this.productivity.listTasks(identity, workspaceId);
+  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Query('label') label?: string) {
+    return this.productivity.listTasks(identity, workspaceId, label);
   }
 
   @Patch('bulk')

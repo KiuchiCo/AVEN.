@@ -4,13 +4,14 @@ import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
+import { TaskLabels } from '../task-labels';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Member = { userId: string; displayName: string; role: string };
-type Task = { id: string; title: string; description: string | null; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null };
+type Task = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
-type TaskImportRow = { title: string; description: string | null; status: string; priority: string; dueAt: string | null };
-type TemplateTask = { title: string; description: string | null; priority: string };
+type TaskImportRow = { title: string; description: string | null; status: string; priority: string; dueAt: string | null; labels: string[] };
+type TemplateTask = { title: string; description: string | null; priority: string; labels: string[] };
 type TemplateMilestone = { title: string };
 type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; taskTemplates: TemplateTask[]; milestoneTemplates: TemplateMilestone[]; useCount: number; lastUsedAt: string | null; createdBy: { displayName: string } };
 
@@ -214,10 +215,10 @@ export default function ProjectsPage() {
     } finally { setBusy(false); }
   }
 
-  async function updateTask(task: Task, field: 'priority' | 'dueAt' | 'assigneeId', value: string) {
+  async function updateTask(task: Task, field: 'priority' | 'dueAt' | 'assigneeId' | 'labels', value: string | string[]) {
     setBusy(true); setError('');
     try {
-      await request(`/workspaces/${workspace.id}/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: value || null }) });
+      await request(`/workspaces/${workspace.id}/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: field === 'labels' ? value : value || null }) });
       await reload();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not update the task.');
@@ -241,8 +242,8 @@ export default function ProjectsPage() {
   }
 
   function exportTasksCsv() {
-    const header = ['title', 'description', 'status', 'priority', 'dueAt'];
-    const rows = boardTasks.map((task) => [task.title, task.description ?? '', task.status, task.priority, task.dueAt ?? '']);
+    const header = ['title', 'description', 'status', 'priority', 'dueAt', 'labels'];
+    const rows = boardTasks.map((task) => [task.title, task.description ?? '', task.status, task.priority, task.dueAt ?? '', task.labels.join(';')]);
     const csv = [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${selectedProjectName ? slug(selectedProjectName) : 'aven-workspace'}-tasks.csv`; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -350,7 +351,7 @@ export default function ProjectsPage() {
           <div className="project-template-editor__heading"><div><p className="workspace-eyebrow">UPDATE YOUR STARTER</p><h3>Edit project template</h3></div><button type="button" onClick={() => setEditingTemplateId('')}>Cancel</button></div>
           <label>Template name<input required maxLength={160} value={templateDraftName} onChange={(event) => setTemplateDraftName(event.target.value)} /></label>
           <label>Project description<textarea maxLength={5000} rows={2} value={templateDraftDescription} onChange={(event) => setTemplateDraftDescription(event.target.value)} /></label>
-          <div className="project-template-editor__section"><div><strong>Starter tasks</strong><button type="button" disabled={templateDraftTasks.length >= 100} onClick={() => setTemplateDraftTasks((rows) => [...rows, { title: '', description: null, priority: 'MEDIUM' }])}>＋ Add task</button></div>
+          <div className="project-template-editor__section"><div><strong>Starter tasks</strong><button type="button" disabled={templateDraftTasks.length >= 100} onClick={() => setTemplateDraftTasks((rows) => [...rows, { title: '', description: null, priority: 'MEDIUM', labels: [] }])}>＋ Add task</button></div>
             {templateDraftTasks.length === 0 && <p>No starter tasks. Add a task or save an existing project with tasks.</p>}
             {templateDraftTasks.map((task, index) => <article key={index}><label>Task title<input required maxLength={200} value={task.title} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, title: event.target.value } : row))} /></label><label>Description<input maxLength={5000} value={task.description ?? ''} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, description: event.target.value || null } : row))} /></label><label>Priority<select value={task.priority} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, priority: event.target.value } : row))}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><button type="button" aria-label={`Remove task ${index + 1}`} onClick={() => setTemplateDraftTasks((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>Remove</button></article>)}
           </div>
@@ -402,7 +403,7 @@ export default function ProjectsPage() {
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div><label className="productivity-board__filter">Priority <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label></div>
         <div className="project-task-tools"><div className="project-task-tools__top"><span>{boardTasks.length} tasks in this view</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice('Selected the first 500 visible tasks; narrow the view to select a different batch.'); }}>Select visible (up to 500)</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>Clear selection</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>Export CSV</button></div></div>
           {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Set priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button></form>}
-          <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} tasks · {selectedProjectName ? `will be added to ${selectedProjectName}` : 'will be added to the workspace'}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt. Up to 200 tasks per import. Export from AVEN for a ready-to-use template.</small></form>
+          <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} tasks · {selectedProjectName ? `will be added to ${selectedProjectName}` : 'will be added to the workspace'}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt, labels. Separate multiple labels with semicolons. Up to 200 tasks per import.</small></form>
         </div>
         {loading ? <p className="productivity-message">Loading tasks…</p> : (
           <div className="productivity-columns">{columns.map((column) => {
@@ -413,6 +414,7 @@ export default function ProjectsPage() {
                 <label className="project-task-select"><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={(event) => { if (event.target.checked && selectedTaskIds.length >= 500) { setError('Bulk actions support up to 500 selected tasks.'); return; } setSelectedTaskIds((ids) => event.target.checked ? [...ids, task.id] : ids.filter((id) => id !== task.id)); }} /><span>Select task</span></label>
                 <strong>{task.title}</strong>
                 {task.project && <span className="productivity-task__project">{task.project.name}</span>}
+                <TaskLabels labels={task.labels} taskTitle={task.title} disabled={busy} onSave={(labels) => void updateTask(task, 'labels', labels)} compact />
                 <label className="productivity-task__assignee">Assignee<select aria-label={`Assignee for ${task.title}`} value={task.assignee?.id ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'assigneeId', event.target.value)}><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
                 <div className="productivity-task__footer"><label className="visually-hidden" htmlFor={`priority-${task.id}`}>Priority for {task.title}</label><select className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`} id={`priority-${task.id}`} value={task.priority} disabled={busy} onChange={(event) => void updateTask(task, 'priority', event.target.value)}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select><label className="visually-hidden" htmlFor={`status-${task.id}`}>Status for {task.title}</label><select id={`status-${task.id}`} value={task.status} disabled={busy} onChange={(event) => void changeStatus(task, event.target.value)}>{columns.map((option) => <option key={option.status} value={option.status}>{option.title}</option>)}</select></div>
                 <div className="productivity-task__due"><label htmlFor={`due-${task.id}`}>Due date</label><input id={`due-${task.id}`} type="date" value={task.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'dueAt', event.target.value)} /><span className={task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'productivity-task__overdue' : ''}>{task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'Overdue' : ''}</span></div>
@@ -477,6 +479,8 @@ function parseTaskCsv(source: string): TaskImportRow[] {
     if (!statuses.includes(rawStatus)) throw new Error(`Status on row ${index + 2} must be TODO, IN_PROGRESS, IN_REVIEW, COMPLETED, or CANCELLED.`);
     if (!priorities.includes(rawPriority)) throw new Error(`Priority on row ${index + 2} must be LOW, MEDIUM, HIGH, or URGENT.`);
     if (dueAt && !Number.isFinite(Date.parse(dueAt))) throw new Error(`Due date on row ${index + 2} is not a valid date.`);
-    return { title, description: description || null, status: rawStatus, priority: rawPriority, dueAt };
+    const labels = valueAt(values, 'labels').split(';').map((label) => label.trim().toLocaleLowerCase()).filter(Boolean);
+    if (labels.length > 10 || labels.some((label) => label.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(label))) throw new Error(`Labels on row ${index + 2} must be up to 10 short words using letters, numbers, underscores, or hyphens.`);
+    return { title, description: description || null, status: rawStatus, priority: rawPriority, dueAt, labels: [...new Set(labels)] };
   });
 }

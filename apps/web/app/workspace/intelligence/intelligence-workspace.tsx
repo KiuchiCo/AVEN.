@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
+import { TaskLabels } from '../task-labels';
 
 type Briefing = {
   generatedAt: string;
   summary: { openTasks: number; overdueTasks: number; dueThisWeek: number; activeProjects: number; eventsThisWeek: number; documents: number; databases: number; knowledge: number };
   insights: Array<{ id: string; tone: string; title: string; detail: string; href: string; action: string }>;
-  focusTasks: Array<{ id: string; title: string; status: string; priority: string; dueAt: string | null; projectName: string | null }>;
+  focusTasks: Array<{ id: string; title: string; status: string; priority: string; labels: string[]; dueAt: string | null; projectName: string | null }>;
   events: Array<{ id: string; title: string; startsAt: string; endsAt: string | null; taskTitle: string | null }>;
   upcomingProjects: Array<{ id: string; name: string; status: string; dueAt: string | null }>;
 };
@@ -150,7 +151,7 @@ export function IntelligenceWorkspace() {
           <small className="intelligence-footnote">Briefing refreshed {new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(briefing.generatedAt))}. Suggestions are based on saved dates and statuses.</small>
         </section>
         <section className="intelligence-panel" aria-labelledby="intelligence-focus-title"><header><div><p className="workspace-eyebrow">A GOOD NEXT STEP</p><h2 id="intelligence-focus-title">Priority tasks</h2></div><Link href="/workspace/tasks">See all →</Link></header>
-          {briefing.focusTasks.length ? <ol className="intelligence-task-list">{briefing.focusTasks.map((task) => <li key={task.id}><span className={`intelligence-priority is-${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><div><strong>{task.title}</strong><small>{task.projectName ?? 'Workspace task'}{task.dueAt ? ` · due ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(task.dueAt))}` : ' · no due date'}</small></div></li>)}</ol> : <div className="intelligence-blank"><strong>No open tasks yet</strong><p>Create tasks and AVEN will bring the next steps together here.</p><Link href="/workspace/tasks">Open tasks →</Link></div>}
+          {briefing.focusTasks.length ? <ol className="intelligence-task-list">{briefing.focusTasks.map((task) => <li key={task.id}><span className={`intelligence-priority is-${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><div><strong>{task.title}</strong><small>{task.projectName ?? 'Workspace task'}{task.dueAt ? ` · due ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(task.dueAt))}` : ' · no due date'}</small><TaskLabels labels={task.labels} compact /></div></li>)}</ol> : <div className="intelligence-blank"><strong>No open tasks yet</strong><p>Create tasks and AVEN will bring the next steps together here.</p><Link href="/workspace/tasks">Open tasks →</Link></div>}
         </section>
       </div>
 

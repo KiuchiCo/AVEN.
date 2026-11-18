@@ -56,7 +56,7 @@ export class ProductivityService {
     const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true, description: true, name: true } });
     if (!project) throw new NotFoundException('Project not found in this workspace.');
     const [tasks, milestones] = await Promise.all([
-      this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { title: true, description: true, priority: true } }),
+      this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { title: true, description: true, priority: true, labels: true } }),
       this.prisma.projectMilestone.findMany({ where: { projectId, workspaceId }, orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }], take: 50, select: { title: true } }),
     ]);
     const template = await this.prisma.projectTemplate.create({
@@ -77,7 +77,7 @@ export class ProductivityService {
     const milestones = parseTemplateMilestones(template.milestoneTemplates);
     return this.prisma.$transaction(async (transaction) => {
       const project = await transaction.project.create({ data: { workspaceId, createdById: actorId, name, description: template.description, status: 'PLANNING' } });
-      if (tasks.length) await transaction.task.createMany({ data: tasks.map((task) => ({ workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, status: 'TODO' as const })) });
+      if (tasks.length) await transaction.task.createMany({ data: tasks.map((task) => ({ workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, labels: task.labels, status: 'TODO' as const })) });
       if (milestones.length) await transaction.projectMilestone.createMany({ data: milestones.map((milestone) => ({ workspaceId, projectId: project.id, title: milestone.title })) });
       const usageUpdate = await transaction.projectTemplate.updateMany({ where: { id: templateId, workspaceId }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
       if (usageUpdate.count !== 1) throw new NotFoundException('Project template is no longer available in this workspace.');
@@ -233,10 +233,12 @@ export class ProductivityService {
     return milestone;
   }
 
-  async listTasks(identity: AuthenticatedIdentity, workspaceId: string) {
+  async listTasks(identity: AuthenticatedIdentity, workspaceId: string, label?: string) {
     await this.requireMembership(identity, workspaceId);
+    const normalizedLabel = label?.trim().toLocaleLowerCase();
+    if (normalizedLabel && (normalizedLabel.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(normalizedLabel))) throw new BadRequestException('Task label must be 1–32 letters, numbers, underscores, or hyphens.');
     return this.prisma.task.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...(normalizedLabel ? { labels: { has: normalizedLabel } } : {}) },
       orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
       include: {
         project: { select: { id: true, name: true } },
@@ -246,6 +248,14 @@ export class ProductivityService {
         blocks: { select: { id: true, title: true, status: true } },
       },
     });
+  }
+
+  async listTaskLabels(identity: AuthenticatedIdentity, workspaceId: string) {
+    await this.requireMembership(identity, workspaceId);
+    const tasks = await this.prisma.task.findMany({ where: { workspaceId }, select: { labels: true } });
+    const counts = new Map<string, number>();
+    for (const task of tasks) for (const label of task.labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+    return [...counts.entries()].map(([label, taskCount]) => ({ label, taskCount })).sort((a, b) => a.label.localeCompare(b.label));
   }
 
   async bulkUpdateTasks(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
@@ -258,13 +268,14 @@ export class ProductivityService {
       return id;
     });
     if (new Set(taskIds).size !== taskIds.length) throw new BadRequestException('A task can only be selected once.');
-    const data: { priority?: TaskPriority; assigneeId?: string | null } = {};
+    const data: { priority?: TaskPriority; assigneeId?: string | null; labels?: string[] } = {};
     if ('priority' in body) data.priority = enumField(body.priority, taskPriorities, 'Task priority');
     if ('assigneeId' in body) {
       data.assigneeId = optionalUuid(body.assigneeId, 'Assignee');
       if (data.assigneeId && !await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: data.assigneeId } }, select: { userId: true } })) throw new BadRequestException('Assignee must be a member of this workspace.');
     }
-    if (!Object.keys(data).length) throw new BadRequestException('Choose a priority or assignee change.');
+    if ('labels' in body) data.labels = taskLabels(body.labels);
+    if (!Object.keys(data).length) throw new BadRequestException('Choose a priority, assignee, or labels change.');
     const matching = await this.prisma.task.count({ where: { workspaceId, id: { in: taskIds } } });
     if (matching !== taskIds.length) throw new NotFoundException('One or more selected tasks are not in this workspace.');
     await this.prisma.$transaction(async (transaction) => {
@@ -290,6 +301,7 @@ export class ProductivityService {
         description: optionalText(row.description, 'Task description', 5000),
         status, priority: enumField(row.priority, taskPriorities, 'Task priority', 'MEDIUM'),
         dueAt: dateField(row.dueAt, 'Task due date'),
+        labels: taskLabels(row.labels),
         completedAt: status === 'COMPLETED' ? new Date() : null,
       };
     });
@@ -326,6 +338,7 @@ export class ProductivityService {
         status,
         priority,
         dueAt: dateField(body.dueAt, 'Due date'),
+        labels: taskLabels(body.labels),
         completedAt: status === 'COMPLETED' ? new Date() : null,
       },
       include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
@@ -347,6 +360,7 @@ export class ProductivityService {
       dueAt?: Date | null;
       completedAt?: Date | null;
       assigneeId?: string | null;
+      labels?: string[];
     } = {};
 
     if ('title' in body) data.title = textField(body.title, 'Task title', 200);
@@ -364,6 +378,7 @@ export class ProductivityService {
       data.completedAt = data.status === 'COMPLETED' ? new Date() : null;
     }
     if ('priority' in body) data.priority = enumField(body.priority, taskPriorities, 'Task priority');
+    if ('labels' in body) data.labels = taskLabels(body.labels);
     if ('dueAt' in body) data.dueAt = dateField(body.dueAt, 'Due date');
     if ('assigneeId' in body) {
       const assigneeId = optionalUuid(body.assigneeId, 'Assignee');
@@ -581,7 +596,7 @@ export class ProductivityService {
     const contains = { contains: query, mode: 'insensitive' as const };
     const [projects, tasks, documents, databases, records, knowledge, events] = await Promise.all([
       this.prisma.project.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, name: true, description: true, updatedAt: true } }),
-      this.prisma.task.findMany({ where: { workspaceId, OR: [{ title: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, updatedAt: true, project: { select: { name: true } } } }),
+      this.prisma.task.findMany({ where: { workspaceId, OR: [{ title: contains }, { description: contains }, { labels: { has: query.toLocaleLowerCase() } }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, labels: true, updatedAt: true, project: { select: { name: true } } } }),
       this.prisma.document.findMany({ where: { workspaceId, OR: [{ title: contains }, { content: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, content: true, updatedAt: true } }),
       this.prisma.workspaceDatabase.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 8, select: { id: true, name: true, description: true, updatedAt: true } }),
       this.prisma.databaseRecord.findMany({ where: { workspaceId }, orderBy: { updatedAt: 'desc' }, take: 300, select: { id: true, values: true, updatedAt: true, database: { select: { id: true, name: true } } } }),
@@ -591,7 +606,7 @@ export class ProductivityService {
     const needle = query.toLocaleLowerCase();
     const results = [
       ...projects.map((item) => ({ id: item.id, type: 'Project', title: item.name, detail: item.description ?? 'Project', href: '/workspace/projects', updatedAt: item.updatedAt })),
-      ...tasks.map((item) => ({ id: item.id, type: 'Task', title: item.title, detail: item.project?.name ?? item.description ?? 'Workspace task', href: '/workspace/tasks', updatedAt: item.updatedAt })),
+      ...tasks.map((item) => ({ id: item.id, type: 'Task', title: item.title, detail: [...(item.project?.name ? [item.project.name] : []), ...(item.labels.length ? [item.labels.map((label) => `#${label}`).join(' ')] : []), ...(item.description ? [item.description] : [])].join(' · ') || 'Workspace task', labels: item.labels, href: `/workspace/tasks${item.labels.length ? `?label=${encodeURIComponent(item.labels[0])}` : ''}`, updatedAt: item.updatedAt })),
       ...documents.map((item) => {
         const content = documentPlainText(item.content);
         return { id: item.id, type: 'Document', title: item.title, detail: content.toLocaleLowerCase().includes(needle) ? excerpt(content, needle) : 'Workspace document', href: `/workspace/documents/${item.id}`, updatedAt: item.updatedAt };
@@ -820,8 +835,16 @@ function recordTitle(values: unknown) {
   return 'Untitled record';
 }
 
-type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority };
+type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority; labels: string[] };
 type ProjectMilestoneTemplate = { title: string };
+
+function taskLabels(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 10 || value.some((label) => typeof label !== 'string')) throw new BadRequestException('Tasks can have up to 10 text labels.');
+  const labels = value.map((label) => (label as string).trim().toLocaleLowerCase()).filter(Boolean);
+  if (labels.some((label) => label.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(label))) throw new BadRequestException('Each task label must be 1–32 letters, numbers, underscores, or hyphens.');
+  return [...new Set(labels)];
+}
 
 function parseTemplateTasks(value: Prisma.JsonValue): ProjectTaskTemplate[] {
   if (!Array.isArray(value) || value.length > 100) throw new BadRequestException('This project template has invalid task data.');
@@ -829,7 +852,7 @@ function parseTemplateTasks(value: Prisma.JsonValue): ProjectTaskTemplate[] {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') throw new BadRequestException('This project template has invalid task data.');
     const task = entry as Record<string, Prisma.JsonValue>;
     if (typeof task.title !== 'string' || !task.title.trim() || task.title.length > 200 || (task.description !== null && task.description !== undefined && (typeof task.description !== 'string' || task.description.length > 5000)) || typeof task.priority !== 'string' || !taskPriorities.includes(task.priority as TaskPriority)) throw new BadRequestException('This project template has invalid task data.');
-    return { title: task.title.trim(), description: typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null, priority: task.priority as TaskPriority };
+    return { title: task.title.trim(), description: typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null, priority: task.priority as TaskPriority, labels: taskLabels(task.labels ?? []) };
   });
 }
 

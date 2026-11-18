@@ -19,7 +19,7 @@ export class AutomationsService {
       }),
       this.prisma.automationRun.findMany({
         where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 30,
-        include: { rule: { select: { name: true } }, task: { select: { id: true, title: true } } },
+        include: { rule: { select: { name: true } }, task: { select: { id: true, title: true, labels: true } } },
       }),
     ]);
     return { rules, runs };

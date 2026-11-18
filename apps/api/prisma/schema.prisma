@@ -215,6 +215,7 @@ model Task {
   description String?         @db.Text
   status      TaskStatus      @default(TODO)
   priority    TaskPriority    @default(MEDIUM)
+  labels      String[]        @default([])
   dueAt       DateTime?       @db.Timestamptz(3)
   completedAt DateTime?       @db.Timestamptz(3)
   createdAt   DateTime        @default(now()) @db.Timestamptz(3)

@@ -7,6 +7,7 @@ import { WorkspaceHighlights } from './workspace-productivity';
 const modules = [
   { title: 'Projects', detail: 'Plan work and keep the next steps together.', href: '/workspace/projects', icon: '▱' },
   { title: 'Tasks', detail: 'Capture actions and make progress visible.', href: '/workspace/tasks', icon: '☑' },
+  { title: 'Task Labels', detail: 'Group and find tasks by shared labels.', href: '/workspace/labels', icon: '#' },
   { title: 'Documents', detail: 'Keep notes and plans close to your work.', href: '/workspace/documents', icon: '▤' },
   { title: 'Calendar', detail: 'Bring deadlines and events into one view.', href: '/workspace/calendar', icon: '▦' },
 ];

@@ -23,7 +23,7 @@ export class IntelligenceService {
     const [tasks, projects, events, documentCount, databaseCount, knowledgeCount] = await Promise.all([
       this.prisma.task.findMany({
         where: { workspaceId }, orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }], take: 500,
-        select: { id: true, title: true, status: true, priority: true, dueAt: true, project: { select: { name: true } } },
+        select: { id: true, title: true, status: true, priority: true, labels: true, dueAt: true, project: { select: { name: true } } },
       }),
       this.prisma.project.findMany({
         where: { workspaceId }, orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }], take: 200,

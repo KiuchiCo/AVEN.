@@ -4,12 +4,14 @@ import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useWorkspaceSession } from './workspace-shell';
+import { TaskLabelFilter, TaskLabels } from './task-labels';
 
 type TaskRecord = {
   id: string;
   title: string;
   status: string;
   priority: string;
+  labels: string[];
   dueAt: string | null;
   project: { id: string; name: string } | null;
   events: { id: string; title: string; startsAt: string }[];
@@ -82,11 +84,18 @@ function useWorkspaceProductivity() {
 export function MyTasksWorkspace() {
   const { tasks, projects, loading, savingId, error, updateStatus } = useWorkspaceProductivity();
   const [filter, setFilter] = useState('OPEN');
+  const [labelFilter, setLabelFilter] = useState('');
+  const allLabels = useMemo(() => [...new Set(tasks.flatMap((task) => task.labels))].sort(), [tasks]);
+  useEffect(() => {
+    const initialLabel = new URLSearchParams(window.location.search).get('label')?.trim().toLocaleLowerCase();
+    if (initialLabel) setLabelFilter(initialLabel);
+  }, []);
   const visibleTasks = useMemo(() => {
-    if (filter === 'ALL') return tasks;
-    if (filter === 'COMPLETED') return tasks.filter((task) => task.status === 'COMPLETED');
-    return tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
-  }, [filter, tasks]);
+    const matching = labelFilter ? tasks.filter((task) => task.labels.includes(labelFilter)) : tasks;
+    if (filter === 'ALL') return matching;
+    if (filter === 'COMPLETED') return matching.filter((task) => task.status === 'COMPLETED');
+    return matching.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
+  }, [filter, labelFilter, tasks]);
 
   return (
     <div className="workspace-section-page task-list-page">
@@ -96,13 +105,13 @@ export function MyTasksWorkspace() {
       {error && <p className="productivity-error" role="alert">{error}</p>}
       <section className="task-list-panel" aria-labelledby="my-tasks-title">
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{projects.length} PROJECTS · {tasks.length} TASKS</p><h2 id="my-tasks-title">All workspace tasks</h2></div>
-          <label className="task-filter">Show<select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="OPEN">Open</option><option value="ALL">All</option><option value="COMPLETED">Completed</option></select></label>
+          <div className="task-filter-group"><label className="task-filter">Show<select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="OPEN">Open</option><option value="ALL">All</option><option value="COMPLETED">Completed</option></select></label><TaskLabelFilter labels={allLabels} value={labelFilter} onChange={setLabelFilter} /></div>
         </div>
         {loading ? <p className="productivity-message">Loading your tasks…</p> : visibleTasks.length === 0 ? (
           <div className="task-list-empty"><span aria-hidden="true">☑</span><h3>{filter === 'COMPLETED' ? 'No completed tasks yet.' : 'A clear slate.'}</h3><p>{filter === 'COMPLETED' ? 'Completed tasks will be collected here.' : 'Create a task from your projects board and it will appear here.'}</p><Link href="/workspace/projects">Open projects <span aria-hidden="true">→</span></Link></div>
         ) : (
           <div className="task-list-records">{visibleTasks.map((task) => <article className="task-list-record" key={task.id}>
-            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3>{task.title}</h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}{task.dueAt && <time dateTime={task.dueAt}>Due {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(task.dueAt))}</time>}{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div></div>
+            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3>{task.title}</h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}{task.dueAt && <time dateTime={task.dueAt}>Due {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(task.dueAt))}</time>}{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
             <label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={savingId === task.id} onChange={(event) => void updateStatus(task.id, event.target.value)}>{taskStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
           </article>)}</div>
         )}
@@ -125,6 +134,8 @@ export function InboxWorkspace() {
   const [updatesError, setUpdatesError] = useState('');
   const [updatesBusy, setUpdatesBusy] = useState(false);
   const [filter, setFilter] = useState<InboxFilter>('ATTENTION');
+  const [labelFilter, setLabelFilter] = useState('');
+  const allLabels = useMemo(() => [...new Set(tasks.flatMap((task) => task.labels))].sort(), [tasks]);
   const todayKey = localDayKey(new Date());
   const weekEnd = new Date(); weekEnd.setHours(12, 0, 0, 0); weekEnd.setDate(weekEnd.getDate() + 7);
   const weekEndKey = localDayKey(weekEnd);
@@ -140,6 +151,7 @@ export function InboxWorkspace() {
       const rank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
       return (rank[a.priority] ?? 4) - (rank[b.priority] ?? 4);
     });
+  const visibleFilteredTasks = labelFilter ? filteredTasks.filter((task) => task.labels.includes(labelFilter)) : filteredTasks;
   const filters: { key: InboxFilter; label: string; count: number }[] = [
     { key: 'ATTENTION', label: 'Needs attention', count: attentionTasks.length },
     { key: 'OVERDUE', label: 'Overdue', count: overdueTasks.length },
@@ -232,10 +244,10 @@ export function InboxWorkspace() {
       </div>
       <section className="inbox-panel" aria-labelledby="inbox-queue-title">
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">WORK QUEUE</p><h2 id="inbox-queue-title">{filters.find((item) => item.key === filter)?.label}</h2></div><Link href="/workspace/projects">Manage projects <span aria-hidden="true">→</span></Link></div>
-        <div className="inbox-filters" role="group" aria-label="Filter inbox tasks">{filters.map((item) => <button type="button" key={item.key} aria-pressed={filter === item.key} className={filter === item.key ? 'is-active' : ''} onClick={() => setFilter(item.key)}>{item.label}<span>{item.count}</span></button>)}</div>
-        {loading ? <p className="productivity-message">Loading your inbox…</p> : filteredTasks.length === 0 ? <div className="task-list-empty"><span aria-hidden="true">✓</span><h3>{filter === 'ATTENTION' ? 'You’re all caught up.' : 'Nothing in this queue.'}</h3><p>{filter === 'ATTENTION' ? 'No overdue, near-term, or high-priority work needs your attention.' : 'Tasks will appear here when they match this filter.'}</p><Link href="/workspace/projects">Open projects <span aria-hidden="true">→</span></Link></div> : (
-          <div className="task-list-records">{filteredTasks.map((task) => <article className="task-list-record inbox-task" key={task.id}>
-            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3>{task.title}</h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}<time className={task.dueAt && task.dueAt.slice(0, 10) < todayKey ? 'inbox-task__overdue' : ''}>{dueLabel(task.dueAt)}</time>{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div></div>
+        <div className="inbox-filters" role="group" aria-label="Filter inbox tasks">{filters.map((item) => <button type="button" key={item.key} aria-pressed={filter === item.key} className={filter === item.key ? 'is-active' : ''} onClick={() => setFilter(item.key)}>{item.label}<span>{item.count}</span></button>)}</div><TaskLabelFilter labels={allLabels} value={labelFilter} onChange={setLabelFilter} />
+        {loading ? <p className="productivity-message">Loading your inbox…</p> : visibleFilteredTasks.length === 0 ? <div className="task-list-empty"><span aria-hidden="true">✓</span><h3>{filter === 'ATTENTION' ? 'You’re all caught up.' : 'Nothing in this queue.'}</h3><p>{filter === 'ATTENTION' ? 'No overdue, near-term, or high-priority work needs your attention.' : 'Tasks will appear here when they match this filter.'}</p><Link href="/workspace/projects">Open projects <span aria-hidden="true">→</span></Link></div> : (
+          <div className="task-list-records">{visibleFilteredTasks.map((task) => <article className="task-list-record inbox-task" key={task.id}>
+            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3>{task.title}</h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}<time className={task.dueAt && task.dueAt.slice(0, 10) < todayKey ? 'inbox-task__overdue' : ''}>{dueLabel(task.dueAt)}</time>{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
             <label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={savingId === task.id} onChange={(event) => void updateStatus(task.id, event.target.value)}>{taskStatuses.slice(0, 4).map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
           </article>)}</div>
         )}

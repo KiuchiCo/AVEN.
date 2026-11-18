@@ -2,6 +2,7 @@ export const workspaceNavigation = [
   { label: 'Home', href: '/workspace', icon: 'home' },
   { label: 'Inbox', href: '/workspace/inbox', icon: 'inbox' },
   { label: 'My Tasks', href: '/workspace/tasks', icon: 'tasks' },
+  { label: 'Task Labels', href: '/workspace/labels', icon: 'labels' },
   { label: 'Projects', href: '/workspace/projects', icon: 'projects' },
   { label: 'Documents', href: '/workspace/documents', icon: 'documents' },
   { label: 'Knowledge', href: '/workspace/knowledge', icon: 'knowledge' },

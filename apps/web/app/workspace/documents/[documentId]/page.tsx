@@ -140,9 +140,12 @@ export default function DocumentEditorPage() {
 
   async function createTaskFromBlock(block: Block) {
     if (!block.text.trim()) return;
+    const rawLabels = window.prompt('Optional task labels, separated by commas:');
+    if (rawLabels === null) return;
+    const labels = rawLabels.split(',').map((label) => label.trim().toLocaleLowerCase()).filter(Boolean);
     setCreatingTask(block.id); setError(''); setSuccess('');
     try {
-      await request(`/workspaces/${workspace.id}/tasks`, { method: 'POST', body: JSON.stringify({ title: block.text.trim(), projectId: document?.project?.id }) });
+      await request(`/workspaces/${workspace.id}/tasks`, { method: 'POST', body: JSON.stringify({ title: block.text.trim(), projectId: document?.project?.id, labels }) });
       setSuccess(document?.project ? `Task added to ${document.project.name}.` : 'Task added to My Tasks.');
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create a task from this block.'); }
     finally { setCreatingTask(''); }
