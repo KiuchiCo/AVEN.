@@ -2,6 +2,7 @@
 
 import { useState, type SyntheticEvent } from 'react';
 import type { TemplateTaskCoaching as Coaching } from '../presets/task-coaching/types';
+import { TaskWorksheet } from './TaskWorksheet';
 
 export function TemplateTaskCoaching({ presetId, taskIndex }: { presetId: string; taskIndex: number }) {
   const [coaching, setCoaching] = useState<Coaching | null>(null);
@@ -19,7 +20,7 @@ export function TemplateTaskCoaching({ presetId, taskIndex }: { presetId: string
     <details className="project-template-task-coaching" onToggle={loadChecklist}>
       <summary>Task execution checklist <span>8 reviewable steps</span></summary>
       {loading && <p role="status">Loading checklist…</p>}
-      {coaching && <ol>{coaching.steps.map((step) => <li key={step.title}><strong>{step.title}</strong><p>{step.guidance}</p></li>)}</ol>}
+      {coaching && <><ol>{coaching.steps.map((step) => <li key={step.title}><strong>{step.title}</strong><p>{step.guidance}</p></li>)}</ol><TaskWorksheet presetId={presetId} taskIndex={taskIndex} prompts={coaching.worksheet} /></>}
     </details>
   );
 }

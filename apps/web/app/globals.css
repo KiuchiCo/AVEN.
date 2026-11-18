@@ -1770,5 +1770,19 @@ body {
 .project-template-task-coaching ol { display: grid; gap: 7px; margin: 0; padding-left: 18px; }
 .project-template-task-coaching li { padding: 5px 7px; border: 1px solid #eee7de; border-radius: 6px; background: #fffdfa; color: #554a3c; font-size: 9px; }
 .project-template-task-coaching li p { margin: 3px 0 0; color: #716b62; font-size: 9px; line-height: 1.5; }
+.project-template-task-worksheet { display: grid; gap: 10px; margin-top: 8px; padding: 9px; border: 1px solid #ded3c5; border-radius: 7px; background: #f9f5ee; }
+.project-template-task-worksheet > summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: #554a3c; font-size: 9px; font-weight: 700; cursor: pointer; }
+.project-template-task-worksheet > summary span { color: #897c6d; font-size: 8px; font-weight: 400; }
+.project-template-task-worksheet__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.project-template-task-worksheet__toolbar p { margin: 0; color: #716b62; font-size: 8px; line-height: 1.5; }
+.project-template-task-worksheet__toolbar div { display: flex; flex-shrink: 0; gap: 5px; }
+.project-template-task-worksheet__toolbar button { padding: 5px 8px; border: 1px solid #d8caba; border-radius: 5px; background: #fffdfa; color: #554a3c; font: 600 8px Inter,sans-serif; cursor: pointer; }
+.project-template-task-worksheet__fields { display: grid; gap: 8px; }
+.project-template-task-worksheet__fields label { display: grid; gap: 4px; }
+.project-template-task-worksheet__fields label > span { color: #554a3c; font-size: 9px; font-weight: 700; }
+.project-template-task-worksheet__fields label > small { color: #716b62; font-size: 8px; line-height: 1.5; }
+.project-template-task-worksheet__fields textarea { width: 100%; min-height: 56px; resize: vertical; padding: 7px; border: 1px solid #ded3c5; border-radius: 5px; background: #fffdfa; color: #332e27; font: 9px/1.5 Inter,sans-serif; }
+.project-template-task-worksheet__fields label > em { justify-self: end; color: #897c6d; font-size: 8px; font-style: normal; }
+.project-template-task-worksheet__status { margin: 0; color: #716b62; font-size: 8px; }
 @media (max-width: 720px) { .project-template-preset-picker__filters,.project-template-preset-picker__select { grid-template-columns: 1fr; } .project-template-comparison__table th,.project-template-comparison__table td { min-width: 130px; padding: 7px; } }
 @media (max-width: 640px) { .project-template-toolbar { align-items: stretch; flex-direction: column; } .project-template-filters { align-items: stretch; } .project-template-preview { padding: 16px; } }
