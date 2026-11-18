@@ -83,4 +83,14 @@ export class DatabasesController {
   ) {
     return this.databases.updateRecord(identity, workspaceId, databaseId, recordId, body);
   }
+
+  @Delete(':databaseId/records/:recordId')
+  deleteRecord(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Param('recordId', new ParseUUIDPipe()) recordId: string,
+  ) {
+    return this.databases.deleteRecord(identity, workspaceId, databaseId, recordId);
+  }
 }

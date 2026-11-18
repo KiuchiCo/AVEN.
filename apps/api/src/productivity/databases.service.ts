@@ -182,6 +182,15 @@ export class DatabasesService {
     return this.withRelationValues(record, database.properties);
   }
 
+  async deleteRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, recordId: string) {
+    await this.requireMembership(identity, workspaceId, true);
+    const result = await this.prisma.databaseRecord.deleteMany({
+      where: { id: recordId, databaseId, workspaceId },
+    });
+    if (result.count !== 1) throw new NotFoundException('Record not found in this database.');
+    return { id: recordId, deleted: true };
+  }
+
   private async extractRelationLinks(workspaceId: string, propertiesValue: unknown, values: Record<string, string | number | boolean | null | string[]>) {
     const properties = propertyList(propertiesValue);
     const links: Array<{ propertyId: string; targetRecordId: string }> = [];

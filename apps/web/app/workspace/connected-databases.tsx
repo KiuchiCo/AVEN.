@@ -363,6 +363,20 @@ export function DatabasesWorkspace() {
     finally { setBusy(false); }
   }
 
+  async function deleteRecord(record: DatabaseRecord) {
+    if (!selected) return;
+    const titleProperty = selected.properties.find((property) => property.id === 'name') ?? selected.properties.find((property) => property.type === 'text');
+    const title = String(record.values[titleProperty?.id ?? ''] ?? 'Untitled record');
+    if (!window.confirm(`Delete “${title}”? Links to this record will also be removed.`)) return;
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/databases/${selected.id}/records/${record.id}`, { method: 'DELETE' });
+      if (editingId === record.id) setEditingId('');
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the record.'); }
+    finally { setBusy(false); }
+  }
+
   async function moveBoardRecord(recordId: string, nextStatus: string) {
     if (!selected || !boardPropertyId) return;
     const record = selected.records.find((item) => item.id === recordId);
@@ -540,7 +554,7 @@ export function DatabasesWorkspace() {
                     <td>Editing</td><td><form className="database-row-actions" onSubmit={saveRecord}><button type="submit" disabled={busy}>Save</button><button type="button" onClick={() => setEditingId('')}>Cancel</button></form></td>
                   </> : <>
                     {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <span className="database-status">{String(record.values[property.id] ?? '—')}</span> : property.type === 'checkbox' ? (record.values[property.id] ? 'Yes' : 'No') : propertyValueLabel(property, record.values[property.id])}</td>)}
-                    <td>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</td><td><button className="database-row-edit" type="button" onClick={() => startEdit(record)}>Edit</button></td>
+                    <td>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</td><td><div className="database-row-actions"><button className="database-row-edit" type="button" onClick={() => startEdit(record)}>Edit</button><button className="database-row-edit" type="button" onClick={() => void deleteRecord(record)} disabled={busy}>Delete</button></div></td>
                   </>}
                 </tr>)}
                 {!selected.records.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records yet. Add the first one below.</td></tr>}
