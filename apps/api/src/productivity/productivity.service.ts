@@ -61,10 +61,12 @@ export class ProductivityService {
     const name = textField(body.name, 'Template name', 160);
     const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true, description: true, name: true } });
     if (!project) throw new NotFoundException('Project not found in this workspace.');
-    const [tasks, milestones] = await Promise.all([
-      this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { title: true, description: true, priority: true, labels: true } }),
+    const [projectTasks, milestones] = await Promise.all([
+      this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { id: true, title: true, description: true, priority: true, labels: true, dependsOn: { select: { id: true } } } }),
       this.prisma.projectMilestone.findMany({ where: { projectId, workspaceId }, orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }], take: 50, select: { title: true } }),
     ]);
+    const taskIndexes = new Map(projectTasks.map((task, index) => [task.id, index]));
+    const tasks = projectTasks.map((task) => ({ title: task.title, description: task.description, priority: task.priority, labels: task.labels, dependsOnIndexes: task.dependsOn.map((dependency) => taskIndexes.get(dependency.id)).filter((index): index is number => index !== undefined) }));
     const template = await this.prisma.projectTemplate.create({
       data: { workspaceId, createdById: actorId, name, description: project.description, taskTemplates: tasks as Prisma.InputJsonValue, milestoneTemplates: milestones as Prisma.InputJsonValue },
       include: { createdBy: { select: { displayName: true } } },
@@ -83,7 +85,9 @@ export class ProductivityService {
     const milestones = parseTemplateMilestones(template.milestoneTemplates);
     return this.prisma.$transaction(async (transaction) => {
       const project = await transaction.project.create({ data: { workspaceId, createdById: actorId, name, description: template.description, status: 'PLANNING' } });
-      if (tasks.length) await transaction.task.createMany({ data: tasks.map((task) => ({ workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, labels: task.labels, status: 'TODO' as const })) });
+      const createdTasks: { id: string }[] = [];
+      for (const task of tasks) createdTasks.push(await transaction.task.create({ data: { workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, labels: task.labels, status: 'TODO' }, select: { id: true } }));
+      for (const [index, task] of tasks.entries()) if (task.dependsOnIndexes.length) await transaction.task.update({ where: { id: createdTasks[index].id }, data: { dependsOn: { connect: task.dependsOnIndexes.map((dependencyIndex) => ({ id: createdTasks[dependencyIndex].id })) } } });
       if (milestones.length) await transaction.projectMilestone.createMany({ data: milestones.map((milestone) => ({ workspaceId, projectId: project.id, title: milestone.title })) });
       const usageUpdate = await transaction.projectTemplate.updateMany({ where: { id: templateId, workspaceId }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
       if (usageUpdate.count !== 1) throw new NotFoundException('Project template is no longer available in this workspace.');
@@ -1105,7 +1109,7 @@ function recordTitle(values: unknown) {
   return 'Untitled record';
 }
 
-type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority; labels: string[] };
+type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority; labels: string[]; dependsOnIndexes: number[] };
 type ProjectMilestoneTemplate = { title: string };
 
 function taskLabels(value: unknown): string[] {
@@ -1139,12 +1143,25 @@ function taskViewFilters(value: unknown): TaskViewFilterSet {
 
 function parseTemplateTasks(value: Prisma.JsonValue): ProjectTaskTemplate[] {
   if (!Array.isArray(value) || value.length > 100) throw new BadRequestException('This project template has invalid task data.');
-  return value.map((entry) => {
+  const tasks = value.map((entry) => {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') throw new BadRequestException('This project template has invalid task data.');
     const task = entry as Record<string, Prisma.JsonValue>;
     if (typeof task.title !== 'string' || !task.title.trim() || task.title.length > 200 || (task.description !== null && task.description !== undefined && (typeof task.description !== 'string' || task.description.length > 5000)) || typeof task.priority !== 'string' || !taskPriorities.includes(task.priority as TaskPriority)) throw new BadRequestException('This project template has invalid task data.');
-    return { title: task.title.trim(), description: typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null, priority: task.priority as TaskPriority, labels: taskLabels(task.labels ?? []) };
+    const dependencies = task.dependsOnIndexes ?? [];
+    if (!Array.isArray(dependencies) || dependencies.length > 100 || dependencies.some((index) => typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= value.length)) throw new BadRequestException('This project template has invalid prerequisite links.');
+    const dependsOnIndexes = dependencies as number[];
+    if (new Set(dependsOnIndexes).size !== dependsOnIndexes.length) throw new BadRequestException('This project template repeats a task prerequisite.');
+    return { title: task.title.trim(), description: typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null, priority: task.priority as TaskPriority, labels: taskLabels(task.labels ?? []), dependsOnIndexes };
   });
+  for (const [index, task] of tasks.entries()) if (task.dependsOnIndexes.includes(index)) throw new BadRequestException('A project template task cannot depend on itself.');
+  const reaches = (from: number, target: number, visited = new Set<number>()): boolean => {
+    if (from === target) return true;
+    if (visited.has(from)) return false;
+    visited.add(from);
+    return (tasks[from]?.dependsOnIndexes ?? []).some((dependency) => reaches(dependency, target, visited));
+  };
+  for (const [index, task] of tasks.entries()) if (task.dependsOnIndexes.some((dependency) => reaches(dependency, index))) throw new BadRequestException('This project template contains a prerequisite cycle.');
+  return tasks;
 }
 
 function parseTemplateMilestones(value: Prisma.JsonValue): ProjectMilestoneTemplate[] {
