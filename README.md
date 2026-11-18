@@ -46,6 +46,7 @@ AVEN is a productivity workspace that brings projects, documents, databases, cal
 | [1.40 · Recurring calendar events](docs/sections/40-recurring-calendar-events.md) | Daily, weekly, and monthly series with timezone-aware occurrences | Complete |
 | [1.41 · Calendar planning and workspace search](docs/sections/41-calendar-planning-search.md) | Day/week planning, categorized events, project links, iCalendar export, and broader search | Complete |
 | [1.42 · Guest read-only access](docs/sections/42-guest-read-only-access.md) | Enforce read-only Guest permissions across workspace APIs | Complete |
+| [1.43 · Task status automations](docs/sections/43-task-status-automations.md) | Run workspace rules on task status changes and review execution history | Complete |
 
 The fuller product direction and implementation principles are in [the product foundation](docs/sections/00-product-foundation.md).
 The shared visual language is documented in the [AVEN design system](docs/AVEN-DESIGN-SYSTEM.md).
@@ -83,7 +84,7 @@ As of Section 1.35, AVEN has a Next.js and NestJS application with Clerk sign-in
 
 ## Local development
 
-Sections 1.36–1.39 add workspace switching, calendar event management, per-member team notifications, and a shared Knowledge Hub. Section 1.40 adds timezone-aware recurring calendar events. Section 1.41 adds a day timeline, week view, categorized and all-day events, project-linked scheduling, iCalendar export, and Knowledge/event search filters. Section 1.42 makes Guest access read-only at the API and in the workspace shell. See the [Section 1.42 notes](docs/sections/42-guest-read-only-access.md) for verification and commit instructions.
+Sections 1.36–1.39 add workspace switching, calendar event management, per-member team notifications, and a shared Knowledge Hub. Section 1.40 adds timezone-aware recurring calendar events. Section 1.41 adds a day timeline, week view, categorized and all-day events, project-linked scheduling, iCalendar export, and Knowledge/event search filters. Section 1.42 makes Guest access read-only at the API and in the workspace shell. Section 1.43 adds immediate task status rules with priority or activity-note actions and execution history. See the [Section 1.43 notes](docs/sections/43-task-status-automations.md) for migration, verification, and commit instructions.
 
 Requires Node.js 24.15.0 or newer and npm. From the repository root:
 

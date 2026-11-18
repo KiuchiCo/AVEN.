@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { AutomationsService } from './automations.service.js';
 
 const projectStatuses = ['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'] as const;
 const taskStatuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'CANCELLED'] as const;
@@ -14,7 +15,7 @@ type TaskPriority = (typeof taskPriorities)[number];
 
 @Injectable()
 export class ProductivityService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService) {}
 
   async listProjects(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
@@ -217,6 +218,8 @@ export class ProductivityService {
   async updateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
+    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true } });
+    if (!previousTask) throw new NotFoundException('Task not found in this workspace.');
     const data: {
       title?: string;
       description?: string | null;
@@ -255,6 +258,9 @@ export class ProductivityService {
 
     const result = await this.prisma.task.updateMany({ where: { id: taskId, workspaceId }, data });
     if (result.count !== 1) throw new NotFoundException('Task not found in this workspace.');
+    if (data.status && data.status !== previousTask.status) {
+      await this.automations.runForTaskStatusChange(workspaceId, taskId, previousTask.status, data.status, actorId);
+    }
     const task = await this.prisma.task.findFirstOrThrow({
       where: { id: taskId, workspaceId },
       include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },

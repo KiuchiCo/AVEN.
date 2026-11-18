@@ -8,6 +8,7 @@ export const workspaceNavigation = [
   { label: 'Calendar', href: '/workspace/calendar', icon: 'calendar' },
   { label: 'Databases', href: '/workspace/databases', icon: 'databases' },
   { label: 'Intelligence', href: '/workspace/intelligence', icon: 'intelligence' },
+  { label: 'Automations', href: '/workspace/automations', icon: 'automations' },
   { label: 'Activity', href: '/workspace/activity', icon: 'activity' },
   { label: 'People', href: '/workspace/members', icon: 'people' },
 ] as const;

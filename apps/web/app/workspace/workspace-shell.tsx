@@ -141,7 +141,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
   );
 }
 
-type IconName = 'home' | 'inbox' | 'tasks' | 'projects' | 'documents' | 'knowledge' | 'calendar' | 'databases' | 'intelligence' | 'activity' | 'people' | 'menu' | 'search';
+type IconName = 'home' | 'inbox' | 'tasks' | 'projects' | 'documents' | 'knowledge' | 'calendar' | 'databases' | 'intelligence' | 'automations' | 'activity' | 'people' | 'menu' | 'search';
 
 function NavIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -154,6 +154,7 @@ function NavIcon({ name }: { name: IconName }) {
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4M17 3v4M3 10h18" /></>,
     databases: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></>,
     intelligence: <><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z" /><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" /></>,
+    automations: <><path d="m13 2-3 8h7L10 22l2-9H5l8-11z" /></>,
     activity: <><path d="M3 12h4l3-8 4 16 3-8h4" /></>,
     people: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
     menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
