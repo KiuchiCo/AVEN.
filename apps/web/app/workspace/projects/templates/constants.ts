@@ -1,0 +1,7 @@
+export const TEMPLATE_FILE_FORMAT = 'aven-project-template';
+export const TEMPLATE_FILE_VERSION = 1;
+export const TEMPLATE_FILE_MAX_BYTES = 500_000;
+export const TEMPLATE_MAX_TASKS = 100;
+export const TEMPLATE_MAX_MILESTONES = 50;
+export const TEMPLATE_MAX_OFFSET_DAYS = 3650;
+export const TEMPLATE_PRIORITY_ORDER: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };

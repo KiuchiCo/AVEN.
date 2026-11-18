@@ -19,6 +19,16 @@ export class ProjectsController {
     return this.productivity.listProjectTemplates(identity, workspaceId);
   }
 
+  @Post('project-templates/import')
+  importTemplate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
+    return this.productivity.importProjectTemplate(identity, workspaceId, body);
+  }
+
+  @Post('project-templates/:templateId/duplicate')
+  duplicateTemplate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('templateId', new ParseUUIDPipe()) templateId: string, @Body() body: unknown) {
+    return this.productivity.duplicateProjectTemplate(identity, workspaceId, templateId, body);
+  }
+
   @Post('project-templates/:templateId/apply')
   applyTemplate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('templateId', new ParseUUIDPipe()) templateId: string, @Body() body: unknown) {
     return this.productivity.applyProjectTemplate(identity, workspaceId, templateId, body);

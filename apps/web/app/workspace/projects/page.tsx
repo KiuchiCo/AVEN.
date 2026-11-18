@@ -5,15 +5,16 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
+import { TemplateLibrary } from './templates/components/TemplateLibrary';
+import { TemplateEditor } from './templates/components/editor/TemplateEditor';
+import { templateDraft } from './templates/editor/normalize';
+import type { ProjectTemplate, TemplateMilestone, TemplateTask } from './templates/types';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Member = { userId: string; displayName: string; role: string };
 type Task = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
 type TaskImportRow = { id?: string | null; title: string; description: string | null; status: string; priority: string; dueAt: string | null; labels: string[]; projectId?: string | null; assigneeId?: string | null };
-type TemplateTask = { title: string; description: string | null; priority: string; labels: string[]; daysFromToday: number | null; dependsOnIndexes: number[] };
-type TemplateMilestone = { title: string; daysFromToday: number | null };
-type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; taskTemplates: TemplateTask[]; milestoneTemplates: TemplateMilestone[]; useCount: number; lastUsedAt: string | null; createdBy: { displayName: string } };
 type TaskViewFilters = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; dependency: string; sort: string };
 type SavedTaskView = { id: string; name: string; filters: TaskViewFilters; createdBy?: { id: string; displayName: string } };
 type TaskLabelUsage = { label: string; taskCount: number };
@@ -287,6 +288,24 @@ export default function ProjectsPage() {
     finally { setBusy(false); }
   }
 
+  async function duplicateTemplate(template: ProjectTemplate) {
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/project-templates/${template.id}/duplicate`, { method: 'POST', body: JSON.stringify({}) });
+      await reload(); setNotice(`Duplicated “${template.name}”.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not duplicate this template.'); }
+    finally { setBusy(false); }
+  }
+
+  async function importTemplate(template: Pick<ProjectTemplate, 'name' | 'description' | 'taskTemplates' | 'milestoneTemplates'>) {
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/project-templates/import`, { method: 'POST', body: JSON.stringify(template) });
+      await reload(); setNotice(`Imported “${template.name}”.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import this template.'); throw reason; }
+    finally { setBusy(false); }
+  }
+
   async function renameWorkspaceTaskLabel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!renameLabelFrom || !renameLabelTo.trim()) return;
@@ -315,9 +334,9 @@ export default function ProjectsPage() {
   }
 
   function editTemplate(template: ProjectTemplate) {
-    setEditingTemplateId(template.id); setTemplateDraftName(template.name); setTemplateDraftDescription(template.description ?? '');
-    setTemplateDraftTasks(template.taskTemplates.map((task) => ({ ...task, daysFromToday: task.daysFromToday ?? null, dependsOnIndexes: task.dependsOnIndexes ?? [] })));
-    setTemplateDraftMilestones(template.milestoneTemplates.map((milestone) => ({ ...milestone, daysFromToday: milestone.daysFromToday ?? null })));
+    const draft = templateDraft(template);
+    setEditingTemplateId(template.id); setTemplateDraftName(draft.name); setTemplateDraftDescription(draft.description);
+    setTemplateDraftTasks(draft.tasks); setTemplateDraftMilestones(draft.milestones);
   }
 
   async function saveTemplateEdits(event: FormEvent<HTMLFormElement>) {
@@ -515,31 +534,12 @@ export default function ProjectsPage() {
         </form>
       </div>
 
-      <section className="project-template-library" aria-labelledby="project-template-title">
-        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">REPEATABLE WORKFLOWS</p><h2 id="project-template-title">Project templates</h2></div><span>{templates.length} saved</span></div>
+      <section aria-labelledby="project-template-title">
         <p className="project-template-library__intro">Save a project’s description, task dependencies, and milestones as a starter. Task and milestone due dates are stored as day offsets and recalculated for each new project; completion states and assignees start fresh.</p>
         {selectedProject ? <form className="project-template-save" onSubmit={saveSelectedTemplate}><label>Save “{selectedProjectName}” as a template<input name="templateName" required maxLength={160} placeholder="e.g. Website launch" /></label><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save template'}</button></form> : <p className="productivity-message">Create a project first, then save it here as a reusable template.</p>}
-        {templates.length === 0 ? <p className="productivity-message">No templates yet. Save a project above and reuse its setup in this workspace.</p> : <div className="project-template-grid">{templates.map((template) => <article className={`project-template-card${selectedTemplate === template.id ? ' project-template-card--selected' : ''}`} key={template.id}>
-          <div><span className="workspace-eyebrow">PROJECT STARTER</span><h3>{template.name}</h3><p>{template.description || 'A reusable project setup for your workspace.'}</p></div>
-          <div className="project-template-card__counts"><span>{template.taskCount} tasks</span><span>{template.milestoneCount} milestones</span><span>Used {template.useCount}×</span></div>
-          {template.lastUsedAt && <small className="project-template-card__last-used">Last used {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(template.lastUsedAt))}</small>}
-          <footer><button type="button" disabled={busy} onClick={() => editTemplate(template)}>{editingTemplateId === template.id ? 'Editing' : 'Edit'}</button><button type="button" disabled={busy} onClick={() => { setSelectedTemplate(template.id); setNewProjectName(`${template.name} project`); }}>{selectedTemplate === template.id ? 'Selected' : 'Use template'}</button><button type="button" disabled={busy} onClick={() => void deleteTemplate(template)}>Delete</button></footer>
-        </article>)}</div>}
+        <TemplateLibrary templates={templates} busy={busy} selectedId={selectedTemplate} onEdit={editTemplate} onUse={(template) => { setSelectedTemplate(template.id); setNewProjectName(`${template.name} project`); }} onDuplicate={duplicateTemplate} onDelete={(template) => void deleteTemplate(template)} onImport={importTemplate} />
         {selectedTemplate && <form className="project-template-launch" onSubmit={applyTemplate}><div><strong>Start from {templates.find((template) => template.id === selectedTemplate)?.name}</strong><span>Creates fresh tasks and milestones with the template’s relative schedule.</span></div><label>New project name<input required maxLength={160} value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} /></label><button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create project'}</button><button type="button" onClick={() => setSelectedTemplate('')}>Cancel</button></form>}
-        {editingTemplateId && <form className="project-template-editor" onSubmit={saveTemplateEdits}>
-          <div className="project-template-editor__heading"><div><p className="workspace-eyebrow">UPDATE YOUR STARTER</p><h3>Edit project template</h3></div><button type="button" onClick={() => setEditingTemplateId('')}>Cancel</button></div>
-          <label>Template name<input required maxLength={160} value={templateDraftName} onChange={(event) => setTemplateDraftName(event.target.value)} /></label>
-          <label>Project description<textarea maxLength={5000} rows={2} value={templateDraftDescription} onChange={(event) => setTemplateDraftDescription(event.target.value)} /></label>
-          <div className="project-template-editor__section"><div><strong>Starter tasks and prerequisites</strong><button type="button" disabled={templateDraftTasks.length >= 100} onClick={() => setTemplateDraftTasks((rows) => [...rows, { title: '', description: null, priority: 'MEDIUM', labels: [], daysFromToday: null, dependsOnIndexes: [] }])}>＋ Add task</button></div>
-            {templateDraftTasks.length === 0 && <p>No starter tasks. Add a task or save an existing project with tasks.</p>}
-            {templateDraftTasks.map((task, index) => <article key={index}><label>Task title<input required maxLength={200} value={task.title} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, title: event.target.value } : row))} /></label><label>Description<input maxLength={5000} value={task.description ?? ''} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, description: event.target.value || null } : row))} /></label><label>Priority<select value={task.priority} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, priority: event.target.value } : row))}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Due in (days)<input type="number" min={-3650} max={3650} value={task.daysFromToday ?? ''} placeholder="No date" onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, daysFromToday: event.target.value === '' ? null : Number(event.target.value) } : row))} /></label><label>Prerequisites<select multiple size={Math.min(4, Math.max(2, templateDraftTasks.length - 1))} value={task.dependsOnIndexes.map(String)} onChange={(event) => setTemplateDraftTasks((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, dependsOnIndexes: [...event.currentTarget.selectedOptions].map((option) => Number(option.value)) } : row))}>{templateDraftTasks.map((candidate, candidateIndex) => candidateIndex !== index && <option key={candidateIndex} value={candidateIndex}>{candidate.title || `Task ${candidateIndex + 1}`}</option>)}</select><small>Use ⌘/Ctrl-click to choose more than one.</small></label><button type="button" aria-label={`Remove task ${index + 1}`} onClick={() => setTemplateDraftTasks((rows) => rows.filter((_, rowIndex) => rowIndex !== index).map((row) => ({ ...row, dependsOnIndexes: row.dependsOnIndexes.filter((dependency) => dependency !== index).map((dependency) => dependency > index ? dependency - 1 : dependency) })))}>Remove</button></article>)}
-          </div>
-          <div className="project-template-editor__section"><div><strong>Milestones</strong><button type="button" disabled={templateDraftMilestones.length >= 50} onClick={() => setTemplateDraftMilestones((rows) => [...rows, { title: '', daysFromToday: null }])}>＋ Add milestone</button></div>
-            {templateDraftMilestones.length === 0 && <p>No starter milestones. Add checkpoints for the new project.</p>}
-            {templateDraftMilestones.map((milestone, index) => <article key={index}><label>Milestone title<input required maxLength={160} value={milestone.title} onChange={(event) => setTemplateDraftMilestones((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, title: event.target.value } : row))} /></label><label>Days from template date<input type="number" min={-3650} max={3650} value={milestone.daysFromToday ?? ''} placeholder="No date" onChange={(event) => setTemplateDraftMilestones((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, daysFromToday: event.target.value === '' ? null : Number(event.target.value) } : row))} /></label><button type="button" aria-label={`Remove milestone ${index + 1}`} onClick={() => setTemplateDraftMilestones((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>Remove</button></article>)}
-          </div>
-          <button className="project-template-editor__save" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save template changes'}</button>
-        </form>}
+        {editingTemplateId && <TemplateEditor name={templateDraftName} description={templateDraftDescription} tasks={templateDraftTasks} milestones={templateDraftMilestones} busy={busy} onName={setTemplateDraftName} onDescription={setTemplateDraftDescription} onTasks={setTemplateDraftTasks} onMilestones={setTemplateDraftMilestones} onSubmit={saveTemplateEdits} onCancel={() => setEditingTemplateId('')} />}
       </section>
 
       <section className="productivity-projects" aria-labelledby="projects-list-title">

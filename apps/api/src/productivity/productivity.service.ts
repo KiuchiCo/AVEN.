@@ -105,6 +105,35 @@ export class ProductivityService {
     return { id: templateId, deleted: true };
   }
 
+  async duplicateProjectTemplate(identity: AuthenticatedIdentity, workspaceId: string, templateId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const source = await this.prisma.projectTemplate.findFirst({ where: { id: templateId, workspaceId } });
+    if (!source) throw new NotFoundException('Project template not found in this workspace.');
+    const name = 'name' in body ? textField(body.name, 'Template name', 160) : textField(`${source.name} copy`, 'Template name', 160);
+    const template = await this.prisma.projectTemplate.create({
+      data: { workspaceId, createdById: actorId, name, description: source.description, taskTemplates: parseTemplateTasks(source.taskTemplates) as Prisma.InputJsonValue, milestoneTemplates: parseTemplateMilestones(source.milestoneTemplates) as Prisma.InputJsonValue },
+      include: { createdBy: { select: { displayName: true } } },
+    });
+    await this.recordActivity(workspaceId, actorId, 'PROJECT', template.id, `duplicated the “${source.name}” project template as “${name}”`);
+    return { ...template, taskCount: parseTemplateTasks(template.taskTemplates).length, milestoneCount: parseTemplateMilestones(template.milestoneTemplates).length };
+  }
+
+  async importProjectTemplate(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const name = textField(body.name, 'Template name', 160);
+    const description = optionalText(body.description, 'Template description', 5000);
+    const tasks = parseTemplateTasks(body.taskTemplates as Prisma.JsonValue);
+    const milestones = parseTemplateMilestones(body.milestoneTemplates as Prisma.JsonValue);
+    const template = await this.prisma.projectTemplate.create({
+      data: { workspaceId, createdById: actorId, name, description, taskTemplates: tasks as Prisma.InputJsonValue, milestoneTemplates: milestones as Prisma.InputJsonValue },
+      include: { createdBy: { select: { displayName: true } } },
+    });
+    await this.recordActivity(workspaceId, actorId, 'PROJECT', template.id, `imported the “${name}” project template`);
+    return { ...template, taskCount: tasks.length, milestoneCount: milestones.length };
+  }
+
   async listWorkspaceMembers(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.requireMembership(identity, workspaceId);
     const members = await this.prisma.workspaceMember.findMany({

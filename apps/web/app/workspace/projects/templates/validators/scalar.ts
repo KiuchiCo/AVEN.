@@ -1,0 +1,3 @@
+export function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
+export function requireName(value: unknown, field = 'Template name'): string { if (typeof value !== 'string' || !value.trim() || value.length > 160) throw new Error(`${field} must contain 1–160 characters.`); return value.trim(); }
+export function optionalDescription(value: unknown): string | null { if (value == null) return null; if (typeof value !== 'string' || value.length > 5000) throw new Error('The template description must be 5,000 characters or fewer.'); return value; }

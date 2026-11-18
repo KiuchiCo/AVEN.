@@ -1,0 +1,7 @@
+import { formatTemplateOffset } from '../../offset-label';
+import { TemplatePriority } from '../TemplatePriority';
+import type { TemplateTask } from '../../types';
+
+export function TemplateTaskRow({ task, index, onEdit, onRemove }: { task: TemplateTask; index: number; onEdit: (task: TemplateTask) => void; onRemove: () => void }) {
+  return <article className="project-template-editor-task"><div><span>Task {index + 1}</span><TemplatePriority value={task.priority} /></div><label>Task title<input required maxLength={200} value={task.title} onChange={(event) => onEdit({ ...task, title: event.target.value })} /></label><label>Description<input maxLength={5000} value={task.description ?? ''} onChange={(event) => onEdit({ ...task, description: event.target.value || null })} /></label><div className="productivity-form__row"><label>Priority<select value={task.priority} onChange={(event) => onEdit({ ...task, priority: event.target.value })}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Due offset<input type="number" min={-3650} max={3650} value={task.daysFromToday ?? ''} placeholder="No date" onChange={(event) => onEdit({ ...task, daysFromToday: event.target.value === '' ? null : Number(event.target.value) })} /><small>{formatTemplateOffset(task.daysFromToday)}</small></label></div><button type="button" onClick={onRemove}>Remove task</button></article>;
+}
