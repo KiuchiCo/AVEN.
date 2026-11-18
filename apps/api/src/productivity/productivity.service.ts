@@ -63,12 +63,12 @@ export class ProductivityService {
     if (!project) throw new NotFoundException('Project not found in this workspace.');
     const [projectTasks, milestones] = await Promise.all([
       this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { id: true, title: true, description: true, priority: true, labels: true, dependsOn: { select: { id: true } } } }),
-      this.prisma.projectMilestone.findMany({ where: { projectId, workspaceId }, orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }], take: 50, select: { title: true } }),
+      this.prisma.projectMilestone.findMany({ where: { projectId, workspaceId }, orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }], take: 50, select: { title: true, dueAt: true } }),
     ]);
     const taskIndexes = new Map(projectTasks.map((task, index) => [task.id, index]));
     const tasks = projectTasks.map((task) => ({ title: task.title, description: task.description, priority: task.priority, labels: task.labels, dependsOnIndexes: task.dependsOn.map((dependency) => taskIndexes.get(dependency.id)).filter((index): index is number => index !== undefined) }));
     const template = await this.prisma.projectTemplate.create({
-      data: { workspaceId, createdById: actorId, name, description: project.description, taskTemplates: tasks as Prisma.InputJsonValue, milestoneTemplates: milestones as Prisma.InputJsonValue },
+      data: { workspaceId, createdById: actorId, name, description: project.description, taskTemplates: tasks as Prisma.InputJsonValue, milestoneTemplates: milestones.map((milestone) => ({ title: milestone.title, daysFromToday: milestone.dueAt ? dayOffsetFromToday(milestone.dueAt) : null })) as Prisma.InputJsonValue },
       include: { createdBy: { select: { displayName: true } } },
     });
     await this.recordActivity(workspaceId, actorId, 'PROJECT', project.id, `saved “${project.name}” as the “${name}” project template`);
@@ -88,7 +88,9 @@ export class ProductivityService {
       const createdTasks: { id: string }[] = [];
       for (const task of tasks) createdTasks.push(await transaction.task.create({ data: { workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, labels: task.labels, status: 'TODO' }, select: { id: true } }));
       for (const [index, task] of tasks.entries()) if (task.dependsOnIndexes.length) await transaction.task.update({ where: { id: createdTasks[index].id }, data: { dependsOn: { connect: task.dependsOnIndexes.map((dependencyIndex) => ({ id: createdTasks[dependencyIndex].id })) } } });
-      if (milestones.length) await transaction.projectMilestone.createMany({ data: milestones.map((milestone) => ({ workspaceId, projectId: project.id, title: milestone.title })) });
+      const today = new Date();
+      const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      if (milestones.length) await transaction.projectMilestone.createMany({ data: milestones.map((milestone) => ({ workspaceId, projectId: project.id, title: milestone.title, dueAt: milestone.daysFromToday === null ? null : new Date(todayUtc.getTime() + milestone.daysFromToday * 86_400_000) })) });
       const usageUpdate = await transaction.projectTemplate.updateMany({ where: { id: templateId, workspaceId }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
       if (usageUpdate.count !== 1) throw new NotFoundException('Project template is no longer available in this workspace.');
       await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'PROJECT', entityId: project.id, message: `created project “${name}” from the “${template.name}” template` } });
@@ -1110,7 +1112,7 @@ function recordTitle(values: unknown) {
 }
 
 type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority; labels: string[]; dependsOnIndexes: number[] };
-type ProjectMilestoneTemplate = { title: string };
+type ProjectMilestoneTemplate = { title: string; daysFromToday: number | null };
 
 function taskLabels(value: unknown): string[] {
   if (value === undefined || value === null) return [];
@@ -1170,8 +1172,17 @@ function parseTemplateMilestones(value: Prisma.JsonValue): ProjectMilestoneTempl
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') throw new BadRequestException('This project template has invalid milestone data.');
     const milestone = entry as Record<string, Prisma.JsonValue>;
     if (typeof milestone.title !== 'string' || !milestone.title.trim() || milestone.title.length > 160) throw new BadRequestException('This project template has invalid milestone data.');
-    return { title: milestone.title.trim() };
+    const daysFromToday = milestone.daysFromToday ?? null;
+    if (daysFromToday !== null && (typeof daysFromToday !== 'number' || !Number.isInteger(daysFromToday) || daysFromToday < -3650 || daysFromToday > 3650)) throw new BadRequestException('This project template has an invalid milestone date offset.');
+    return { title: milestone.title.trim(), daysFromToday: daysFromToday as number | null };
   });
+}
+
+function dayOffsetFromToday(date: Date) {
+  const now = new Date();
+  const dueDay = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.max(-3650, Math.min(3650, Math.round((dueDay - today) / 86_400_000)));
 }
 
 function optionalUuid(value: unknown, label: string) {
