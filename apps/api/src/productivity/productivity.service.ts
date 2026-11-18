@@ -114,7 +114,15 @@ export class ProductivityService {
   async listWorkspaceNotifications(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
     const rows = await this.prisma.workspaceActivity.findMany({
-      where: { workspaceId, actorId: { not: userId } }, orderBy: { createdAt: 'desc' }, take: 50,
+      where: {
+        workspaceId,
+        actorId: { not: userId },
+        OR: [
+          { entityType: { notIn: ['TASK_COMMENT', 'TASK_CHECKLIST'] } },
+          { receipts: { some: { userId, isNotificationTarget: true } } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' }, take: 50,
       include: { actor: { select: { displayName: true } }, receipts: { where: { userId }, select: { readAt: true, dismissedAt: true } } },
     });
     return rows.filter((row) => !row.receipts[0]?.dismissedAt).map(({ receipts, ...row }) => ({ ...row, isRead: Boolean(receipts[0]?.readAt) }));

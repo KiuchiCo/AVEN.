@@ -355,6 +355,7 @@ model ActivityReceipt {
   id         String           @id @default(uuid()) @db.Uuid
   activityId String           @db.Uuid
   userId     String           @db.Uuid
+  isNotificationTarget Boolean @default(false)
   readAt     DateTime?        @db.Timestamptz(3)
   dismissedAt DateTime?       @db.Timestamptz(3)
   createdAt  DateTime         @default(now()) @db.Timestamptz(3)
@@ -364,6 +365,7 @@ model ActivityReceipt {
 
   @@unique([activityId, userId])
   @@index([userId, readAt, dismissedAt])
+  @@index([userId, isNotificationTarget, activityId])
   @@map("activity_receipts")
 }
 
