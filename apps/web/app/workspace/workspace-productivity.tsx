@@ -230,7 +230,7 @@ export function InboxWorkspace() {
         {updates.length === 0 ? <p className="productivity-message">Teammate activity will show up here when someone else updates this workspace.</p> : <div className="inbox-notifications__list">{updates.slice(0, 8).map((entry) => <article className={!entry.isRead ? 'is-unread' : ''} key={entry.id}>
           <span className="inbox-notifications__dot" aria-hidden="true" />
           <div><p><strong>{entry.actor.displayName}</strong> {entry.message}</p><small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.createdAt))} · {entry.entityType.toLowerCase()}</small></div>
-          <Link href={['TASK_COMMENT', 'TASK_CHECKLIST'].includes(entry.entityType) ? `/workspace/tasks/${entry.entityId}` : updateLinks[entry.entityType] ?? '/workspace/activity'} aria-label={`Open related ${entry.entityType.toLowerCase()} update`}>→</Link>
+          <Link href={['TASK', 'TASK_COMMENT', 'TASK_CHECKLIST'].includes(entry.entityType) ? `/workspace/tasks/${entry.entityId}` : updateLinks[entry.entityType] ?? '/workspace/activity'} aria-label={`Open related ${entry.entityType.toLowerCase()} update`}>→</Link>
           <button type="button" disabled={updatesBusy} onClick={() => void updateReadState(entry.id, !entry.isRead)}>{entry.isRead ? 'Unread' : 'Read'}</button>
           <button type="button" disabled={updatesBusy} onClick={() => void dismissUpdate(entry.id)}>Dismiss</button>
         </article>)}</div>}

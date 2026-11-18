@@ -341,6 +341,7 @@ model WorkspaceActivity {
   entityType  String    @db.VarChar(32)
   entityId    String    @db.Uuid
   message     String    @db.VarChar(240)
+  recipientScoped Boolean @default(false)
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   actor       User      @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
