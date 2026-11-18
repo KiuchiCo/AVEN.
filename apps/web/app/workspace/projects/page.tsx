@@ -63,6 +63,8 @@ export default function ProjectsPage() {
   const [bulkStatus, setBulkStatus] = useState('');
   const [bulkDueMode, setBulkDueMode] = useState<'KEEP' | 'SET' | 'CLEAR'>('KEEP');
   const [bulkDueDate, setBulkDueDate] = useState('');
+  const [bulkLabelMode, setBulkLabelMode] = useState<'KEEP' | 'ADD' | 'REMOVE' | 'REPLACE'>('KEEP');
+  const [bulkLabels, setBulkLabels] = useState('');
   const [importRows, setImportRows] = useState<TaskImportRow[]>([]);
   const [importFileName, setImportFileName] = useState('');
 
@@ -311,11 +313,19 @@ export default function ProjectsPage() {
       if (!bulkDueDate) { setError('Choose a date or select Clear due date.'); return; }
       changes.dueAt = bulkDueDate;
     } else if (bulkDueMode === 'CLEAR') changes.dueAt = null;
+    if (bulkLabelMode !== 'KEEP') {
+      const labels = [...new Set(bulkLabels.split(',').map((label) => label.trim().toLocaleLowerCase()).filter(Boolean))];
+      if (bulkLabelMode !== 'REPLACE' && labels.length === 0) { setError('Enter one or more labels to add or remove.'); return; }
+      if (labels.some((label) => label.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(label)) || labels.length > 10) { setError('Use up to 10 labels, each 1–32 letters, numbers, underscores, or hyphens.'); return; }
+      if (bulkLabelMode === 'ADD') changes.addLabels = labels;
+      else if (bulkLabelMode === 'REMOVE') changes.removeLabels = labels;
+      else changes.labels = labels;
+    }
     if (!Object.keys(changes).length) { setError('Choose at least one bulk change first.'); return; }
     setBusy(true); setError('');
     try {
       const result = await request(`/workspaces/${workspace.id}/tasks/bulk`, { method: 'PATCH', body: JSON.stringify({ taskIds: selectedTaskIds, ...changes }) }) as { updated: number };
-      setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); setBulkStatus(''); setBulkDueMode('KEEP'); setBulkDueDate(''); await reload();
+      setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); setBulkStatus(''); setBulkDueMode('KEEP'); setBulkDueDate(''); setBulkLabelMode('KEEP'); setBulkLabels(''); await reload();
       setNotice(`Updated ${result.updated} tasks.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the selected tasks.'); }
     finally { setBusy(false); }
@@ -327,7 +337,7 @@ export default function ProjectsPage() {
     setBusy(true); setError(''); setNotice('');
     try {
       const result = await request(`/workspaces/${workspace.id}/tasks/bulk/duplicate`, { method: 'POST', body: JSON.stringify({ taskIds: selectedTaskIds }) }) as { duplicated: number; checklistItemsCopied: number };
-      setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); setBulkStatus(''); setBulkDueMode('KEEP'); setBulkDueDate(''); await reload();
+      setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); setBulkStatus(''); setBulkDueMode('KEEP'); setBulkDueDate(''); setBulkLabelMode('KEEP'); setBulkLabels(''); await reload();
       setNotice(`Duplicated ${result.duplicated} tasks and copied ${result.checklistItemsCopied} checklist items.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not duplicate the selected tasks.'); }
     finally { setBusy(false); }
@@ -507,7 +517,7 @@ export default function ProjectsPage() {
           <p>Views save in this browser for this workspace only. {savedTaskViews.length} / 20 saved.</p>
         </div>
         <div className="project-task-tools"><div className="project-task-tools__top"><span>{boardTasks.length} tasks in this view</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice('Selected the first 500 visible tasks; narrow the view to select a different batch.'); }}>Select visible (up to 500)</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>Clear selection</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>Export CSV</button></div></div>
-          {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Status<select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">Keep current</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.title}</option>)}</select></label><label>Priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<select value={bulkDueMode} onChange={(event) => setBulkDueMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">Keep current</option><option value="SET">Set date</option><option value="CLEAR">Clear date</option></select></label>{bulkDueMode === 'SET' && <label>New due date<input type="date" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>}<button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? 'Working…' : 'Duplicate with checklists'}</button>{selectedTaskIds.length > 100 && <small>Choose 100 or fewer tasks to duplicate them.</small>}</form>}
+          {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Status<select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">Keep current</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.title}</option>)}</select></label><label>Priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<select value={bulkDueMode} onChange={(event) => setBulkDueMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">Keep current</option><option value="SET">Set date</option><option value="CLEAR">Clear date</option></select></label>{bulkDueMode === 'SET' && <label>New due date<input type="date" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>}<label>Labels<select value={bulkLabelMode} onChange={(event) => setBulkLabelMode(event.target.value as 'KEEP' | 'ADD' | 'REMOVE' | 'REPLACE')}><option value="KEEP">Keep current</option><option value="ADD">Add labels</option><option value="REMOVE">Remove labels</option><option value="REPLACE">Replace labels</option></select></label>{bulkLabelMode !== 'KEEP' && <label>Label names<input value={bulkLabels} onChange={(event) => setBulkLabels(event.target.value)} placeholder="planning, launch" maxLength={330} /></label>}{bulkLabelMode === 'REPLACE' && <small className="project-task-bulk__hint">Leave empty to remove every label from the selection.</small>}<button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? 'Working…' : 'Duplicate with checklists'}</button>{selectedTaskIds.length > 100 && <small>Choose 100 or fewer tasks to duplicate them.</small>}</form>}
           <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} tasks · {selectedProjectName ? `will be added to ${selectedProjectName}` : 'will be added to the workspace'}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt, labels. Separate multiple labels with semicolons. Up to 200 tasks per import.</small></form>
         </div>
         {loading ? <p className="productivity-message">Loading tasks…</p> : (

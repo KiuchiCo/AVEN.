@@ -276,7 +276,7 @@ export class ProductivityService {
       return id;
     });
     if (new Set(taskIds).size !== taskIds.length) throw new BadRequestException('A task can only be selected once.');
-    const data: { priority?: TaskPriority; assigneeId?: string | null; labels?: string[]; status?: TaskStatus; dueAt?: Date | null; completedAt?: Date | null } = {};
+    const data: { priority?: TaskPriority; assigneeId?: string | null; status?: TaskStatus; dueAt?: Date | null; completedAt?: Date | null } = {};
     if ('priority' in body) data.priority = enumField(body.priority, taskPriorities, 'Task priority');
     if ('status' in body) {
       data.status = enumField(body.status, taskStatuses, 'Task status');
@@ -287,8 +287,12 @@ export class ProductivityService {
       data.assigneeId = optionalUuid(body.assigneeId, 'Assignee');
       if (data.assigneeId && !await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: data.assigneeId } }, select: { userId: true } })) throw new BadRequestException('Assignee must be a member of this workspace.');
     }
-    if ('labels' in body) data.labels = taskLabels(body.labels);
-    if (!Object.keys(data).length) throw new BadRequestException('Choose a status, priority, assignee, due date, or labels change.');
+    const labelFields = ['labels', 'addLabels', 'removeLabels'].filter((field) => field in body);
+    if (labelFields.length > 1) throw new BadRequestException('Choose one label action: replace, add, or remove.');
+    const replacementLabels = 'labels' in body ? taskLabels(body.labels) : null;
+    const labelsToAdd = 'addLabels' in body ? taskLabels(body.addLabels) : null;
+    const labelsToRemove = 'removeLabels' in body ? taskLabels(body.removeLabels) : null;
+    if (!Object.keys(data).length && !labelFields.length) throw new BadRequestException('Choose a status, priority, assignee, due date, or labels change.');
     const changedStatuses: { id: string; status: string }[] = [];
     const updated = await this.prisma.$transaction(async (transaction) => {
       const previousTasks = await transaction.task.findMany({ where: { workspaceId, id: { in: taskIds } }, select: { id: true, title: true, status: true, priority: true, assigneeId: true, dueAt: true, labels: true } });
@@ -298,10 +302,22 @@ export class ProductivityService {
         const blocked = completingIds.length ? await transaction.task.findMany({ where: { workspaceId, id: { in: completingIds }, dependsOn: { some: { status: { not: 'COMPLETED' } } } }, select: { id: true, title: true, dependsOn: { where: { status: { not: 'COMPLETED' } }, select: { title: true } } } }) : [];
         if (blocked.length) throw new BadRequestException(`Complete prerequisite tasks first: ${blocked.map((task) => `${task.title} → ${task.dependsOn.map((prerequisite) => prerequisite.title).join(', ')}`).join('; ')}.`);
       }
-      const changedTasks = previousTasks.filter((task) => ('priority' in data && task.priority !== data.priority) || ('status' in data && task.status !== data.status) || ('assigneeId' in data && task.assigneeId !== data.assigneeId) || ('dueAt' in data && (task.dueAt?.getTime() ?? null) !== (data.dueAt?.getTime() ?? null)) || ('labels' in data && JSON.stringify(task.labels) !== JSON.stringify(data.labels)));
+      const updatedLabels = new Map<string, string[]>();
+      for (const task of previousTasks) {
+        const nextLabels = replacementLabels ?? (labelsToAdd ? taskLabels([...task.labels, ...labelsToAdd]) : labelsToRemove ? task.labels.filter((label) => !labelsToRemove.includes(label)) : task.labels);
+        updatedLabels.set(task.id, nextLabels);
+      }
+      const changedTasks = previousTasks.filter((task) => ('priority' in data && task.priority !== data.priority) || ('status' in data && task.status !== data.status) || ('assigneeId' in data && task.assigneeId !== data.assigneeId) || ('dueAt' in data && (task.dueAt?.getTime() ?? null) !== (data.dueAt?.getTime() ?? null)) || (labelFields.length > 0 && JSON.stringify(task.labels) !== JSON.stringify(updatedLabels.get(task.id))));
       if (!changedTasks.length) return 0;
-      const result = await transaction.task.updateMany({ where: { workspaceId, id: { in: changedTasks.map((task) => task.id) } }, data });
-      if (result.count !== changedTasks.length) throw new NotFoundException('One or more selected tasks are no longer available.');
+      if (labelFields.length) {
+        for (const task of changedTasks) {
+          const result = await transaction.task.updateMany({ where: { workspaceId, id: task.id }, data: { ...data, labels: updatedLabels.get(task.id)! } });
+          if (result.count !== 1) throw new NotFoundException('One or more selected tasks are no longer available.');
+        }
+      } else {
+        const result = await transaction.task.updateMany({ where: { workspaceId, id: { in: changedTasks.map((task) => task.id) } }, data });
+        if (result.count !== changedTasks.length) throw new NotFoundException('One or more selected tasks are no longer available.');
+      }
       for (const task of changedTasks) {
         if (data.status && task.status !== data.status) changedStatuses.push({ id: task.id, status: task.status });
         const assignmentRecipients = 'assigneeId' in data && task.assigneeId !== data.assigneeId ? [task.assigneeId, data.assigneeId].filter((id): id is string => Boolean(id)) : [];
