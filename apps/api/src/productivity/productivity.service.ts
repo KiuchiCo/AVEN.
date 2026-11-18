@@ -19,6 +19,8 @@ const taskViewPriorities = ['ALL', ...taskPriorities] as const;
 const taskViewDueFilters = ['ALL', 'OVERDUE', 'TODAY', 'NEXT_7_DAYS', 'NO_DATE'] as const;
 const taskViewDependencyFilters = ['ALL', 'BLOCKED', 'BLOCKING', 'HAS_DEPENDENCIES', 'NONE'] as const;
 const taskViewSorts = ['DUE_ASC', 'DUE_DESC', 'PRIORITY', 'TITLE'] as const;
+const databaseRecordSearchPageSize = 300;
+const databaseRecordSearchMaxScan = 3000;
 
 @Injectable()
 export class ProductivityService {
@@ -921,17 +923,17 @@ export class ProductivityService {
       throw new BadRequestException('Search must be between 2 and 100 characters.');
     }
     const query = rawQuery.trim();
+    const needle = query.toLocaleLowerCase();
     const contains = { contains: query, mode: 'insensitive' as const };
     const [projects, tasks, documents, databases, records, knowledge, events] = await Promise.all([
       this.prisma.project.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, name: true, description: true, updatedAt: true } }),
       this.prisma.task.findMany({ where: { workspaceId, OR: [{ title: contains }, { description: contains }, { labels: { has: query.toLocaleLowerCase() } }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, labels: true, updatedAt: true, project: { select: { name: true } } } }),
       this.prisma.document.findMany({ where: { workspaceId, OR: [{ title: contains }, { content: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, content: true, updatedAt: true } }),
       this.prisma.workspaceDatabase.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 8, select: { id: true, name: true, description: true, updatedAt: true } }),
-      this.prisma.databaseRecord.findMany({ where: { workspaceId }, orderBy: { updatedAt: 'desc' }, take: 300, select: { id: true, values: true, updatedAt: true, database: { select: { id: true, name: true } } } }),
+      this.searchDatabaseRecords(workspaceId, needle),
       this.prisma.knowledgeItem.findMany({ where: { workspaceId, archivedAt: null, OR: [{ title: contains }, { content: contains }, { tags: { has: query.toLocaleLowerCase() } }] }, orderBy: [{ isPinned: 'desc' }, { updatedAt: 'desc' }], take: 12, select: { id: true, title: true, content: true, tags: true, updatedAt: true } }),
       this.prisma.calendarEvent.findMany({ where: { workspaceId, OR: [{ title: contains }, { description: contains }, { location: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, location: true, startsAt: true, updatedAt: true } }),
     ]);
-    const needle = query.toLocaleLowerCase();
     const results = [
       ...projects.map((item) => ({ id: item.id, type: 'Project', title: item.name, detail: item.description ?? 'Project', href: '/workspace/projects', updatedAt: item.updatedAt })),
       ...tasks.map((item) => ({ id: item.id, type: 'Task', title: item.title, detail: [...(item.project?.name ? [item.project.name] : []), ...(item.labels.length ? [item.labels.map((label) => `#${label}`).join(' ')] : []), ...(item.description ? [item.description] : [])].join(' · ') || 'Workspace task', labels: item.labels, href: `/workspace/tasks/${item.id}`, updatedAt: item.updatedAt })),
@@ -940,11 +942,30 @@ export class ProductivityService {
         return { id: item.id, type: 'Document', title: item.title, detail: content.toLocaleLowerCase().includes(needle) ? excerpt(content, needle) : 'Workspace document', href: `/workspace/documents/${item.id}`, updatedAt: item.updatedAt };
       }),
       ...databases.map((item) => ({ id: item.id, type: 'Database', title: item.name, detail: item.description ?? 'Workspace database', href: '/workspace/databases', updatedAt: item.updatedAt })),
-      ...records.filter((item) => JSON.stringify(item.values).toLocaleLowerCase().includes(needle)).slice(0, 12).map((item) => ({ id: item.id, type: 'Record', title: recordTitle(item.values), detail: item.database.name, href: '/workspace/databases', updatedAt: item.updatedAt })),
+      ...records.map((item) => ({ id: item.id, type: 'Record', title: recordTitle(item.values), detail: item.database.name, href: '/workspace/databases', updatedAt: item.updatedAt })),
       ...knowledge.map((item) => ({ id: item.id, type: 'Knowledge', title: item.title, detail: item.content.toLocaleLowerCase().includes(needle) ? excerpt(item.content, needle) : item.tags.join(' · ') || 'Workspace reference', href: '/workspace/knowledge', updatedAt: item.updatedAt })),
       ...events.map((item) => ({ id: item.id, type: 'Event', title: item.title, detail: item.description ?? item.location ?? `Scheduled ${item.startsAt.toLocaleString()}`, href: '/workspace/calendar', updatedAt: item.updatedAt })),
     ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 40);
     return { query, results };
+  }
+
+  private async searchDatabaseRecords(workspaceId: string, needle: string) {
+    const matching: { id: string; values: Prisma.JsonValue; updatedAt: Date; database: { id: string; name: string } }[] = [];
+    for (let skip = 0; skip < databaseRecordSearchMaxScan && matching.length < 12; skip += databaseRecordSearchPageSize) {
+      const page = await this.prisma.databaseRecord.findMany({
+        where: { workspaceId },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take: Math.min(databaseRecordSearchPageSize, databaseRecordSearchMaxScan - skip),
+        select: { id: true, values: true, updatedAt: true, database: { select: { id: true, name: true } } },
+      });
+      for (const record of page) {
+        if (JSON.stringify(record.values).toLocaleLowerCase().includes(needle)) matching.push(record);
+        if (matching.length === 12) break;
+      }
+      if (page.length < databaseRecordSearchPageSize) break;
+    }
+    return matching;
   }
 
   async createCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
