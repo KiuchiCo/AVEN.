@@ -970,6 +970,14 @@ body {
 .document-studio__comments article.is-resolved { opacity:.65; }
 .document-studio__comment-form textarea { min-height:80px; resize:vertical; }
 .productivity-board__filter { display: flex; align-items: center; gap: 7px; color: #777168; font-size: 11px; }
+.task-view-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; margin: 12px 0; padding: 12px; border: 1px solid #e9e1d7; border-radius: 10px; background: #faf7f2; }
+.task-view-tools>label,.task-view-tools form>label,.task-view-tools__saved>label { display: grid; min-width: 130px; gap: 4px; color: #7f7568; font-size: 9px; }
+.task-view-tools input,.task-view-tools select { min-width: 130px; height: 33px; padding: 0 9px; border: 1px solid #e2dacf; border-radius: 7px; background: #fffdfa; color: #514a40; font: 10px Inter,sans-serif; }
+.task-view-tools>label:first-child input { min-width: 220px; }
+.task-view-tools button { min-height: 33px; padding: 0 10px; border: 1px solid #e1d8cb; border-radius: 7px; background: #fffdfa; color: #6d563b; font: 500 9px Inter,sans-serif; cursor: pointer; }
+.task-view-tools button:disabled { cursor: not-allowed; opacity: .5; }
+.task-view-tools form,.task-view-tools__saved { display: flex; flex-wrap: wrap; align-items: end; gap: 6px; }
+.task-view-tools>p { flex-basis: 100%; margin: 0; color: #93897c; font-size: 9px; }
 .productivity-columns { display: grid; grid-template-columns: repeat(5, minmax(170px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 3px; }
 .productivity-column { min-height: 190px; padding: 11px; border: 1px solid #e8e3db; border-radius: 12px; background: #f8f5ef; }
 .productivity-column h3 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; color: #302c26; font-size: 12px; }
@@ -1417,6 +1425,10 @@ body {
   .project-task-tools__top { align-items: flex-start; flex-direction: column; }
   .project-task-bulk { align-items: stretch; flex-direction: column; }
   .project-task-bulk label,.project-task-bulk select,.project-task-bulk input[type="date"] { width: 100%; }
+  .task-view-tools { align-items: stretch; flex-direction: column; }
+  .task-view-tools>label,.task-view-tools form,.task-view-tools__saved { width: 100%; }
+  .task-view-tools input,.task-view-tools select,.task-view-tools>label:first-child input { width: 100%; min-width: 0; }
+  .task-view-tools form>label,.task-view-tools__saved>label { flex: 1; }
   .productivity-form, .productivity-projects, .productivity-board { padding: 14px; }
   .project-template-library { padding: 14px; }
   .project-template-grid { grid-template-columns: 1fr; }

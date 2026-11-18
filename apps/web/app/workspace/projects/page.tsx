@@ -14,6 +14,8 @@ type TaskImportRow = { title: string; description: string | null; status: string
 type TemplateTask = { title: string; description: string | null; priority: string; labels: string[] };
 type TemplateMilestone = { title: string };
 type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; taskTemplates: TemplateTask[]; milestoneTemplates: TemplateMilestone[]; useCount: number; lastUsedAt: string | null; createdBy: { displayName: string } };
+type TaskViewFilters = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; sort: string };
+type SavedTaskView = { id: string; name: string; filters: TaskViewFilters };
 
 const columns = [
   { status: 'TODO', title: 'To do' },
@@ -45,6 +47,16 @@ export default function ProjectsPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
+  const [taskSearch, setTaskSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [assigneeFilter, setAssigneeFilter] = useState('ALL');
+  const [labelFilter, setLabelFilter] = useState('');
+  const [dueFilter, setDueFilter] = useState('ALL');
+  const [taskSort, setTaskSort] = useState('DUE_ASC');
+  const [savedTaskViews, setSavedTaskViews] = useState<SavedTaskView[]>([]);
+  const [taskViewName, setTaskViewName] = useState('');
+  const [taskViewChoice, setTaskViewChoice] = useState('');
+  const [taskViewsReadyFor, setTaskViewsReadyFor] = useState('');
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [bulkPriority, setBulkPriority] = useState('');
   const [bulkAssignee, setBulkAssignee] = useState('');
@@ -107,9 +119,69 @@ export default function ProjectsPage() {
 
   const selectedProjectName = useMemo(() => projects.find((project) => project.id === selectedProject)?.name, [projects, selectedProject]);
   const selectedProjectTasks = useMemo(() => tasks.filter((task) => task.project?.id === selectedProject), [tasks, selectedProject]);
-  const boardTasks = useMemo(() => tasks.filter((task) => (!selectedProject || task.project?.id === selectedProject) && (priorityFilter === 'ALL' || task.priority === priorityFilter)), [tasks, selectedProject, priorityFilter]);
+  const boardTasks = useMemo(() => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const nextWeek = new Date(now); nextWeek.setHours(0, 0, 0, 0); nextWeek.setDate(nextWeek.getDate() + 7);
+    const week = `${nextWeek.getFullYear()}-${String(nextWeek.getMonth() + 1).padStart(2, '0')}-${String(nextWeek.getDate()).padStart(2, '0')}`;
+    const filtered = tasks.filter((task) => {
+      if (selectedProject && task.project?.id !== selectedProject) return false;
+      if (priorityFilter !== 'ALL' && task.priority !== priorityFilter) return false;
+      if (statusFilter !== 'ALL' && task.status !== statusFilter) return false;
+      if (assigneeFilter === 'UNASSIGNED' ? Boolean(task.assignee) : assigneeFilter !== 'ALL' && task.assignee?.id !== assigneeFilter) return false;
+      if (labelFilter && !task.labels.includes(labelFilter)) return false;
+      if (taskSearch && !`${task.title} ${task.description ?? ''} ${task.project?.name ?? ''} ${task.labels.join(' ')}`.toLocaleLowerCase().includes(taskSearch.trim().toLocaleLowerCase())) return false;
+      const due = task.dueAt?.slice(0, 10) ?? '';
+      if (dueFilter === 'NO_DATE' && due) return false;
+      if (dueFilter === 'OVERDUE' && (!due || due >= today || ['COMPLETED', 'CANCELLED'].includes(task.status))) return false;
+      if (dueFilter === 'TODAY' && due !== today) return false;
+      if (dueFilter === 'NEXT_7_DAYS' && (!due || due < today || due > week)) return false;
+      return true;
+    });
+    const priorityRank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+    return filtered.sort((a, b) => taskSort === 'TITLE' ? a.title.localeCompare(b.title)
+      : taskSort === 'PRIORITY' ? priorityRank[a.priority] - priorityRank[b.priority] || a.title.localeCompare(b.title)
+        : taskSort === 'DUE_DESC' ? (b.dueAt ?? '').localeCompare(a.dueAt ?? '') || a.title.localeCompare(b.title)
+          : (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999') || a.title.localeCompare(b.title));
+  }, [tasks, selectedProject, priorityFilter, statusFilter, assigneeFilter, labelFilter, taskSearch, dueFilter, taskSort]);
   const completedTasks = selectedProjectTasks.filter((task) => task.status === 'COMPLETED').length;
   const taskProgress = selectedProjectTasks.length ? Math.round((completedTasks / selectedProjectTasks.length) * 100) : 0;
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`aven.task-views.${workspace.id}`);
+      const parsed = stored ? JSON.parse(stored) as unknown : [];
+      setSavedTaskViews(Array.isArray(parsed) ? parsed.filter((view): view is SavedTaskView => view && typeof view.id === 'string' && typeof view.name === 'string' && view.filters && typeof view.filters === 'object').slice(0, 20) : []);
+    } catch { setSavedTaskViews([]); }
+    setTaskViewsReadyFor(workspace.id);
+  }, [workspace.id]);
+
+  useEffect(() => {
+    if (taskViewsReadyFor !== workspace.id) return;
+    try { localStorage.setItem(`aven.task-views.${workspace.id}`, JSON.stringify(savedTaskViews)); } catch { /* Keep the board usable if browser storage is unavailable. */ }
+  }, [savedTaskViews, taskViewsReadyFor, workspace.id]);
+
+  function currentTaskViewFilters(): TaskViewFilters {
+    return { projectId: selectedProject, search: taskSearch, status: statusFilter, priority: priorityFilter, assigneeId: assigneeFilter, label: labelFilter, due: dueFilter, sort: taskSort };
+  }
+
+  function applyTaskView(view: SavedTaskView) {
+    const filters = view.filters;
+    setSelectedProject(projects.some((project) => project.id === filters.projectId) ? filters.projectId : '');
+    setTaskSearch(filters.search ?? ''); setStatusFilter(filters.status ?? 'ALL'); setPriorityFilter(filters.priority ?? 'ALL');
+    setAssigneeFilter(filters.assigneeId ?? 'ALL'); setLabelFilter(filters.label ?? ''); setDueFilter(filters.due ?? 'ALL'); setTaskSort(filters.sort ?? 'DUE_ASC');
+    setSelectedTaskIds([]); setNotice(`Applied “${view.name}”.`);
+  }
+
+  function saveCurrentTaskView(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = taskViewName.trim();
+    if (!name) return;
+    if (savedTaskViews.length >= 20) { setError('You can save up to 20 task views in this workspace.'); return; }
+    if (savedTaskViews.some((view) => view.name.toLocaleLowerCase() === name.toLocaleLowerCase())) { setError('A saved task view already uses that name.'); return; }
+    setSavedTaskViews((views) => [...views, { id: crypto.randomUUID(), name, filters: currentTaskViewFilters() }]);
+    setTaskViewName(''); setError(''); setNotice(`Saved “${name}” for this browser and workspace.`);
+  }
 
   async function submitProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -420,7 +492,20 @@ export default function ProjectsPage() {
       </section>
 
       <section className="productivity-board" aria-labelledby="task-board-title">
-        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div><label className="productivity-board__filter">Priority <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label></div>
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div></div>
+        <div className="task-view-tools" aria-label="Task view filters">
+          <label>Search<input type="search" value={taskSearch} onChange={(event) => { setTaskSearch(event.target.value); setSelectedTaskIds([]); }} placeholder="Task, description, project, label" /></label>
+          <label>Status<select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">All statuses</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.title}</option>)}</select></label>
+          <label>Priority<select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label>
+          <label>Assignee<select value={assigneeFilter} onChange={(event) => { setAssigneeFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">Anyone</option><option value="UNASSIGNED">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
+          <label>Label<select value={labelFilter} onChange={(event) => { setLabelFilter(event.target.value); setSelectedTaskIds([]); }}><option value="">All labels</option>{[...new Set(tasks.flatMap((task) => task.labels))].sort().map((label) => <option key={label} value={label}>#{label}</option>)}</select></label>
+          <label>Due date<select value={dueFilter} onChange={(event) => { setDueFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">Any date</option><option value="OVERDUE">Overdue</option><option value="TODAY">Due today</option><option value="NEXT_7_DAYS">Next 7 days</option><option value="NO_DATE">No due date</option></select></label>
+          <label>Sort<select value={taskSort} onChange={(event) => setTaskSort(event.target.value)}><option value="DUE_ASC">Due date · earliest</option><option value="DUE_DESC">Due date · latest</option><option value="PRIORITY">Priority · highest</option><option value="TITLE">Title · A–Z</option></select></label>
+          <button type="button" onClick={() => { setTaskSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); setAssigneeFilter('ALL'); setLabelFilter(''); setDueFilter('ALL'); setTaskSort('DUE_ASC'); setSelectedTaskIds([]); }}>Clear filters</button>
+          <form onSubmit={saveCurrentTaskView}><label>Save current view<input required maxLength={60} value={taskViewName} onChange={(event) => setTaskViewName(event.target.value)} placeholder="e.g. My overdue work" /></label><button type="submit" disabled={savedTaskViews.length >= 20}>Save view</button></form>
+          {savedTaskViews.length > 0 && <div className="task-view-tools__saved"><label>Saved views<select value={taskViewChoice} onChange={(event) => setTaskViewChoice(event.target.value)}><option value="">Choose a saved view</option>{savedTaskViews.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select></label><button type="button" disabled={!taskViewChoice} onClick={() => { const view = savedTaskViews.find((item) => item.id === taskViewChoice); if (view) applyTaskView(view); }}>Apply view</button><button type="button" disabled={!taskViewChoice} onClick={() => { setSavedTaskViews((views) => views.filter((view) => view.id !== taskViewChoice)); setTaskViewChoice(''); }}>Delete view</button></div>}
+          <p>Views save in this browser for this workspace only. {savedTaskViews.length} / 20 saved.</p>
+        </div>
         <div className="project-task-tools"><div className="project-task-tools__top"><span>{boardTasks.length} tasks in this view</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice('Selected the first 500 visible tasks; narrow the view to select a different batch.'); }}>Select visible (up to 500)</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>Clear selection</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>Export CSV</button></div></div>
           {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Status<select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">Keep current</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.title}</option>)}</select></label><label>Priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<select value={bulkDueMode} onChange={(event) => setBulkDueMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">Keep current</option><option value="SET">Set date</option><option value="CLEAR">Clear date</option></select></label>{bulkDueMode === 'SET' && <label>New due date<input type="date" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>}<button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? 'Working…' : 'Duplicate with checklists'}</button>{selectedTaskIds.length > 100 && <small>Choose 100 or fewer tasks to duplicate them.</small>}</form>}
           <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} tasks · {selectedProjectName ? `will be added to ${selectedProjectName}` : 'will be added to the workspace'}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt, labels. Separate multiple labels with semicolons. Up to 200 tasks per import.</small></form>
