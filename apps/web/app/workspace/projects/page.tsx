@@ -2,13 +2,14 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Member = { userId: string; displayName: string; role: string };
 type Task = { id: string; title: string; description: string | null; status: string; priority: string; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
+type TaskImportRow = { title: string; description: string | null; status: string; priority: string; dueAt: string | null };
 type TemplateTask = { title: string; description: string | null; priority: string };
 type TemplateMilestone = { title: string };
 type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; taskTemplates: TemplateTask[]; milestoneTemplates: TemplateMilestone[]; useCount: number; lastUsedAt: string | null; createdBy: { displayName: string } };
@@ -18,6 +19,7 @@ const columns = [
   { status: 'IN_PROGRESS', title: 'In progress' },
   { status: 'IN_REVIEW', title: 'In review' },
   { status: 'COMPLETED', title: 'Completed' },
+  { status: 'CANCELLED', title: 'Cancelled' },
 ];
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -40,7 +42,13 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [bulkPriority, setBulkPriority] = useState('');
+  const [bulkAssignee, setBulkAssignee] = useState('');
+  const [importRows, setImportRows] = useState<TaskImportRow[]>([]);
+  const [importFileName, setImportFileName] = useState('');
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -95,6 +103,7 @@ export default function ProjectsPage() {
 
   const selectedProjectName = useMemo(() => projects.find((project) => project.id === selectedProject)?.name, [projects, selectedProject]);
   const selectedProjectTasks = useMemo(() => tasks.filter((task) => task.project?.id === selectedProject), [tasks, selectedProject]);
+  const boardTasks = useMemo(() => tasks.filter((task) => (!selectedProject || task.project?.id === selectedProject) && (priorityFilter === 'ALL' || task.priority === priorityFilter)), [tasks, selectedProject, priorityFilter]);
   const completedTasks = selectedProjectTasks.filter((task) => task.status === 'COMPLETED').length;
   const taskProgress = selectedProjectTasks.length ? Math.round((completedTasks / selectedProjectTasks.length) * 100) : 0;
 
@@ -134,7 +143,7 @@ export default function ProjectsPage() {
     setBusy(true); setError('');
     try {
       const project = await request(`/workspaces/${workspace.id}/projects/project-templates/${selectedTemplate}/apply`, { method: 'POST', body: JSON.stringify({ name: newProjectName }) }) as Project & { id: string };
-      setSelectedProject(project.id); setSelectedTemplate(''); setNewProjectName(''); await reload();
+      setSelectedProject(project.id); setSelectedTaskIds([]); setSelectedTemplate(''); setNewProjectName(''); await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create a project from this template.'); }
     finally { setBusy(false); }
   }
@@ -215,6 +224,54 @@ export default function ProjectsPage() {
     } finally { setBusy(false); }
   }
 
+  async function bulkUpdateSelectedTasks(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedTaskIds.length) return;
+    const changes: Record<string, unknown> = {};
+    if (bulkPriority) changes.priority = bulkPriority;
+    if (bulkAssignee) changes.assigneeId = bulkAssignee === '__clear__' ? null : bulkAssignee;
+    if (!Object.keys(changes).length) { setError('Choose a bulk priority or assignee change first.'); return; }
+    setBusy(true); setError('');
+    try {
+      const result = await request(`/workspaces/${workspace.id}/tasks/bulk`, { method: 'PATCH', body: JSON.stringify({ taskIds: selectedTaskIds, ...changes }) }) as { updated: number };
+      setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); await reload();
+      setNotice(`Updated ${result.updated} tasks.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the selected tasks.'); }
+    finally { setBusy(false); }
+  }
+
+  function exportTasksCsv() {
+    const header = ['title', 'description', 'status', 'priority', 'dueAt'];
+    const rows = boardTasks.map((task) => [task.title, task.description ?? '', task.status, task.priority, task.dueAt ?? '']);
+    const csv = [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${selectedProjectName ? slug(selectedProjectName) : 'aven-workspace'}-tasks.csv`; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function readTaskCsv(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    setError('');
+    try {
+      if (file.size > 1_000_000) throw new Error('CSV files must be smaller than 1 MB.');
+      const parsed = parseTaskCsv(await file.text());
+      setImportRows(parsed); setImportFileName(file.name);
+    } catch (reason) { setImportRows([]); setImportFileName(''); setError(reason instanceof Error ? reason.message : 'Could not read this CSV file.'); }
+  }
+
+  async function importTasksCsv(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!importRows.length) return;
+    const formElement = event.currentTarget;
+    setBusy(true); setError('');
+    try {
+      const result = await request(`/workspaces/${workspace.id}/tasks/import`, { method: 'POST', body: JSON.stringify({ projectId: selectedProject || null, tasks: importRows }) }) as { imported: number };
+      setImportRows([]); setImportFileName(''); formElement.reset(); await reload();
+      setNotice(`Imported ${result.imported} tasks${selectedProjectName ? ` into ${selectedProjectName}` : ''}.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import these tasks.'); }
+    finally { setBusy(false); }
+  }
+
   async function submitMilestone(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedProject) return;
@@ -254,6 +311,7 @@ export default function ProjectsPage() {
       <p className="workspace-section-page__description">Plan work and track its next steps in one place.</p>
 
       {error && <p className="productivity-error" role="alert">{error}</p>}
+      {notice && <p className="productivity-success" role="status">{notice}</p>}
 
       <div className="productivity-forms">
         <form className="productivity-form" onSubmit={submitProject}>
@@ -268,7 +326,7 @@ export default function ProjectsPage() {
           <h2>New task</h2>
           <label>Task name<input name="title" maxLength={200} required placeholder="Write the project brief" /></label>
           <div className="productivity-form__row">
-            <label>Project<select name="projectId" value={selectedProject} onChange={(event) => setSelectedProject(event.target.value)}><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+            <label>Project<select name="projectId" value={selectedProject} onChange={(event) => { setSelectedProject(event.target.value); setSelectedTaskIds([]); }}><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
             <label>Priority<select name="priority" defaultValue="MEDIUM"><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label>
           </div>
           <label>Assign to <span>(optional)</span><select name="assigneeId" defaultValue=""><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
@@ -311,7 +369,7 @@ export default function ProjectsPage() {
         ) : (
           <div className="productivity-project-list">{projects.map((project) => (
             <article key={project.id} className={`productivity-project${selectedProject === project.id ? ' productivity-project--active' : ''}`}>
-              <button className="productivity-project__select" onClick={() => setSelectedProject(project.id)} aria-pressed={selectedProject === project.id}>
+              <button className="productivity-project__select" onClick={() => { setSelectedProject(project.id); setSelectedTaskIds([]); }} aria-pressed={selectedProject === project.id}>
                 <span><strong>{project.name}</strong><small>{project.description || 'A new AVEN project'}</small></span><span className="productivity-project__count">{project.taskCount} tasks</span>
               </button>
               <div className="productivity-project__controls"><label>Status <select value={project.status} disabled={busy} onChange={(event) => void updateProject(project, 'status', event.target.value)}><option value="PLANNING">Planning</option><option value="IN_PROGRESS">In progress</option><option value="ON_HOLD">On hold</option><option value="COMPLETED">Completed</option><option value="ARCHIVED">Archived</option></select></label><label>Due <input aria-label={`Due date for ${project.name}`} type="date" value={project.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateProject(project, 'dueAt', event.target.value)} /></label></div>
@@ -341,13 +399,18 @@ export default function ProjectsPage() {
       </section>
 
       <section className="productivity-board" aria-labelledby="task-board-title">
-        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div><label className="productivity-board__filter">Priority <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label></div>
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div><label className="productivity-board__filter">Priority <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label></div>
+        <div className="project-task-tools"><div className="project-task-tools__top"><span>{boardTasks.length} tasks in this view</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice('Selected the first 500 visible tasks; narrow the view to select a different batch.'); }}>Select visible (up to 500)</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>Clear selection</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>Export CSV</button></div></div>
+          {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Set priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button></form>}
+          <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} tasks · {selectedProjectName ? `will be added to ${selectedProjectName}` : 'will be added to the workspace'}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt. Up to 200 tasks per import. Export from AVEN for a ready-to-use template.</small></form>
+        </div>
         {loading ? <p className="productivity-message">Loading tasks…</p> : (
           <div className="productivity-columns">{columns.map((column) => {
-            const records = tasks.filter((task) => task.status === column.status && (!selectedProject || task.project?.id === selectedProject) && (priorityFilter === 'ALL' || task.priority === priorityFilter));
+            const records = boardTasks.filter((task) => task.status === column.status);
             return <section className="productivity-column" key={column.status} aria-label={`${column.title}, ${records.length} tasks`}>
               <h3>{column.title}<span>{records.length}</span></h3>
               {records.length === 0 ? <p className="productivity-column__empty">Nothing here yet</p> : records.map((task) => <article className="productivity-task" key={task.id}>
+                <label className="project-task-select"><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={(event) => { if (event.target.checked && selectedTaskIds.length >= 500) { setError('Bulk actions support up to 500 selected tasks.'); return; } setSelectedTaskIds((ids) => event.target.checked ? [...ids, task.id] : ids.filter((id) => id !== task.id)); }} /><span>Select task</span></label>
                 <strong>{task.title}</strong>
                 {task.project && <span className="productivity-task__project">{task.project.name}</span>}
                 <label className="productivity-task__assignee">Assignee<select aria-label={`Assignee for ${task.title}`} value={task.assignee?.id ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'assigneeId', event.target.value)}><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
@@ -360,4 +423,60 @@ export default function ProjectsPage() {
       </section>
     </div>
   );
+}
+
+function csvCell(value: string) {
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return `"${safe.replaceAll('"', '""')}"`;
+}
+
+function restoreCsvText(value: string) {
+  return value.replace(/^'(?=[=+\-@\t\r])/, '');
+}
+
+function slug(value: string) {
+  return value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project';
+}
+
+function parseTaskCsv(source: string): TaskImportRow[] {
+  const text = source.replace(/^\uFEFF/, '');
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === '"' && text[index + 1] === '"') { cell += '"'; index += 1; }
+      else if (character === '"') quoted = false;
+      else cell += character;
+    } else if (character === '"' && cell.length === 0) quoted = true;
+    else if (character === ',') { row.push(cell); cell = ''; }
+    else if (character === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (character !== '\r') cell += character;
+  }
+  if (quoted) throw new Error('This CSV has an unclosed quoted field.');
+  if (cell.length || row.length) { row.push(cell); rows.push(row); }
+  const nonEmpty = rows.filter((current) => current.some((value) => value.trim()));
+  if (nonEmpty.length < 2) throw new Error('The CSV needs a header row and at least one task.');
+  const headers = nonEmpty[0].map((header) => header.trim().toLocaleLowerCase());
+  const titleIndex = headers.indexOf('title');
+  if (titleIndex < 0) throw new Error('The CSV is missing the required title column.');
+  if (nonEmpty.length - 1 > 200) throw new Error('Import no more than 200 tasks at a time.');
+  const valueAt = (values: string[], name: string) => { const index = headers.indexOf(name); return index < 0 ? '' : restoreCsvText(values[index]?.trim() ?? ''); };
+  const statuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'CANCELLED'];
+  const priorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+  return nonEmpty.slice(1).map((values, index) => {
+    const title = valueAt(values, 'title');
+    const description = valueAt(values, 'description');
+    const rawStatus = valueAt(values, 'status').toLocaleUpperCase() || 'TODO';
+    const rawPriority = valueAt(values, 'priority').toLocaleUpperCase() || 'MEDIUM';
+    const dueAt = valueAt(values, 'dueAt') || null;
+    if (!title || title.length > 200) throw new Error(`Task on row ${index + 2} needs a title of 1–200 characters.`);
+    if (description.length > 5000) throw new Error(`Description on row ${index + 2} is longer than 5,000 characters.`);
+    if (!statuses.includes(rawStatus)) throw new Error(`Status on row ${index + 2} must be TODO, IN_PROGRESS, IN_REVIEW, COMPLETED, or CANCELLED.`);
+    if (!priorities.includes(rawPriority)) throw new Error(`Priority on row ${index + 2} must be LOW, MEDIUM, HIGH, or URGENT.`);
+    if (dueAt && !Number.isFinite(Date.parse(dueAt))) throw new Error(`Due date on row ${index + 2} is not a valid date.`);
+    return { title, description: description || null, status: rawStatus, priority: rawPriority, dueAt };
+  });
 }

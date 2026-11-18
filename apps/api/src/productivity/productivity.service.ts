@@ -248,6 +248,58 @@ export class ProductivityService {
     });
   }
 
+  async bulkUpdateTasks(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    if (!Array.isArray(body.taskIds) || body.taskIds.length < 1 || body.taskIds.length > 500) throw new BadRequestException('Select between 1 and 500 tasks.');
+    const taskIds = body.taskIds.map((value) => {
+      const id = optionalUuid(value, 'Task');
+      if (!id) throw new BadRequestException('Task IDs are required.');
+      return id;
+    });
+    if (new Set(taskIds).size !== taskIds.length) throw new BadRequestException('A task can only be selected once.');
+    const data: { priority?: TaskPriority; assigneeId?: string | null } = {};
+    if ('priority' in body) data.priority = enumField(body.priority, taskPriorities, 'Task priority');
+    if ('assigneeId' in body) {
+      data.assigneeId = optionalUuid(body.assigneeId, 'Assignee');
+      if (data.assigneeId && !await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: data.assigneeId } }, select: { userId: true } })) throw new BadRequestException('Assignee must be a member of this workspace.');
+    }
+    if (!Object.keys(data).length) throw new BadRequestException('Choose a priority or assignee change.');
+    const matching = await this.prisma.task.count({ where: { workspaceId, id: { in: taskIds } } });
+    if (matching !== taskIds.length) throw new NotFoundException('One or more selected tasks are not in this workspace.');
+    await this.prisma.$transaction(async (transaction) => {
+      const result = await transaction.task.updateMany({ where: { workspaceId, id: { in: taskIds } }, data });
+      if (result.count !== taskIds.length) throw new NotFoundException('One or more selected tasks are no longer available.');
+      await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'TASK', entityId: taskIds[0], message: `bulk updated ${taskIds.length} tasks` } });
+    });
+    return { updated: taskIds.length };
+  }
+
+  async importTasks(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const projectId = optionalUuid(body.projectId, 'Project');
+    if (projectId && !await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } })) throw new NotFoundException('Project not found in this workspace.');
+    if (!Array.isArray(body.tasks) || body.tasks.length < 1 || body.tasks.length > 200) throw new BadRequestException('Import between 1 and 200 tasks at a time.');
+    const tasks = body.tasks.map((value) => {
+      const row = objectInput(value);
+      const status = enumField(row.status, taskStatuses, 'Task status', 'TODO');
+      return {
+        workspaceId, projectId, createdById: actorId,
+        title: textField(row.title, 'Task title', 200),
+        description: optionalText(row.description, 'Task description', 5000),
+        status, priority: enumField(row.priority, taskPriorities, 'Task priority', 'MEDIUM'),
+        dueAt: dateField(row.dueAt, 'Task due date'),
+        completedAt: status === 'COMPLETED' ? new Date() : null,
+      };
+    });
+    return this.prisma.$transaction(async (transaction) => {
+      const created = await transaction.task.createManyAndReturn({ data: tasks, select: { id: true } });
+      await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'TASK', entityId: created[0].id, message: `imported ${created.length} tasks` } });
+      return { imported: created.length, projectId };
+    });
+  }
+
   async createTask(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const userId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);

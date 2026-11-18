@@ -14,6 +14,16 @@ export class TasksController {
     return this.productivity.listTasks(identity, workspaceId);
   }
 
+  @Patch('bulk')
+  bulkUpdate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
+    return this.productivity.bulkUpdateTasks(identity, workspaceId, body);
+  }
+
+  @Post('import')
+  importTasks(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
+    return this.productivity.importTasks(identity, workspaceId, body);
+  }
+
   @Post()
   create(
     @CurrentIdentity() identity: AuthenticatedIdentity,
