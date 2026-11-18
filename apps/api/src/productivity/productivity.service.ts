@@ -461,27 +461,76 @@ export class ProductivityService {
   async importTasks(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
+    const mode = enumField(body.mode, ['CREATE', 'UPSERT'] as const, 'Import mode', 'CREATE');
     const projectId = optionalUuid(body.projectId, 'Project');
     if (projectId && !await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } })) throw new NotFoundException('Project not found in this workspace.');
     if (!Array.isArray(body.tasks) || body.tasks.length < 1 || body.tasks.length > 200) throw new BadRequestException('Import between 1 and 200 tasks at a time.');
-    const tasks = body.tasks.map((value) => {
+    const rows = body.tasks.map((value) => {
       const row = objectInput(value);
       const status = enumField(row.status, taskStatuses, 'Task status', 'TODO');
       return {
-        workspaceId, projectId, createdById: actorId,
+        id: mode === 'UPSERT' ? optionalUuid(row.id, 'Task ID') : null,
+        row,
         title: textField(row.title, 'Task title', 200),
         description: optionalText(row.description, 'Task description', 5000),
         status, priority: enumField(row.priority, taskPriorities, 'Task priority', 'MEDIUM'),
         dueAt: dateField(row.dueAt, 'Task due date'),
         labels: taskLabels(row.labels),
-        completedAt: status === 'COMPLETED' ? new Date() : null,
+        projectId: 'projectId' in row ? optionalUuid(row.projectId, 'Task project') : projectId,
+        assigneeId: 'assigneeId' in row ? optionalUuid(row.assigneeId, 'Task assignee') : null,
       };
     });
-    return this.prisma.$transaction(async (transaction) => {
-      const created = await transaction.task.createManyAndReturn({ data: tasks, select: { id: true } });
-      await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'TASK', entityId: created[0].id, message: `imported ${created.length} tasks` } });
-      return { imported: created.length, projectId };
+    const ids = rows.map((row) => row.id).filter((id): id is string => Boolean(id));
+    if (new Set(ids).size !== ids.length) throw new BadRequestException('A task ID can appear only once in an import.');
+    if (mode === 'UPSERT') {
+      const updateFields = ['title', 'description', 'status', 'priority', 'dueAt', 'labels', 'projectId', 'assigneeId'];
+      for (const task of rows.filter((row) => row.id)) if (updateFields.some((field) => !(field in task.row))) throw new BadRequestException('To update existing tasks, use a full AVEN task export with all columns.');
+    }
+    const projectIds = [...new Set(rows.map((row) => row.projectId).filter((id): id is string => Boolean(id)))];
+    const assigneeIds = [...new Set(rows.map((row) => row.assigneeId).filter((id): id is string => Boolean(id)))];
+    if (projectIds.length) {
+      const projects = await this.prisma.project.findMany({ where: { workspaceId, id: { in: projectIds } }, select: { id: true } });
+      if (projects.length !== projectIds.length) throw new BadRequestException('Every CSV project ID must belong to this workspace.');
+    }
+    if (assigneeIds.length) {
+      const assignees = await this.prisma.workspaceMember.findMany({ where: { workspaceId, userId: { in: assigneeIds } }, select: { userId: true } });
+      if (assignees.length !== assigneeIds.length) throw new BadRequestException('Every CSV assignee ID must belong to this workspace.');
+    }
+    const existingTasks = ids.length ? await this.prisma.task.findMany({ where: { workspaceId, id: { in: ids } }, select: { id: true, title: true, description: true, status: true, priority: true, dueAt: true, labels: true, projectId: true, assigneeId: true, completedAt: true } }) : [];
+    if (existingTasks.length !== ids.length) throw new NotFoundException('One or more task IDs are not in this workspace. Re-export current tasks before updating.');
+    const existingById = new Map(existingTasks.map((task) => [task.id, task]));
+    const updatedIds = rows.filter((row) => row.id && existingById.get(row.id)?.status !== 'COMPLETED' && row.status === 'COMPLETED').map((row) => row.id!);
+    const blocked = updatedIds.length ? await this.prisma.task.findMany({
+      where: { workspaceId, id: { in: updatedIds }, dependsOn: { some: { status: { not: 'COMPLETED' } } } },
+      select: { title: true, dependsOn: { where: { status: { not: 'COMPLETED' } }, select: { title: true } } },
+    }) : [];
+    if (blocked.length) throw new BadRequestException(`Complete prerequisite tasks first: ${blocked.map((task) => `${task.title} → ${task.dependsOn.map((prerequisite) => prerequisite.title).join(', ')}`).join('; ')}.`);
+    const statusChanges: { taskId: string; from: string; to: string }[] = [];
+    const result = await this.prisma.$transaction(async (transaction) => {
+      let created = 0;
+      let updated = 0;
+      for (const row of rows) {
+        if (row.id) {
+          const previous = existingById.get(row.id)!;
+          const completedAt = row.status === 'COMPLETED' ? (previous.status === 'COMPLETED' ? previous.completedAt : new Date()) : null;
+          const unchanged = previous.title === row.title && previous.description === row.description && previous.status === row.status && previous.priority === row.priority && (previous.dueAt?.getTime() ?? null) === (row.dueAt?.getTime() ?? null) && JSON.stringify(previous.labels) === JSON.stringify(row.labels) && previous.projectId === row.projectId && previous.assigneeId === row.assigneeId;
+          if (unchanged) continue;
+          const changed = await transaction.task.updateMany({ where: { workspaceId, id: row.id }, data: { title: row.title, description: row.description, status: row.status, priority: row.priority, dueAt: row.dueAt, labels: row.labels, projectId: row.projectId, assigneeId: row.assigneeId, completedAt } });
+          if (changed.count !== 1) throw new NotFoundException('A task disappeared during import. No CSV changes were saved.');
+          if (previous.status !== row.status) statusChanges.push({ taskId: row.id, from: previous.status, to: row.status });
+          const recipients = previous.assigneeId !== row.assigneeId ? [previous.assigneeId, row.assigneeId].filter((id): id is string => Boolean(id)) : row.assigneeId ? [row.assigneeId] : [];
+          await this.createActivity(transaction, { workspaceId, actorId, entityType: 'TASK', entityId: row.id, message: `updated task “${row.title}” from CSV import`, recipientScoped: true, additionalRecipientIds: recipients });
+          updated += 1;
+        } else {
+          const task = await transaction.task.create({ data: { workspaceId, createdById: actorId, projectId: row.projectId, assigneeId: row.assigneeId, title: row.title, description: row.description, status: row.status, priority: row.priority, dueAt: row.dueAt, labels: row.labels, completedAt: row.status === 'COMPLETED' ? new Date() : null }, select: { id: true } });
+          await this.createActivity(transaction, { workspaceId, actorId, entityType: 'TASK', entityId: task.id, message: `created task “${row.title}” from CSV import`, recipientScoped: true, additionalRecipientIds: row.assigneeId ? [row.assigneeId] : [] });
+          created += 1;
+        }
+      }
+      return { created, updated, unchanged: rows.filter((row) => row.id).length - updated };
     });
+    for (const change of statusChanges) await this.automations.runForTaskStatusChange(workspaceId, change.taskId, change.from, change.to, actorId);
+    return { ...result, projectId };
   }
 
   async createTask(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {

@@ -10,7 +10,7 @@ type Project = { id: string; name: string; description: string | null; status: s
 type Member = { userId: string; displayName: string; role: string };
 type Task = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
-type TaskImportRow = { title: string; description: string | null; status: string; priority: string; dueAt: string | null; labels: string[] };
+type TaskImportRow = { id?: string | null; title: string; description: string | null; status: string; priority: string; dueAt: string | null; labels: string[]; projectId?: string | null; assigneeId?: string | null };
 type TemplateTask = { title: string; description: string | null; priority: string; labels: string[] };
 type TemplateMilestone = { title: string };
 type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; taskTemplates: TemplateTask[]; milestoneTemplates: TemplateMilestone[]; useCount: number; lastUsedAt: string | null; createdBy: { displayName: string } };
@@ -69,6 +69,7 @@ export default function ProjectsPage() {
   const [bulkLabels, setBulkLabels] = useState('');
   const [importRows, setImportRows] = useState<TaskImportRow[]>([]);
   const [importFileName, setImportFileName] = useState('');
+  const [importMode, setImportMode] = useState<'CREATE' | 'UPSERT'>('CREATE');
   const [renameLabelFrom, setRenameLabelFrom] = useState('');
   const [renameLabelTo, setRenameLabelTo] = useState('');
 
@@ -413,8 +414,8 @@ export default function ProjectsPage() {
   }
 
   function exportTasksCsv() {
-    const header = ['title', 'description', 'status', 'priority', 'dueAt', 'labels'];
-    const rows = boardTasks.map((task) => [task.title, task.description ?? '', task.status, task.priority, task.dueAt ?? '', task.labels.join(';')]);
+    const header = ['id', 'title', 'description', 'status', 'priority', 'dueAt', 'projectId', 'assigneeId', 'labels'];
+    const rows = boardTasks.map((task) => [task.id, task.title, task.description ?? '', task.status, task.priority, task.dueAt ?? '', task.project?.id ?? '', task.assignee?.id ?? '', task.labels.join(';')]);
     const csv = [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${selectedProjectName ? slug(selectedProjectName) : 'aven-workspace'}-tasks.csv`; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -427,8 +428,8 @@ export default function ProjectsPage() {
     try {
       if (file.size > 1_000_000) throw new Error('CSV files must be smaller than 1 MB.');
       const parsed = parseTaskCsv(await file.text());
-      setImportRows(parsed); setImportFileName(file.name);
-    } catch (reason) { setImportRows([]); setImportFileName(''); setError(reason instanceof Error ? reason.message : 'Could not read this CSV file.'); }
+      setImportRows(parsed); setImportFileName(file.name); setImportMode('CREATE');
+    } catch (reason) { setImportRows([]); setImportFileName(''); setImportMode('CREATE'); setError(reason instanceof Error ? reason.message : 'Could not read this CSV file.'); }
   }
 
   async function importTasksCsv(event: FormEvent<HTMLFormElement>) {
@@ -437,9 +438,9 @@ export default function ProjectsPage() {
     const formElement = event.currentTarget;
     setBusy(true); setError('');
     try {
-      const result = await request(`/workspaces/${workspace.id}/tasks/import`, { method: 'POST', body: JSON.stringify({ projectId: selectedProject || null, tasks: importRows }) }) as { imported: number };
-      setImportRows([]); setImportFileName(''); formElement.reset(); await reload();
-      setNotice(`Imported ${result.imported} tasks${selectedProjectName ? ` into ${selectedProjectName}` : ''}.`);
+      const result = await request(`/workspaces/${workspace.id}/tasks/import`, { method: 'POST', body: JSON.stringify({ mode: importMode, projectId: selectedProject || null, tasks: importRows }) }) as { created: number; updated: number; unchanged: number };
+      setImportRows([]); setImportFileName(''); setImportMode('CREATE'); formElement.reset(); await reload();
+      setNotice(`CSV import finished: ${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged${selectedProjectName && result.created ? ` · ${selectedProjectName}` : ''}.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import these tasks.'); }
     finally { setBusy(false); }
   }
@@ -598,7 +599,7 @@ export default function ProjectsPage() {
         </details>
         <div className="project-task-tools"><div className="project-task-tools__top"><span>{boardTasks.length} tasks in this view</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice('Selected the first 500 visible tasks; narrow the view to select a different batch.'); }}>Select visible (up to 500)</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>Clear selection</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>Export CSV</button></div></div>
           {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Status<select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">Keep current</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.title}</option>)}</select></label><label>Priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<select value={bulkDueMode} onChange={(event) => setBulkDueMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">Keep current</option><option value="SET">Set date</option><option value="CLEAR">Clear date</option></select></label>{bulkDueMode === 'SET' && <label>New due date<input type="date" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>}<label>Labels<select value={bulkLabelMode} onChange={(event) => setBulkLabelMode(event.target.value as 'KEEP' | 'ADD' | 'REMOVE' | 'REPLACE')}><option value="KEEP">Keep current</option><option value="ADD">Add labels</option><option value="REMOVE">Remove labels</option><option value="REPLACE">Replace labels</option></select></label>{bulkLabelMode !== 'KEEP' && <label>Label names<input value={bulkLabels} onChange={(event) => setBulkLabels(event.target.value)} placeholder="planning, launch" maxLength={330} /></label>}{bulkLabelMode === 'REPLACE' && <small className="project-task-bulk__hint">Leave empty to remove every label from the selection.</small>}<button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? 'Working…' : 'Duplicate with checklists'}</button>{selectedTaskIds.length > 100 && <small>Choose 100 or fewer tasks to duplicate them.</small>}</form>}
-          <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} tasks · {selectedProjectName ? `will be added to ${selectedProjectName}` : 'will be added to the workspace'}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt, labels. Separate multiple labels with semicolons. Up to 200 tasks per import.</small></form>
+          <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} rows · {importMode === 'UPSERT' ? `${importRows.filter((task) => task.id).length} matching IDs update, ${importRows.filter((task) => !task.id).length} new tasks create` : `${importRows.some((task) => task.projectId !== undefined) ? 'new tasks will use the project and assignee values in the CSV' : selectedProjectName ? `new tasks will be added to ${selectedProjectName}` : 'new tasks will be added to the workspace'}`}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><label>Import behavior<select value={importMode} onChange={(event) => setImportMode(event.target.value as 'CREATE' | 'UPSERT')}><option value="CREATE">Create new tasks</option><option value="UPSERT" disabled={!importRows.some((task) => task.id)}>Update matching task IDs and create new rows</option></select></label>{importMode === 'UPSERT' && <small>Rows with IDs update tasks in this workspace. Rows without IDs create tasks. AVEN checks project and assignee IDs before saving.</small>}<button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : importMode === 'UPSERT' ? 'Sync CSV changes' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); setImportMode('CREATE'); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt, labels. AVEN exports also include task, project, and assignee IDs for round-trip updates. Separate multiple labels with semicolons. Up to 200 rows per import.</small></form>
         </div>
         {loading ? <p className="productivity-message">Loading tasks…</p> : (
           <div className="productivity-columns">{columns.map((column) => {
@@ -659,11 +660,24 @@ function parseTaskCsv(source: string): TaskImportRow[] {
   const headers = nonEmpty[0].map((header) => header.trim().toLocaleLowerCase());
   const titleIndex = headers.indexOf('title');
   if (titleIndex < 0) throw new Error('The CSV is missing the required title column.');
+  if (new Set(headers).size !== headers.length) throw new Error('The CSV contains duplicate column names.');
+  const hasIdColumn = headers.includes('id');
+  if (hasIdColumn) {
+    const requiredRoundTripColumns = ['id', 'title', 'description', 'status', 'priority', 'dueat', 'projectid', 'assigneeid', 'labels'];
+    const missingColumns = requiredRoundTripColumns.filter((header) => !headers.includes(header));
+    if (missingColumns.length) throw new Error(`AVEN task sync requires all export columns. Missing: ${missingColumns.join(', ')}.`);
+  }
   if (nonEmpty.length - 1 > 200) throw new Error('Import no more than 200 tasks at a time.');
   const valueAt = (values: string[], name: string) => { const index = headers.indexOf(name); return index < 0 ? '' : restoreCsvText(values[index]?.trim() ?? ''); };
   const statuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'CANCELLED'];
   const priorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+  const seenIds = new Set<string>();
   return nonEmpty.slice(1).map((values, index) => {
+    if (values.length > headers.length) throw new Error(`Row ${index + 2} has more values than the header row.`);
+    const id = valueAt(values, 'id') || null;
+    if (id && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new Error(`Task ID on row ${index + 2} is not a valid UUID.`);
+    if (id && seenIds.has(id.toLocaleLowerCase())) throw new Error(`Task ID on row ${index + 2} appears more than once.`);
+    if (id) seenIds.add(id.toLocaleLowerCase());
     const title = valueAt(values, 'title');
     const description = valueAt(values, 'description');
     const rawStatus = valueAt(values, 'status').toLocaleUpperCase() || 'TODO';
@@ -676,6 +690,9 @@ function parseTaskCsv(source: string): TaskImportRow[] {
     if (dueAt && !Number.isFinite(Date.parse(dueAt))) throw new Error(`Due date on row ${index + 2} is not a valid date.`);
     const labels = valueAt(values, 'labels').split(';').map((label) => label.trim().toLocaleLowerCase()).filter(Boolean);
     if (labels.length > 10 || labels.some((label) => label.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(label))) throw new Error(`Labels on row ${index + 2} must be up to 10 short words using letters, numbers, underscores, or hyphens.`);
-    return { title, description: description || null, status: rawStatus, priority: rawPriority, dueAt, labels: [...new Set(labels)] };
+    const result: TaskImportRow = { id, title, description: description || null, status: rawStatus, priority: rawPriority, dueAt, labels: [...new Set(labels)] };
+    if (headers.includes('projectid')) result.projectId = valueAt(values, 'projectid') || null;
+    if (headers.includes('assigneeid')) result.assigneeId = valueAt(values, 'assigneeid') || null;
+    return result;
   });
 }
