@@ -840,7 +840,7 @@ body {
 .project-hub__tabs { display: flex; gap: 4px; overflow-x: auto; padding: 5px; border: 1px solid #e9e3da; border-radius: 12px; background: #f6f2ec; }
 .project-hub__tabs button { flex: 0 0 auto; padding: 9px 13px; border: 0; border-radius: 8px; background: transparent; color: #716b62; font: inherit; font-size: 12px; cursor: pointer; }
 .project-hub__tabs button.is-active { background: #fffdfa; color: #27231e; box-shadow: 0 2px 8px rgb(55 43 30 / 8%); }
-.project-hub__stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.project-hub__stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
 .project-hub__stats article, .project-hub__panel, .project-hub__budget-strip { padding: 17px; border: 1px solid rgb(87 73 58 / 12%); border-radius: 14px; background: rgb(255 255 255 / 76%); box-shadow: 0 6px 20px rgb(55 43 30 / 4%); }
 .project-hub__stats article { display: grid; gap: 7px; }
 .project-hub__stats article > span, .project-hub__stats small { color: #777168; font-size: 11px; }
@@ -870,12 +870,12 @@ body {
 .project-hub__panel-heading h2 { margin: 2px 0 0; color: #27231e; font-family: Georgia, 'Times New Roman', serif; font-size: 22px; }
 .project-hub__panel-heading > button, .project-hub__panel-heading > a, .project-hub__budget-strip > button { border: 0; background: transparent; color: #755b42; font: inherit; font-size: 11px; font-weight: 650; text-decoration: none; cursor: pointer; }
 .project-hub__task-list { display: grid; }
-.project-hub__task-list article { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #eee9e2; }
+.project-hub__task-list article { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #eee9e2; }
 .project-hub__task-list article > div, .project-hub__quick-list button { display: grid; gap: 4px; }
 .project-hub__task-list strong, .project-hub__document-list strong { color: #302c26; font-size: 12px; }
 .project-hub__task-list small, .project-hub__document-list small { color: #827c73; font-size: 10px; }
 .project-hub__task-list select { max-width: 120px; padding: 6px; border: 1px solid #e4ded6; border-radius: 7px; background: #fffdfa; color: #51483d; font: inherit; font-size: 10px; }
-.project-hub__dependency { position: relative; grid-column: 2 / -1; color: #777168; font-size: 10px; }
+.project-hub__dependency { position: relative; grid-column: 3 / -1; color: #777168; font-size: 10px; }
 .project-hub__dependency summary { width: fit-content; padding: 5px 8px; border: 1px solid #e5dfd6; border-radius: 7px; background: #faf7f2; color: #655c51; cursor: pointer; list-style-position: inside; }
 .project-hub__dependency > div { position: absolute; z-index: 2; top: 28px; left: 0; display: grid; width: min(320px, 78vw); max-height: 220px; overflow: auto; padding: 8px; border: 1px solid #e5dfd6; border-radius: 9px; background: #fffdfa; box-shadow: 0 8px 24px rgb(55 43 30 / 12%); }
 .project-hub__dependency > div label { display: flex; align-items: center; gap: 8px; padding: 7px; color: #4e483f; cursor: pointer; }
@@ -923,6 +923,37 @@ body {
 .project-hub__task-create textarea { resize: vertical; }
 .project-hub__task-create > button { justify-self: end; padding: 8px 12px; border: 1px solid #92704d; border-radius: 6px; background: #92704d; color: white; font: 600 10px Inter,sans-serif; cursor: pointer; }
 @media (max-width: 640px) { .project-hub__task-actions { align-items: stretch; flex-direction: column; } .project-hub__task-create > div { grid-template-columns: 1fr; } }
+.project-hub__hero-actions { display: flex; align-items: center; gap: 10px; }
+.project-hub__hero-actions > button { padding: 9px 12px; border: 1px solid #ded3c5; border-radius: 7px; background: #fffdfa; color: #554a3c; font: 600 11px Inter,sans-serif; cursor: pointer; }
+.project-hub__project-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 12px; margin: 12px 0; padding: 16px; border: 1px solid #e7ded3; border-radius: 12px; background: #fffdfa; }
+.project-hub__project-editor label { display: grid; gap: 5px; color: #655d52; font-size: 11px; }
+.project-hub__project-editor input,.project-hub__project-editor textarea,.project-hub__project-editor select { width: 100%; padding: 9px; border: 1px solid #e4ddd3; border-radius: 6px; background: white; color: #302c26; font: 12px Inter,sans-serif; }
+.project-hub__project-editor textarea { resize: vertical; }
+.project-hub__project-editor > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; grid-column: 1 / -1; }
+.project-hub__project-editor > button { justify-self: end; padding: 9px 12px; border: 1px solid #92704d; border-radius: 6px; background: #92704d; color: white; font: 600 11px Inter,sans-serif; cursor: pointer; grid-column: 1 / -1; }
+.project-hub__attention { margin: 14px 0; padding: 16px; border: 1px solid #e7ded3; border-radius: 14px; background: #fffdfa; }
+.project-hub__attention-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 8px; }
+.project-hub__attention-grid article { display: grid; gap: 4px; padding: 10px; border: 1px solid #eee7de; border-radius: 7px; background: #faf8f4; }
+.project-hub__attention-grid article.is-overdue { border-color: #e8cbc2; background: #fff8f6; }
+.project-hub__attention-grid article > span,.project-hub__attention-grid article > small { color: #81786d; font-size: 9px; }
+.project-hub__attention-grid article.is-overdue > span { color: #a65337; }
+.project-hub__attention-grid article > strong,.project-hub__attention-grid article > a { color: #302c26; font-size: 11px; text-decoration: none; }
+.project-hub__attention-grid article > a:hover { text-decoration: underline; }
+.project-hub__bulk-tools { display: grid; gap: 9px; margin: 8px 0 12px; padding: 10px; border: 1px solid #e7ded3; border-radius: 8px; background: #faf8f4; }
+.project-hub__bulk-tools > label { display: flex; align-items: center; gap: 7px; color: #554a3c; font-size: 10px; }
+.project-hub__bulk-tools form { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.project-hub__bulk-tools form > strong { margin-right: 4px; color: #554a3c; font-size: 10px; }
+.project-hub__bulk-tools select,.project-hub__bulk-tools input[type="date"] { max-width: 170px; min-width: 130px; padding: 7px; border: 1px solid #ded3c5; border-radius: 6px; background: #fffdfa; color: #554a3c; font: 10px Inter,sans-serif; }
+.project-hub__bulk-tools button { padding: 7px 9px; border: 1px solid #ded3c5; border-radius: 6px; background: #fffdfa; color: #554a3c; font: 600 9px Inter,sans-serif; cursor: pointer; }
+.project-hub__bulk-tools button[type="submit"] { border-color: #92704d; background: #92704d; color: white; }
+.project-hub__task-select { display: flex; align-items: center; }
+.project-hub__task-select input,.project-hub__bulk-tools input[type="checkbox"] { accent-color: #92704d; }
+.project-hub__task-filters { display: grid; grid-template-columns: minmax(180px,1fr) repeat(2,minmax(140px,.5fr)); gap: 8px; margin: 8px 0; }
+.project-hub__task-filters label { display: grid; gap: 4px; color: #655d52; font-size: 9px; }
+.project-hub__task-filters input,.project-hub__task-filters select { min-width: 0; padding: 8px; border: 1px solid #e4ddd3; border-radius: 6px; background: #fffdfa; color: #302c26; font: 10px Inter,sans-serif; }
+@media (max-width: 720px) { .project-hub__stats { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media (max-width: 640px) { .project-hub__hero-actions { flex-wrap: wrap; } .project-hub__project-editor { grid-template-columns: 1fr; } .project-hub__project-editor > div { grid-template-columns: 1fr; } .project-hub__stats { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 640px) { .project-hub__task-filters { grid-template-columns: 1fr 1fr; } .project-hub__task-filters label:first-child { grid-column: 1 / -1; } }
 @media (max-width: 640px) { .project-hub__milestone-create { grid-template-columns: 1fr; } .project-hub__milestone-list li { grid-template-columns: minmax(0, 1fr) auto; } .project-hub__milestone-date { grid-column: 1; grid-row: 2; } .project-hub__milestone-remove { grid-column: 2; grid-row: 1 / span 2; } }
 .task-edit-panel { margin: 14px 0; padding: 14px; border: 1px solid #e7ded3; border-radius: 10px; background: #fffdfa; }
 .task-edit-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

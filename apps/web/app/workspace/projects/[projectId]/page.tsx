@@ -35,6 +35,11 @@ export default function ProjectWorkspacePage() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [taskFilter, setTaskFilter] = useState<'ALL' | 'OPEN' | 'BLOCKED' | 'OVERDUE' | 'COMPLETED'>('ALL');
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState('ALL');
+  const [taskSearch, setTaskSearch] = useState('');
+  const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [tab, setTab] = useState<'OVERVIEW' | 'TIMELINE' | 'DOCUMENTS' | 'ACTIVITY' | 'BUDGET'>('OVERVIEW');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -83,6 +88,7 @@ export default function ProjectWorkspacePage() {
   }, [reload]);
 
   const completedCount = tasks.filter((task) => task.status === 'COMPLETED').length;
+  const plannedTaskCount = tasks.filter((task) => task.status !== 'CANCELLED').length;
   const openTasks = tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
   const blockedTasks = openTasks.filter((task) => task.dependsOn.some((item) => item.status !== 'COMPLETED'));
   const readyTasks = openTasks.filter((task) => !task.dependsOn.some((item) => item.status !== 'COMPLETED'))
@@ -90,7 +96,28 @@ export default function ProjectWorkspacePage() {
       const priorityRank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
       return priorityRank[a.priority] - priorityRank[b.priority] || (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999') || a.title.localeCompare(b.title);
     });
-  const progress = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
+  const progress = plannedTaskCount ? Math.round((completedCount / plannedTaskCount) * 100) : 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const overdueTasks = openTasks.filter((task) => task.dueAt && task.dueAt.slice(0, 10) < todayKey).sort((a, b) => (a.dueAt ?? '').localeCompare(b.dueAt ?? ''));
+  const weekEnd = new Date(today);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekEndKey = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, '0')}-${String(weekEnd.getDate()).padStart(2, '0')}`;
+  const dueSoonTasks = openTasks.filter((task) => task.dueAt && task.dueAt.slice(0, 10) >= todayKey && task.dueAt.slice(0, 10) <= weekEndKey).sort((a, b) => (a.dueAt ?? '').localeCompare(b.dueAt ?? ''));
+  const overdueMilestones = milestones.filter((milestone) => !milestone.completedAt && milestone.dueAt && milestone.dueAt.slice(0, 10) < todayKey);
+  const upcomingMilestones = milestones.filter((milestone) => !milestone.completedAt && milestone.dueAt && milestone.dueAt.slice(0, 10) >= todayKey).sort((a, b) => (a.dueAt ?? '').localeCompare(b.dueAt ?? ''));
+  const visibleProjectTasks = tasks.filter((task) => {
+    const matchesStatus = taskFilter === 'ALL'
+      || (taskFilter === 'OPEN' && task.status !== 'COMPLETED' && task.status !== 'CANCELLED')
+      || (taskFilter === 'BLOCKED' && task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && task.dependsOn.some((dependency) => dependency.status !== 'COMPLETED'))
+      || (taskFilter === 'OVERDUE' && task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && Boolean(task.dueAt && task.dueAt.slice(0, 10) < todayKey))
+      || (taskFilter === 'COMPLETED' && task.status === 'COMPLETED');
+    const matchesPriority = taskPriorityFilter === 'ALL' || task.priority === taskPriorityFilter;
+    const query = taskSearch.trim().toLocaleLowerCase();
+    const matchesSearch = !query || [task.title, ...task.labels, task.assignee?.displayName ?? ''].some((value) => value.toLocaleLowerCase().includes(query));
+    return matchesStatus && matchesPriority && matchesSearch;
+  }).sort((a, b) => (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999'));
   const timelineItems = useMemo(() => [
     ...tasks.filter((task) => task.dueAt).map((task) => ({ id: task.id, title: task.title, date: task.dueAt as string, type: 'Task', state: task.status })),
     ...milestones.filter((milestone) => milestone.dueAt).map((milestone) => ({ id: milestone.id, title: milestone.title, date: milestone.dueAt as string, type: 'Milestone', state: milestone.completedAt ? 'COMPLETED' : 'UPCOMING' })),
@@ -104,6 +131,19 @@ export default function ProjectWorkspacePage() {
       await request(`/workspaces/${workspace.id}/projects/${project.id}`, { method: 'PATCH', body: JSON.stringify({ budgetTotal: form.get('budgetTotal') || null, budgetSpent: form.get('budgetSpent') }) });
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save the project budget.'); }
+    finally { setSaving(false); }
+  }
+
+  async function saveProjectDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!project) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setSaving(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/projects/${project.id}`, { method: 'PATCH', body: JSON.stringify({ name: form.get('name'), description: form.get('description') || null, status: form.get('status'), dueAt: form.get('dueAt') || null }) });
+      setShowProjectEditor(false);
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update project details.'); }
     finally { setSaving(false); }
   }
 
@@ -164,6 +204,33 @@ export default function ProjectWorkspacePage() {
     finally { setSaving(false); }
   }
 
+  async function bulkUpdateProjectTasks(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedTaskIds.length) return;
+    const form = new FormData(event.currentTarget);
+    const payload: Record<string, string | string[] | null> = { taskIds: selectedTaskIds };
+    for (const field of ['status', 'priority'] as const) {
+      const value = form.get(field);
+      if (typeof value === 'string' && value) payload[field] = value;
+    }
+    const assignee = form.get('assigneeId');
+    if (assignee === '__CLEAR__') payload.assigneeId = null;
+    else if (typeof assignee === 'string' && assignee) payload.assigneeId = assignee;
+    const dueMode = form.get('dueMode');
+    const dueAt = form.get('dueAt');
+    if (dueMode === 'CLEAR') payload.dueAt = null;
+    else if (dueMode === 'SET' && typeof dueAt === 'string' && dueAt) payload.dueAt = dueAt;
+    else if (dueMode === 'SET') { setError('Choose a due date to apply.'); return; }
+    if (Object.keys(payload).length === 1) { setError('Choose at least one task field to update.'); return; }
+    setSaving(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/tasks/bulk`, { method: 'PATCH', body: JSON.stringify(payload) });
+      setSelectedTaskIds([]);
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the selected tasks.'); }
+    finally { setSaving(false); }
+  }
+
   async function deleteMilestone(milestone: Milestone) {
     if (!window.confirm(`Remove the milestone “${milestone.title}” from this project?`)) return;
     setSaving(true); setError('');
@@ -185,7 +252,8 @@ export default function ProjectWorkspacePage() {
       <p className="workspace-eyebrow"><Link href="/workspace/projects">Projects</Link> · {workspace.name}</p>
       {error && <p className="productivity-error" role="alert">{error}</p>}
       {loading ? <p className="productivity-message">Loading project…</p> : !project ? <div className="workspace-section-empty"><h2>Project unavailable</h2><p>This project is not available in the current workspace.</p><Link href="/workspace/projects">Back to projects</Link></div> : <>
-        <header className="project-hub__hero"><div><span className={`project-status-pill project-status-pill--${project.status.toLowerCase()}`}>{project.status.replaceAll('_', ' ').toLowerCase()}</span><h1>{project.name}</h1><p>{project.description || 'A project workspace for plans, documents, and delivery.'}</p></div><Link href="/workspace/projects" className="project-hub__back">← All projects</Link></header>
+        <header className="project-hub__hero"><div><span className={`project-status-pill project-status-pill--${project.status.toLowerCase()}`}>{project.status.replaceAll('_', ' ').toLowerCase()}</span><h1>{project.name}</h1><p>{project.description || 'A project workspace for plans, documents, and delivery.'}</p></div><div className="project-hub__hero-actions"><button type="button" aria-expanded={showProjectEditor} onClick={() => setShowProjectEditor((value) => !value)}>{showProjectEditor ? 'Close editor' : 'Edit project'}</button><Link href="/workspace/projects" className="project-hub__back">← All projects</Link></div></header>
+        {showProjectEditor && <form key={`${project.id}-${project.name}-${project.status}-${project.dueAt ?? ''}`} className="project-hub__project-editor" onSubmit={saveProjectDetails}><label>Project name<input name="name" required maxLength={160} defaultValue={project.name} /></label><label>Description<textarea name="description" rows={3} maxLength={5000} defaultValue={project.description ?? ''} /></label><div><label>Status<select name="status" defaultValue={project.status}><option value="PLANNING">Planning</option><option value="IN_PROGRESS">In progress</option><option value="ON_HOLD">On hold</option><option value="COMPLETED">Completed</option><option value="ARCHIVED">Archived</option></select></label><label>Project deadline<input name="dueAt" type="date" defaultValue={project.dueAt?.slice(0, 10) ?? ''} /></label></div><button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save project details'}</button></form>}
         <nav className="project-hub__tabs" aria-label="Project sections">{tabs.map((item) => <button type="button" key={item.key} className={tab === item.key ? 'is-active' : ''} aria-current={tab === item.key ? 'page' : undefined} onClick={() => setTab(item.key)}>{item.label}</button>)}</nav>
 
         {tab === 'OVERVIEW' && <>
@@ -193,9 +261,11 @@ export default function ProjectWorkspacePage() {
             <article><span>Task progress</span><strong>{progress}%</strong><div className="project-hub__progress"><span style={{ width: `${progress}%` }} /></div><small>{completedCount} of {tasks.length} tasks done</small></article>
             <article><span>Ready to start</span><strong>{readyTasks.length}</strong><small>Prerequisites complete</small></article>
             <article><span>Blocked</span><strong className={blockedTasks.length ? 'project-hub__blocked-count' : ''}>{blockedTasks.length}</strong><small>Waiting on prerequisites</small></article>
+            <article><span>Overdue</span><strong className={overdueTasks.length + overdueMilestones.length ? 'project-hub__blocked-count' : ''}>{overdueTasks.length + overdueMilestones.length}</strong><small>Tasks and milestones</small></article>
             <article><span>Milestones</span><strong>{milestones.filter((item) => item.completedAt).length}/{milestones.length}</strong><small>Completed checkpoints</small></article>
             <article><span>Deadline</span><strong className="project-hub__date">{formatDate(project.dueAt)}</strong><small>Project target</small></article>
           </section>
+          {(overdueTasks.length > 0 || overdueMilestones.length > 0 || upcomingMilestones.length > 0 || dueSoonTasks.length > 0) && <section className="project-hub__attention"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DATES AND DELIVERY</p><h2>Needs attention</h2></div><button type="button" onClick={() => setTab('TIMELINE')}>Open timeline →</button></div><div className="project-hub__attention-grid">{overdueTasks.slice(0, 5).map((task) => <article className="is-overdue" key={task.id}><span>Overdue task</span><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link><small>Due {formatDate(task.dueAt)}</small></article>)}{overdueMilestones.slice(0, 3).map((milestone) => <article className="is-overdue" key={milestone.id}><span>Overdue milestone</span><strong>{milestone.title}</strong><small>Due {formatDate(milestone.dueAt)}</small></article>)}{dueSoonTasks.slice(0, 5).map((task) => <article key={task.id}><span>Due this week</span><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link><small>Due {formatDate(task.dueAt)}</small></article>)}{upcomingMilestones.slice(0, 3).map((milestone) => <article key={milestone.id}><span>Next milestone</span><strong>{milestone.title}</strong><small>{formatDate(milestone.dueAt)}</small></article>)}</div></section>}
           <section className="project-hub__ready-queue"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DEPENDENCY-AWARE QUEUE</p><h2>Ready next</h2></div><span>{readyTasks.length} ready · {blockedTasks.length} blocked</span></div>
             <div className="project-hub__ready-columns"><div>{readyTasks.length ? readyTasks.slice(0, 4).map((task) => <article key={task.id}><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link><small>{task.assignee?.displayName ?? 'Unassigned'} · Due {formatDate(task.dueAt)}</small>{task.status === 'TODO' ? <button type="button" disabled={saving} onClick={() => void updateTaskStatus(task.id, 'IN_PROGRESS')}>{saving ? 'Starting…' : 'Start task →'}</button> : <span className="project-hub__ready-state">Already in progress</span>}</article>) : <p className="productivity-message">No ready tasks right now. Complete prerequisites or add an open task to this project.</p>}</div>
               <div className="project-hub__blocked-list"><h3>Waiting on</h3>{blockedTasks.length ? blockedTasks.slice(0, 4).map((task) => <article key={task.id}><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link><small>Blocked by {task.dependsOn.filter((item) => item.status !== 'COMPLETED').map((item) => item.title).join(', ')}</small></article>) : <p>No tasks are waiting on prerequisites.</p>}</div>
@@ -204,7 +274,9 @@ export default function ProjectWorkspacePage() {
           <div className="project-hub__overview-grid">
             <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">DELIVERY · SEQUENCING</p><h2>Project tasks</h2></div><div className="project-hub__task-actions"><button type="button" onClick={() => setTab('TIMELINE')}>View timeline →</button><button type="button" aria-expanded={showTaskForm} onClick={() => setShowTaskForm((value) => !value)}>{showTaskForm ? 'Close' : '＋ Add task'}</button></div></div>
               {showTaskForm && <form className="project-hub__task-create" onSubmit={createTask}><label>Task name<input name="title" required maxLength={200} placeholder="Describe the next action" /></label><label>Description <span>(optional)</span><textarea name="description" rows={2} maxLength={5000} placeholder="Add context or acceptance notes" /></label><div><label>Priority<select name="priority" defaultValue="MEDIUM"><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assignee<select name="assigneeId" defaultValue=""><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<input name="dueAt" type="date" /></label></div><button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create task'}</button></form>}
-              {tasks.length === 0 ? <p className="productivity-message">Create tasks from the Projects page to start tracking delivery.</p> : <div className="project-hub__task-list">{tasks.slice().sort((a, b) => (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999')).map((task) => <article key={task.id}><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><div><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link><small>{task.assignee?.displayName ?? 'Unassigned'} · {formatDate(task.dueAt)}{task.dependsOn.length ? ` · ${task.dependsOn.filter((item) => item.status !== 'COMPLETED').length} open prerequisite(s)` : ''}</small><TaskLabels labels={task.labels} taskTitle={task.title} disabled={saving} onSave={(labels) => void updateTaskLabels(task.id, labels)} compact /></div><label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={saving} onChange={(event) => void updateTaskStatus(task.id, event.target.value)}>{taskStatuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select></label><details className="project-hub__dependency"><summary>Prerequisites · {task.dependsOn.length}</summary><div>{tasks.filter((candidate) => candidate.id !== task.id).map((candidate) => <label key={candidate.id}><input type="checkbox" checked={task.dependsOn.some((item) => item.id === candidate.id)} disabled={saving || task.status === 'COMPLETED'} onChange={(event) => void updateDependencies(task.id, event.currentTarget.checked ? [...task.dependsOn.map((item) => item.id), candidate.id] : task.dependsOn.filter((item) => item.id !== candidate.id).map((item) => item.id))} /><span>{candidate.title}{candidate.status === 'COMPLETED' ? ' · done' : ''}</span></label>)}</div></details></article>)}</div>}
+              {tasks.length > 0 && <div className="project-hub__task-filters"><label>Find tasks<input type="search" value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="Search title, assignee, label" /></label><label>Status<select value={taskFilter} onChange={(event) => setTaskFilter(event.target.value as typeof taskFilter)}><option value="ALL">All tasks</option><option value="OPEN">Open</option><option value="BLOCKED">Blocked</option><option value="OVERDUE">Overdue</option><option value="COMPLETED">Completed</option></select></label><label>Priority<select value={taskPriorityFilter} onChange={(event) => setTaskPriorityFilter(event.target.value)}><option value="ALL">All priorities</option><option value="URGENT">Urgent</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option></select></label></div>}
+              {tasks.length > 0 && <div className="project-hub__bulk-tools"><label><input type="checkbox" checked={visibleProjectTasks.length > 0 && visibleProjectTasks.every((task) => selectedTaskIds.includes(task.id))} onChange={(event) => setSelectedTaskIds((current) => event.target.checked ? [...new Set([...current, ...visibleProjectTasks.map((task) => task.id)])] : current.filter((id) => !visibleProjectTasks.some((task) => task.id === id)))} />Select {visibleProjectTasks.length} visible tasks</label>{selectedTaskIds.length > 0 && <form onSubmit={bulkUpdateProjectTasks}><strong>{selectedTaskIds.length} selected</strong><select name="status" defaultValue=""><option value="">Status unchanged</option>{taskStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select><select name="priority" defaultValue=""><option value="">Priority unchanged</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select><select name="assigneeId" defaultValue=""><option value="">Assignee unchanged</option><option value="__CLEAR__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select><select name="dueMode" defaultValue=""><option value="">Dates unchanged</option><option value="SET">Set due date</option><option value="CLEAR">Clear due dates</option></select><input aria-label="Due date for selected tasks" name="dueAt" type="date" /><button type="submit" disabled={saving}>{saving ? 'Updating…' : 'Apply changes'}</button><button type="button" disabled={saving} onClick={() => setSelectedTaskIds([])}>Clear selection</button></form>}</div>}
+              {tasks.length === 0 ? <p className="productivity-message">Create tasks from the Projects page to start tracking delivery.</p> : visibleProjectTasks.length === 0 ? <p className="productivity-message">No tasks match these filters. Adjust the search or choose another status or priority.</p> : <div className="project-hub__task-list">{visibleProjectTasks.map((task) => <article key={task.id}><label className="project-hub__task-select"><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={(event) => setSelectedTaskIds((current) => event.target.checked ? [...current, task.id] : current.filter((id) => id !== task.id))} /><span className="visually-hidden">Select {task.title}</span></label><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><div><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link><small>{task.assignee?.displayName ?? 'Unassigned'} · {formatDate(task.dueAt)}{task.dependsOn.length ? ` · ${task.dependsOn.filter((item) => item.status !== 'COMPLETED').length} open prerequisite(s)` : ''}</small><TaskLabels labels={task.labels} taskTitle={task.title} disabled={saving} onSave={(labels) => void updateTaskLabels(task.id, labels)} compact /></div><label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={saving} onChange={(event) => void updateTaskStatus(task.id, event.target.value)}>{taskStatuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select></label><details className="project-hub__dependency"><summary>Prerequisites · {task.dependsOn.length}</summary><div>{tasks.filter((candidate) => candidate.id !== task.id).map((candidate) => <label key={candidate.id}><input type="checkbox" checked={task.dependsOn.some((item) => item.id === candidate.id)} disabled={saving || task.status === 'COMPLETED'} onChange={(event) => void updateDependencies(task.id, event.currentTarget.checked ? [...task.dependsOn.map((item) => item.id), candidate.id] : task.dependsOn.filter((item) => item.id !== candidate.id).map((item) => item.id))} /><span>{candidate.title}{candidate.status === 'COMPLETED' ? ' · done' : ''}</span></label>)}</div></details></article>)}</div>}
             </section>
             <section className="project-hub__panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">PROJECT RECORDS</p><h2>Documents & milestones</h2></div></div>
               <div className="project-hub__quick-list"><button type="button" onClick={() => setTab('DOCUMENTS')}><span>▤</span><strong>{documents.length} linked documents</strong><small>Briefs, plans, and notes</small></button><button type="button" onClick={() => setTab('TIMELINE')}><span>◆</span><strong>{milestones.length} milestones</strong><small>Dated project checkpoints</small></button><button type="button" onClick={() => setTab('ACTIVITY')}><span>◷</span><strong>{activity.length} recent updates</strong><small>Project history</small></button></div>
