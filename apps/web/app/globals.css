@@ -1495,6 +1495,14 @@ body {
 .task-comment-card p { margin: 7px 0; color: #49433b; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .task-comment-card footer { display: flex; gap: 8px; }
 .task-comment-card footer button, .task-checklist-row > div button { border: 0; background: transparent; color: #79654d; font-size: 10px; cursor: pointer; }
+.task-comment-edit { display: grid; gap: 8px; margin-top: 8px; }
+.task-comment-edit > label { color: #433d34; font-size: 11px; font-weight: 600; }
+.task-comment-edit textarea { width: 100%; padding: 10px 12px; border: 1px solid #e3dbd1; border-radius: 9px; background: #fffdfa; color: #322d27; font: inherit; font-size: 12px; resize: vertical; }
+.task-comment-edit > div { display: flex; justify-content: space-between; align-items: center; color: #958b7e; font-size: 10px; }
+.task-comment-edit > div span { display: flex; gap: 7px; }
+.task-comment-edit button, .task-collab__empty button { padding: 7px 10px; border: 1px solid #8d704d; border-radius: 8px; background: #8d704d; color: white; font: inherit; font-size: 10px; cursor: pointer; }
+.task-comment-edit button[type="button"] { background: transparent; color: #79654d; }
+.task-comment-edit button:disabled { cursor: not-allowed; opacity: .5; }
 .task-comment-composer { display: grid; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #eee8e1; }
 .task-comment-composer > label { color: #433d34; font-size: 12px; font-weight: 600; }
 .task-comment-composer textarea, .task-checklist-composer input { width: 100%; padding: 10px 12px; border: 1px solid #e3dbd1; border-radius: 9px; background: #fffdfa; color: #322d27; font: inherit; font-size: 12px; resize: vertical; }
