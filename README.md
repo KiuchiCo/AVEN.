@@ -126,4 +126,20 @@ npm run dev
 
 The local database commands require Docker Desktop. See [Section 1.3 · PostgreSQL and Prisma](docs/sections/03-postgres-prisma.md) for migration details and API startup instructions.
 
+## Verification and migration checks
+
+Run the repository checks from the root before committing:
+
+```bash
+npm test
+npm run lint
+npm run typecheck
+npm run build
+npm run db:validate
+```
+
+`npm test` builds the API before running its tests. The API tests cover Clerk token verification and workspace access rules; the web tests cover task CSV import and export. `npm run db:validate` checks the Prisma schema without connecting to PostgreSQL.
+
+To inspect which migrations a local database has applied, start Docker Desktop and PostgreSQL, then run `npx prisma migrate status` from `apps/api`. This reports migration state without applying migrations. `npm run db:migrate:deploy` applies pending migrations; keep it as an explicit database-change step after reviewing the migration SQL and confirming the local database is available.
+
 Open `http://localhost:3000`. The root route currently redirects to the preserved dashboard preview. In a second terminal, start the API with `npm run dev:api`; its scaffold health route is `http://localhost:4000/api/v1/health`.
