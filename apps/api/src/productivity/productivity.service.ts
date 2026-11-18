@@ -364,6 +364,40 @@ export class ProductivityService {
     return task;
   }
 
+  async duplicateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const source = await this.prisma.task.findFirst({
+      where: { id: taskId, workspaceId },
+      select: {
+        id: true, projectId: true, title: true, description: true, priority: true, labels: true, dueAt: true,
+        checklistItems: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }], select: { title: true, position: true } },
+      },
+    });
+    if (!source) throw new NotFoundException('Task not found in this workspace.');
+    const title = `${source.title.slice(0, 194)} (copy)`;
+
+    return this.prisma.$transaction(async (transaction) => {
+      const duplicate = await transaction.task.create({
+        data: {
+          workspaceId, projectId: source.projectId, createdById: actorId, title,
+          description: source.description, status: 'TODO', priority: source.priority,
+          labels: source.labels, dueAt: source.dueAt, completedAt: null,
+        },
+        include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
+      });
+      if (source.checklistItems.length) {
+        await transaction.taskChecklistItem.createMany({
+          data: source.checklistItems.map((item) => ({ workspaceId, taskId: duplicate.id, createdById: actorId, title: item.title, position: item.position })),
+        });
+      }
+      await this.createActivity(transaction, {
+        workspaceId, actorId, entityType: 'TASK', entityId: duplicate.id,
+        message: `duplicated task “${title.slice(0, 88)}” from “${source.title.slice(0, 88)}”`, recipientScoped: false, additionalRecipientIds: [],
+      });
+      return { ...duplicate, duplicatedFromTaskId: source.id, checklistItemCount: source.checklistItems.length };
+    });
+  }
+
   async updateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);

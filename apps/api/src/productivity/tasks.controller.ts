@@ -38,6 +38,15 @@ export class TasksController {
     return this.productivity.createTask(identity, workspaceId, body);
   }
 
+  @Post(':taskId/duplicate')
+  duplicate(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('taskId', new ParseUUIDPipe()) taskId: string,
+  ) {
+    return this.productivity.duplicateTask(identity, workspaceId, taskId);
+  }
+
   @Patch(':taskId')
   update(
     @CurrentIdentity() identity: AuthenticatedIdentity,
