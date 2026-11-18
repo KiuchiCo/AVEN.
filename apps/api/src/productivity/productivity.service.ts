@@ -62,11 +62,11 @@ export class ProductivityService {
     const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true, description: true, name: true } });
     if (!project) throw new NotFoundException('Project not found in this workspace.');
     const [projectTasks, milestones] = await Promise.all([
-      this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { id: true, title: true, description: true, priority: true, labels: true, dependsOn: { select: { id: true } } } }),
+      this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { id: true, title: true, description: true, priority: true, labels: true, dueAt: true, dependsOn: { select: { id: true } } } }),
       this.prisma.projectMilestone.findMany({ where: { projectId, workspaceId }, orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }], take: 50, select: { title: true, dueAt: true } }),
     ]);
     const taskIndexes = new Map(projectTasks.map((task, index) => [task.id, index]));
-    const tasks = projectTasks.map((task) => ({ title: task.title, description: task.description, priority: task.priority, labels: task.labels, dependsOnIndexes: task.dependsOn.map((dependency) => taskIndexes.get(dependency.id)).filter((index): index is number => index !== undefined) }));
+    const tasks = projectTasks.map((task) => ({ title: task.title, description: task.description, priority: task.priority, labels: task.labels, daysFromToday: task.dueAt ? dayOffsetFromToday(task.dueAt) : null, dependsOnIndexes: task.dependsOn.map((dependency) => taskIndexes.get(dependency.id)).filter((index): index is number => index !== undefined) }));
     const template = await this.prisma.projectTemplate.create({
       data: { workspaceId, createdById: actorId, name, description: project.description, taskTemplates: tasks as Prisma.InputJsonValue, milestoneTemplates: milestones.map((milestone) => ({ title: milestone.title, daysFromToday: milestone.dueAt ? dayOffsetFromToday(milestone.dueAt) : null })) as Prisma.InputJsonValue },
       include: { createdBy: { select: { displayName: true } } },
@@ -86,10 +86,10 @@ export class ProductivityService {
     return this.prisma.$transaction(async (transaction) => {
       const project = await transaction.project.create({ data: { workspaceId, createdById: actorId, name, description: template.description, status: 'PLANNING' } });
       const createdTasks: { id: string }[] = [];
-      for (const task of tasks) createdTasks.push(await transaction.task.create({ data: { workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, labels: task.labels, status: 'TODO' }, select: { id: true } }));
-      for (const [index, task] of tasks.entries()) if (task.dependsOnIndexes.length) await transaction.task.update({ where: { id: createdTasks[index].id }, data: { dependsOn: { connect: task.dependsOnIndexes.map((dependencyIndex) => ({ id: createdTasks[dependencyIndex].id })) } } });
       const today = new Date();
       const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      for (const task of tasks) createdTasks.push(await transaction.task.create({ data: { workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, labels: task.labels, status: 'TODO', dueAt: task.daysFromToday === null ? null : new Date(todayUtc.getTime() + task.daysFromToday * 86_400_000) }, select: { id: true } }));
+      for (const [index, task] of tasks.entries()) if (task.dependsOnIndexes.length) await transaction.task.update({ where: { id: createdTasks[index].id }, data: { dependsOn: { connect: task.dependsOnIndexes.map((dependencyIndex) => ({ id: createdTasks[dependencyIndex].id })) } } });
       if (milestones.length) await transaction.projectMilestone.createMany({ data: milestones.map((milestone) => ({ workspaceId, projectId: project.id, title: milestone.title, dueAt: milestone.daysFromToday === null ? null : new Date(todayUtc.getTime() + milestone.daysFromToday * 86_400_000) })) });
       const usageUpdate = await transaction.projectTemplate.updateMany({ where: { id: templateId, workspaceId }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
       if (usageUpdate.count !== 1) throw new NotFoundException('Project template is no longer available in this workspace.');
@@ -1111,7 +1111,7 @@ function recordTitle(values: unknown) {
   return 'Untitled record';
 }
 
-type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority; labels: string[]; dependsOnIndexes: number[] };
+type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority; labels: string[]; daysFromToday: number | null; dependsOnIndexes: number[] };
 type ProjectMilestoneTemplate = { title: string; daysFromToday: number | null };
 
 function taskLabels(value: unknown): string[] {
@@ -1153,7 +1153,9 @@ function parseTemplateTasks(value: Prisma.JsonValue): ProjectTaskTemplate[] {
     if (!Array.isArray(dependencies) || dependencies.length > 100 || dependencies.some((index) => typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= value.length)) throw new BadRequestException('This project template has invalid prerequisite links.');
     const dependsOnIndexes = dependencies as number[];
     if (new Set(dependsOnIndexes).size !== dependsOnIndexes.length) throw new BadRequestException('This project template repeats a task prerequisite.');
-    return { title: task.title.trim(), description: typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null, priority: task.priority as TaskPriority, labels: taskLabels(task.labels ?? []), dependsOnIndexes };
+    const daysFromToday = task.daysFromToday ?? null;
+    if (daysFromToday !== null && (typeof daysFromToday !== 'number' || !Number.isInteger(daysFromToday) || daysFromToday < -3650 || daysFromToday > 3650)) throw new BadRequestException('This project template has an invalid task date offset.');
+    return { title: task.title.trim(), description: typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null, priority: task.priority as TaskPriority, labels: taskLabels(task.labels ?? []), daysFromToday: daysFromToday as number | null, dependsOnIndexes };
   });
   for (const [index, task] of tasks.entries()) if (task.dependsOnIndexes.includes(index)) throw new BadRequestException('A project template task cannot depend on itself.');
   const reaches = (from: number, target: number, visited = new Set<number>()): boolean => {

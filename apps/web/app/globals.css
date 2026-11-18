@@ -819,7 +819,7 @@ body {
 .project-template-editor__section>div strong { color: #4f463a; font: 500 13px Georgia,serif; }
 .project-template-editor__section>div button,.project-template-editor__heading>button,.project-template-editor__section article>button { min-height: 30px; padding: 0 8px; border: 1px solid #e2dacf; border-radius: 7px; background: white; color: #715a40; font: 500 9px Inter,sans-serif; cursor: pointer; }
 .project-template-editor__section>p { margin: 0; color: #908678; font-size: 10px; }
-.project-template-editor__section article { display: grid; grid-template-columns: minmax(130px,1.2fr) minmax(120px,1fr) 110px minmax(130px,1.2fr) auto; align-items: end; gap: 8px; padding-top: 8px; border-top: 1px solid #eee7de; }
+.project-template-editor__section article { display: grid; grid-template-columns: minmax(130px,1.2fr) minmax(120px,1fr) 110px 105px minmax(130px,1.2fr) auto; align-items: end; gap: 8px; padding-top: 8px; border-top: 1px solid #eee7de; }
 .project-template-editor__section article>button { min-width: 62px; }
 .project-template-editor__section:last-of-type article { grid-template-columns: minmax(0,1fr) auto; }
 .project-template-editor__section button:disabled { opacity: .5; cursor: default; }
