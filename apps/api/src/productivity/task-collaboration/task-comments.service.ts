@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../../auth/auth.types.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import { TaskCollaborationAccess } from './task-collaboration.access.js';
@@ -27,22 +27,29 @@ export class TaskCommentsService {
   }
 
   async update(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, commentId: string, input: unknown) {
-    const { userId } = await this.access.require(identity, workspaceId, taskId, true);
+    const { userId, task } = await this.access.require(identity, workspaceId, taskId, true);
     const body = objectBody(input);
-    const comment = await this.prisma.taskComment.findFirst({ where: { id: commentId, taskId, workspaceId }, select: { id: true, authorId: true } });
+    const comment = await this.prisma.taskComment.findFirst({ where: { id: commentId, taskId, workspaceId }, select: { id: true, authorId: true, body: true, mentionedUserIds: true } });
     if (!comment) throw new NotFoundException('Comment not found on this task.');
-    if (comment.authorId !== userId) throw new BadRequestException('Only the person who wrote a comment can edit it.');
+    if (comment.authorId !== userId) throw new ForbiddenException('Only the person who wrote a comment can edit it.');
     const mentionedUserIds = memberIds(body.mentionedUserIds);
     await this.mentions.validate(workspaceId, mentionedUserIds);
-    return this.prisma.taskComment.update({ where: { id: commentId }, data: { body: cleanText(body.body, 'Comment', 2000), mentionedUserIds }, include: { author: { select: { id: true, displayName: true } } } });
+    const text = cleanText(body.body, 'Comment', 2000);
+    const addedMentions = mentionedUserIds.filter((mentionedId) => !comment.mentionedUserIds.includes(mentionedId));
+    const updated = await this.prisma.taskComment.update({ where: { id: commentId }, data: { body: text, mentionedUserIds }, include: { author: { select: { id: true, displayName: true } } } });
+    if (text !== comment.body || mentionedUserIds.length !== comment.mentionedUserIds.length || addedMentions.length) {
+      await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_COMMENT', message: `updated a comment on task “${task.title}”`, mentionedUserIds: addedMentions });
+    }
+    return updated;
   }
 
   async remove(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, commentId: string) {
-    const { userId } = await this.access.require(identity, workspaceId, taskId, true);
-    const comment = await this.prisma.taskComment.findFirst({ where: { id: commentId, taskId, workspaceId }, select: { id: true, authorId: true } });
+    const { userId, task } = await this.access.require(identity, workspaceId, taskId, true);
+    const comment = await this.prisma.taskComment.findFirst({ where: { id: commentId, taskId, workspaceId }, select: { id: true, authorId: true, mentionedUserIds: true } });
     if (!comment) throw new NotFoundException('Comment not found on this task.');
-    if (comment.authorId !== userId) throw new BadRequestException('Only the person who wrote a comment can delete it.');
+    if (comment.authorId !== userId) throw new ForbiddenException('Only the person who wrote a comment can delete it.');
     await this.prisma.taskComment.delete({ where: { id: commentId } });
+    await this.notifications.notify({ workspaceId, taskId, actorId: userId, entityType: 'TASK_COMMENT', message: `deleted a comment from task “${task.title}”`, mentionedUserIds: comment.mentionedUserIds });
     return { id: commentId, deleted: true };
   }
 }
