@@ -16,6 +16,7 @@ type TemplateMilestone = { title: string };
 type ProjectTemplate = { id: string; name: string; description: string | null; taskCount: number; milestoneCount: number; taskTemplates: TemplateTask[]; milestoneTemplates: TemplateMilestone[]; useCount: number; lastUsedAt: string | null; createdBy: { displayName: string } };
 type TaskViewFilters = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; sort: string };
 type SavedTaskView = { id: string; name: string; filters: TaskViewFilters };
+type TaskLabelUsage = { label: string; taskCount: number };
 
 const columns = [
   { status: 'TODO', title: 'To do' },
@@ -31,6 +32,7 @@ export default function ProjectsPage() {
   const { workspace } = useWorkspaceSession();
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskLabelUsages, setTaskLabelUsages] = useState<TaskLabelUsage[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
@@ -67,6 +69,8 @@ export default function ProjectsPage() {
   const [bulkLabels, setBulkLabels] = useState('');
   const [importRows, setImportRows] = useState<TaskImportRow[]>([]);
   const [importFileName, setImportFileName] = useState('');
+  const [renameLabelFrom, setRenameLabelFrom] = useState('');
+  const [renameLabelTo, setRenameLabelTo] = useState('');
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -83,16 +87,18 @@ export default function ProjectsPage() {
   }, [getToken]);
 
   const reload = useCallback(async () => {
-    const [projectRows, taskRows, memberRows, templateRows] = await Promise.all([
+    const [projectRows, taskRows, memberRows, templateRows, labelRows] = await Promise.all([
       request(`/workspaces/${workspace.id}/projects`),
       request(`/workspaces/${workspace.id}/tasks`),
       request(`/workspaces/${workspace.id}/members`),
       request(`/workspaces/${workspace.id}/projects/project-templates`),
-    ]) as [Project[], Task[], Member[], ProjectTemplate[]];
+      request(`/workspaces/${workspace.id}/tasks/labels`),
+    ]) as [Project[], Task[], Member[], ProjectTemplate[], TaskLabelUsage[]];
     setProjects(projectRows);
     setTasks(taskRows);
     setMembers(memberRows);
     setTemplates(templateRows);
+    setTaskLabelUsages(labelRows);
     setSelectedProject((current) => projectRows.some((project) => project.id === current) ? current : projectRows[0]?.id || '');
   }, [request, workspace.id]);
 
@@ -234,6 +240,33 @@ export default function ProjectsPage() {
       if (editingTemplateId === template.id) setEditingTemplateId('');
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete this template.'); }
+    finally { setBusy(false); }
+  }
+
+  async function renameWorkspaceTaskLabel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!renameLabelFrom || !renameLabelTo.trim()) return;
+    setBusy(true); setError('');
+    try {
+      const result = await request(`/workspaces/${workspace.id}/tasks/labels`, { method: 'PATCH', body: JSON.stringify({ from: renameLabelFrom, to: renameLabelTo }) }) as { from: string; to: string; updated: number; merged: number };
+      if (labelFilter === result.from) setLabelFilter(result.to);
+      setSavedTaskViews((views) => views.map((view) => view.filters.label === result.from ? { ...view, filters: { ...view.filters, label: result.to } } : view));
+      setRenameLabelFrom(''); setRenameLabelTo(''); await reload();
+      setNotice(`Renamed #${result.from} to #${result.to} on ${result.updated} tasks${result.merged ? `; merged duplicates on ${result.merged}` : ''}.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not rename this label.'); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteWorkspaceTaskLabel(label: string) {
+    if (!window.confirm(`Remove #${label} from every task in this workspace? This cannot be undone.`)) return;
+    setBusy(true); setError('');
+    try {
+      const result = await request(`/workspaces/${workspace.id}/tasks/labels/${encodeURIComponent(label)}`, { method: 'DELETE' }) as { label: string; updated: number };
+      if (labelFilter === result.label) setLabelFilter('');
+      setSavedTaskViews((views) => views.map((view) => view.filters.label === result.label ? { ...view, filters: { ...view.filters, label: '' } } : view));
+      if (renameLabelFrom === label) setRenameLabelFrom('');
+      await reload(); setNotice(`Removed #${result.label} from ${result.updated} tasks.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove this label.'); }
     finally { setBusy(false); }
   }
 
@@ -516,6 +549,16 @@ export default function ProjectsPage() {
           {savedTaskViews.length > 0 && <div className="task-view-tools__saved"><label>Saved views<select value={taskViewChoice} onChange={(event) => setTaskViewChoice(event.target.value)}><option value="">Choose a saved view</option>{savedTaskViews.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select></label><button type="button" disabled={!taskViewChoice} onClick={() => { const view = savedTaskViews.find((item) => item.id === taskViewChoice); if (view) applyTaskView(view); }}>Apply view</button><button type="button" disabled={!taskViewChoice} onClick={() => { setSavedTaskViews((views) => views.filter((view) => view.id !== taskViewChoice)); setTaskViewChoice(''); }}>Delete view</button></div>}
           <p>Views save in this browser for this workspace only. {savedTaskViews.length} / 20 saved.</p>
         </div>
+        <details className="task-label-manager">
+          <summary>Workspace labels <span>{taskLabelUsages.length} labels · manage names and usage</span></summary>
+          <form onSubmit={renameWorkspaceTaskLabel}>
+            <label>Rename or merge<select required value={renameLabelFrom} onChange={(event) => setRenameLabelFrom(event.target.value)}><option value="">Choose a label</option>{taskLabelUsages.map((item) => <option key={item.label} value={item.label}>#{item.label} · {item.taskCount} tasks</option>)}</select></label>
+            <label>New label name<input required maxLength={32} pattern="[\p{L}\p{N}_-]+" value={renameLabelTo} onChange={(event) => setRenameLabelTo(event.target.value)} placeholder="new-label" /></label>
+            <button type="submit" disabled={busy || !renameLabelFrom || !renameLabelTo.trim()}>{busy ? 'Saving…' : 'Rename / merge'}</button>
+          </form>
+          {taskLabelUsages.length === 0 ? <p>No labels yet. Add labels from any task card or import.</p> : <ul>{taskLabelUsages.map((item) => <li key={item.label}><span><strong>#{item.label}</strong><small>{item.taskCount} {item.taskCount === 1 ? 'task' : 'tasks'}</small></span><button type="button" disabled={busy} onClick={() => { setRenameLabelFrom(item.label); setRenameLabelTo(''); document.querySelector('.task-label-manager form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>Rename</button><button type="button" disabled={busy} onClick={() => void deleteWorkspaceTaskLabel(item.label)}>Remove everywhere</button></li>)}</ul>}
+          <p>Renaming to an existing label merges the two names. Changes are recorded on each affected task and notify its followers.</p>
+        </details>
         <div className="project-task-tools"><div className="project-task-tools__top"><span>{boardTasks.length} tasks in this view</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice('Selected the first 500 visible tasks; narrow the view to select a different batch.'); }}>Select visible (up to 500)</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>Clear selection</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>Export CSV</button></div></div>
           {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Status<select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">Keep current</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.title}</option>)}</select></label><label>Priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Due date<select value={bulkDueMode} onChange={(event) => setBulkDueMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">Keep current</option><option value="SET">Set date</option><option value="CLEAR">Clear date</option></select></label>{bulkDueMode === 'SET' && <label>New due date<input type="date" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>}<label>Labels<select value={bulkLabelMode} onChange={(event) => setBulkLabelMode(event.target.value as 'KEEP' | 'ADD' | 'REMOVE' | 'REPLACE')}><option value="KEEP">Keep current</option><option value="ADD">Add labels</option><option value="REMOVE">Remove labels</option><option value="REPLACE">Replace labels</option></select></label>{bulkLabelMode !== 'KEEP' && <label>Label names<input value={bulkLabels} onChange={(event) => setBulkLabels(event.target.value)} placeholder="planning, launch" maxLength={330} /></label>}{bulkLabelMode === 'REPLACE' && <small className="project-task-bulk__hint">Leave empty to remove every label from the selection.</small>}<button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? 'Working…' : 'Duplicate with checklists'}</button>{selectedTaskIds.length > 100 && <small>Choose 100 or fewer tasks to duplicate them.</small>}</form>}
           <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} tasks · {selectedProjectName ? `will be added to ${selectedProjectName}` : 'will be added to the workspace'}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt, labels. Separate multiple labels with semicolons. Up to 200 tasks per import.</small></form>

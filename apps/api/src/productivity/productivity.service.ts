@@ -266,6 +266,43 @@ export class ProductivityService {
     return [...counts.entries()].map(([label, taskCount]) => ({ label, taskCount })).sort((a, b) => a.label.localeCompare(b.label));
   }
 
+  async renameTaskLabel(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const from = taskLabels([textField(body.from, 'Current label', 32)])[0];
+    const to = taskLabels([textField(body.to, 'New label', 32)])[0];
+    if (from === to) throw new BadRequestException('Choose a different label name.');
+    return this.prisma.$transaction(async (transaction) => {
+      const tasks = await transaction.task.findMany({ where: { workspaceId, labels: { has: from } }, select: { id: true, title: true, labels: true } });
+      if (!tasks.length) throw new NotFoundException(`No tasks use the label “${from}”.`);
+      let merged = 0;
+      for (const task of tasks) {
+        if (task.labels.includes(to)) merged += 1;
+        const labels = taskLabels(task.labels.map((label) => label === from ? to : label));
+        const result = await transaction.task.updateMany({ where: { id: task.id, workspaceId, labels: { equals: task.labels } }, data: { labels } });
+        if (result.count !== 1) throw new BadRequestException('A task changed while the label was being renamed. Refresh and try again.');
+        await this.createActivity(transaction, { workspaceId, actorId, entityType: 'TASK', entityId: task.id, message: `renamed the “${from}” label to “${to}” on “${task.title}”`, recipientScoped: true, additionalRecipientIds: [] });
+      }
+      return { from, to, updated: tasks.length, merged };
+    });
+  }
+
+  async deleteTaskLabel(identity: AuthenticatedIdentity, workspaceId: string, rawLabel: string) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const label = taskLabels([rawLabel])[0];
+    return this.prisma.$transaction(async (transaction) => {
+      const tasks = await transaction.task.findMany({ where: { workspaceId, labels: { has: label } }, select: { id: true, title: true, labels: true } });
+      if (!tasks.length) throw new NotFoundException(`No tasks use the label “${label}”.`);
+      for (const task of tasks) {
+        const labels = task.labels.filter((item) => item !== label);
+        const result = await transaction.task.updateMany({ where: { id: task.id, workspaceId, labels: { equals: task.labels } }, data: { labels } });
+        if (result.count !== 1) throw new BadRequestException('A task changed while the label was being removed. Refresh and try again.');
+        await this.createActivity(transaction, { workspaceId, actorId, entityType: 'TASK', entityId: task.id, message: `removed the “${label}” label from “${task.title}”`, recipientScoped: true, additionalRecipientIds: [] });
+      }
+      return { label, updated: tasks.length, deleted: true };
+    });
+  }
+
   async bulkUpdateTasks(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
