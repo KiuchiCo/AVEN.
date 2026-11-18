@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWorkspaceSession } from '../../../workspace-shell';
 import type { WorkspaceMember } from '../types';
 
@@ -10,12 +10,14 @@ export function useTaskMembers() {
   const { getToken } = useAuth(); const { workspace } = useWorkspaceSession();
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [error, setError] = useState('');
-  const reload = useCallback(async () => {
-    const token = await getToken(); if (!token || !apiBase) throw new Error('Could not connect to the workspace API.');
-    const response = await fetch(`${apiBase}/workspaces/${workspace.id}/members`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new Error('Could not load workspace members.');
-    setMembers(await response.json() as WorkspaceMember[]);
+  useEffect(() => {
+    let live = true;
+    async function load() {
+      try { const token = await getToken(); if (!token || !apiBase) throw new Error('Could not connect to the workspace API.'); const response = await fetch(`${apiBase}/workspaces/${workspace.id}/members`, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) throw new Error('Could not load workspace members.'); const savedMembers = await response.json() as WorkspaceMember[]; if (live) setMembers(savedMembers); }
+      catch (reason) { if (live) setError(reason instanceof Error ? reason.message : 'Could not load workspace members.'); }
+    }
+    void load();
+    return () => { live = false; };
   }, [getToken, workspace.id]);
-  useEffect(() => { void reload().catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load workspace members.')); }, [reload]);
   return { members, error };
 }

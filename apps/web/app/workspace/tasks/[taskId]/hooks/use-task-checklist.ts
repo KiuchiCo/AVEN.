@@ -12,7 +12,7 @@ export function useTaskChecklist(taskId: string) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const reload = useCallback(async () => setItems(await request<ChecklistItem[]>('/checklist')), [request]);
-  useEffect(() => { let live = true; void reload().catch((reason) => { if (live) setError(reason instanceof Error ? reason.message : 'Could not load the checklist.'); }).finally(() => { if (live) setLoading(false); }); return () => { live = false; }; }, [reload]);
+  useEffect(() => { let live = true; async function load() { try { const saved = await request<ChecklistItem[]>('/checklist'); if (live) setItems(saved); } catch (reason) { if (live) setError(reason instanceof Error ? reason.message : 'Could not load the checklist.'); } finally { if (live) setLoading(false); } } void load(); return () => { live = false; }; }, [request]);
   const run = useCallback(async (operation: () => Promise<unknown>) => { setBusy(true); setError(''); try { await operation(); notifyTaskActivityChanged(taskId); await reload(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the checklist.'); } finally { setBusy(false); } }, [reload, taskId]);
   const add = useCallback((title: string) => run(() => request('/checklist', { method: 'POST', body: JSON.stringify({ title }) })), [request, run]);
   const toggle = useCallback((item: ChecklistItem) => run(() => request(`/checklist/${item.id}`, { method: 'PATCH', body: JSON.stringify({ completed: !item.completedAt }) })), [request, run]);

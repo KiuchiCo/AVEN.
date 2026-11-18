@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceSession } from './layout';
@@ -97,5 +98,5 @@ export function WorkspaceSwitcher({ session }: { session: WorkspaceSession }) {
 }
 
 function LinkSettings({ onClick }: { onClick: () => void }) {
-  return <a className="workspace-settings-link" href="/workspace/settings" onClick={onClick}>Workspace settings <span aria-hidden="true">↗</span></a>;
+  return <Link className="workspace-settings-link" href="/workspace/settings" onClick={onClick}>Workspace settings <span aria-hidden="true">↗</span></Link>;
 }

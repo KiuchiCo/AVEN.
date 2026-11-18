@@ -58,6 +58,6 @@ const loaders: Record<string, () => Promise<{ taskCoaching: TemplateTaskCoaching
 export async function getTemplateTaskCoaching(presetId: string, taskIndex: number) {
   const load = loaders[presetId];
   if (!load) return null;
-  const module = await load();
-  return module.taskCoaching[taskIndex] ?? null;
+  const presetModule = await load();
+  return presetModule.taskCoaching[taskIndex] ?? null;
 }

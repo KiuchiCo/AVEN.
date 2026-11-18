@@ -42,7 +42,7 @@ export function parseTaskCsv(source: string): TaskImportRow[] {
     if (missingColumns.length) throw new Error(`AVEN task sync requires all export columns. Missing: ${missingColumns.join(', ')}.`);
   }
   if (nonEmpty.length - 1 > 200) throw new Error('Import no more than 200 tasks at a time.');
-  const valueAt = (values: string[], name: string) => { const index = headers.indexOf(name); return index < 0 ? '' : restoreCsvText(values[index]?.trim() ?? ''); };
+  const valueAt = (values: string[], name: string) => { const index = headers.indexOf(name.toLocaleLowerCase()); return index < 0 ? '' : restoreCsvText(values[index]?.trim() ?? ''); };
   const statuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'CANCELLED'];
   const priorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
   const seenIds = new Set<string>();

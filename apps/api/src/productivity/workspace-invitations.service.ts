@@ -1,7 +1,7 @@
-import { createHash, randomBytes } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { createInvitationToken, hashInvitationToken } from './invitation-token.js';
 
 const roles = ['ADMINISTRATOR', 'MANAGER', 'MEMBER', 'GUEST'] as const;
 type InviteRole = (typeof roles)[number];
@@ -31,9 +31,9 @@ export class WorkspaceInvitationsService {
     }
     const existing = await this.prisma.workspaceInvite.findFirst({ where: { workspaceId, email, status: 'PENDING', expiresAt: { gt: new Date() } }, select: { id: true } });
     if (existing) throw new ConflictException('There is already an active invitation for this email.');
-    const token = randomBytes(32).toString('base64url');
+    const token = createInvitationToken();
     const invite = await this.prisma.workspaceInvite.create({ data: {
-      workspaceId, createdById: actor.userId, email, role, tokenHash: hashToken(token),
+      workspaceId, createdById: actor.userId, email, role, tokenHash: hashInvitationToken(token),
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     }, select: { id: true, email: true, role: true, expiresAt: true, createdAt: true } });
     return { invitation: invite, token };
@@ -79,7 +79,7 @@ export class WorkspaceInvitationsService {
   }
 
   async details(token: string) {
-    const invite = await this.prisma.workspaceInvite.findUnique({ where: { tokenHash: hashToken(token) }, include: { workspace: { select: { name: true } } } });
+    const invite = await this.prisma.workspaceInvite.findUnique({ where: { tokenHash: hashInvitationToken(token) }, include: { workspace: { select: { name: true } } } });
     if (!invite || invite.status !== 'PENDING' || invite.expiresAt <= new Date()) throw new NotFoundException('This invitation is invalid, expired, or has already been used.');
     return { email: invite.email, role: invite.role, workspaceName: invite.workspace.name, expiresAt: invite.expiresAt };
   }
@@ -87,7 +87,7 @@ export class WorkspaceInvitationsService {
   async accept(identity: AuthenticatedIdentity, token: string) {
     const user = await this.prisma.user.findUnique({ where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } }, select: { id: true, email: true } });
     if (!user) throw new ForbiddenException('Sign in and finish account setup before accepting this invitation.');
-    const tokenHash = hashToken(token);
+    const tokenHash = hashInvitationToken(token);
     const invite = await this.prisma.workspaceInvite.findUnique({ where: { tokenHash }, select: { id: true, workspaceId: true, email: true, role: true, status: true, expiresAt: true } });
     if (!invite || invite.status !== 'PENDING' || invite.expiresAt <= new Date()) throw new NotFoundException('This invitation is invalid, expired, or has already been used.');
     if (user.email.toLowerCase() !== invite.email.toLowerCase()) throw new ForbiddenException(`This invitation was sent to ${invite.email}. Sign in with that verified email address.`);
@@ -116,7 +116,6 @@ export class WorkspaceInvitationsService {
   }
 }
 
-function hashToken(token: string) { return createHash('sha256').update(token).digest('hex'); }
 function objectInput(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new BadRequestException('A JSON object is required.');
   return value as Record<string, unknown>;

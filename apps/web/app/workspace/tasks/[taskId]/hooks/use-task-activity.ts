@@ -17,11 +17,16 @@ export function useTaskActivity(taskId: string) {
   useEffect(() => {
     let live = true;
     const reportError = (reason: unknown) => { if (live) setError(reason instanceof Error ? reason.message : 'Could not load task activity.'); };
-    void reload().catch(reportError).finally(() => { if (live) setLoading(false); });
+    async function loadInitial() {
+      try { const initialEntries = await request<TaskActivityEntry[]>('/activity'); if (live) setEntries(initialEntries); }
+      catch (reason) { reportError(reason); }
+      finally { if (live) setLoading(false); }
+    }
+    void loadInitial();
     const unsubscribe = listenForTaskActivity(taskId, () => { void reload().catch(reportError); });
     const onVisibilityChange = () => { if (document.visibilityState === 'visible') void reload().catch(reportError); };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => { live = false; unsubscribe(); document.removeEventListener('visibilitychange', onVisibilityChange); };
-  }, [reload, taskId]);
+  }, [reload, request, taskId]);
   return { entries, loading, error, reload };
 }
