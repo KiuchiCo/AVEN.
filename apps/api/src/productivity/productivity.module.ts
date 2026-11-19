@@ -27,5 +27,6 @@ import { TaskCollaborationModule } from './task-collaboration/task-collaboration
   imports: [TaskCollaborationModule],
   controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController, IntelligenceController, InvitationsController, KnowledgeController, AutomationsController, DashboardController],
   providers: [ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, KnowledgeService, AutomationsService, DashboardService, ClerkAuthGuard],
+  exports: [ProductivityService, IntelligenceService],
 })
 export class ProductivityModule {}

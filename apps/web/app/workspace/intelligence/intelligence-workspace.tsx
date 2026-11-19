@@ -5,6 +5,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
+import { AssistantChat } from './assistant-chat';
 
 type Briefing = {
   generatedAt: string;
@@ -21,7 +22,7 @@ const prompts = ['What needs my attention?', 'What is happening this week?', 'Fi
 
 export function IntelligenceWorkspace() {
   const { getToken } = useAuth();
-  const { user, workspace } = useWorkspaceSession();
+  const { workspace } = useWorkspaceSession();
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
@@ -123,7 +124,6 @@ export function IntelligenceWorkspace() {
     finally { setSavingPlan(false); }
   }
 
-  const firstName = user.displayName.trim().split(/\s+/)[0] || 'there';
   const today = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
   return <div className="workspace-section-page intelligence-page">
@@ -133,14 +133,15 @@ export function IntelligenceWorkspace() {
       <p>Bring your work into focus with a clear briefing and answers grounded in your workspace.</p>
       <span className="intelligence-hero__date">{today}</span>
     </header>
+    <AssistantChat />
     {error && <p className="productivity-error" role="alert">{error}</p>}
 
     <section className="intelligence-ask" aria-labelledby="intelligence-ask-title">
-      <div><span className="intelligence-spark" aria-hidden="true">✧</span><p className="workspace-eyebrow">WORKSPACE ASSISTANT</p><h2 id="intelligence-ask-title">Good day, {firstName}. What can I help you find?</h2><p>Answers use your saved AVEN workspace information.</p></div>
+      <div><span className="intelligence-spark" aria-hidden="true">✧</span><p className="workspace-eyebrow">QUICK SEARCH</p><h2 id="intelligence-ask-title">Find something in your workspace</h2><p>Answers use your saved AVEN workspace information.</p></div>
       <form onSubmit={(event) => void ask(event)}>
         <label className="sr-only" htmlFor="intelligence-question">Ask about your workspace</label>
         <input id="intelligence-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about your projects, tasks, or schedule…" maxLength={100} />
-        <button type="submit" disabled={asking || question.trim().length < 2}>{asking ? 'Looking…' : 'Ask AVEN →'}</button>
+        <button type="submit" disabled={asking || question.trim().length < 2}>{asking ? 'Looking…' : 'Search →'}</button>
       </form>
       <div className="intelligence-prompts">{prompts.map((prompt) => <button key={prompt} type="button" disabled={asking} onClick={() => void ask(undefined, prompt)}>{prompt}</button>)}</div>
       {answer && <div className="intelligence-answer" aria-live="polite"><p>{answer}</p>{results.length > 0 && <ul>{results.map((result) => <li key={`${result.type}-${result.id}`}><Link href={result.href}><span>{result.type}</span><strong>{result.title}</strong><small>{result.detail}</small></Link></li>)}</ul>}</div>}

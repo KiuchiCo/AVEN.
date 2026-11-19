@@ -10,6 +10,11 @@ export type ApiEnvironment = {
   storageDir: string;
   maxUploadBytes: number;
   storageQuotaBytes: number;
+  aiApiKey?: string;
+  aiModel: string;
+  aiBaseUrl: string;
+  aiMonthlyCredits: number;
+  aiMaxOutputTokens: number;
 };
 
 type EnvironmentSource = Record<string, string | undefined>;
@@ -49,16 +54,28 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
     const raw = source[name]?.trim();
     if (!raw) return fallback;
     const value = Number(raw);
-    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1 || value > max) { errors.push(`${name} must be a whole number of bytes between 1 and ${max}`); return fallback; }
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1 || value > max) { errors.push(`${name} must be a whole number between 1 and ${max}`); return fallback; }
     return value;
   };
   const maxUploadBytes = byteSetting('MAX_UPLOAD_BYTES', 25 * 1024 * 1024, 500 * 1024 * 1024);
   const storageQuotaBytes = byteSetting('WORKSPACE_STORAGE_QUOTA_BYTES', 500 * 1024 * 1024, 10 * 1024 ** 4);
   const storageDir = source.STORAGE_DIR?.trim() || '.storage';
 
+  const aiApiKey = source.ANTHROPIC_API_KEY?.trim() || undefined;
+  const aiModel = source.AI_MODEL?.trim() || 'claude-sonnet-5-5';
+  if (aiModel.length > 100 || !/^[\w.:-]+$/.test(aiModel)) errors.push('AI_MODEL must be a model identifier');
+  const aiBaseUrl = source.AI_BASE_URL?.trim() || 'https://api.anthropic.com';
+  try {
+    const url = new URL(aiBaseUrl);
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (!(url.protocol === 'https:' || (url.protocol === 'http:' && local))) throw new Error();
+  } catch { errors.push('AI_BASE_URL must be an HTTPS URL (HTTP is only allowed for localhost)'); }
+  const aiMonthlyCredits = byteSetting('AI_MONTHLY_CREDITS', 2000, 100_000_000);
+  const aiMaxOutputTokens = byteSetting('AI_MAX_OUTPUT_TOKENS', 2048, 32_000);
+
   const isProduction = source.NODE_ENV === 'production';
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens };
 }
