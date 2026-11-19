@@ -84,95 +84,99 @@ enum AutomationRunStatus {
 }
 
 model User {
-  id                String            @id @default(uuid()) @db.Uuid
-  email             String            @unique @db.VarChar(320)
-  displayName       String            @db.VarChar(120)
-  notifyTeamActivity Boolean          @default(true)
-  notifyTaskUpdates Boolean           @default(true)
-  dashboardHiddenWidgets String[]     @default([])
-  emailNotifications Boolean          @default(false)
-  emailEnabledAt     DateTime?        @db.Timestamptz(3)
-  identityIssuer    String?           @db.VarChar(512)
-  identitySubject   String?           @db.VarChar(255)
-  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
-  ownedWorkspaces   Workspace[]       @relation("WorkspaceCreator")
-  memberships       WorkspaceMember[]
-  personalWorkspace Workspace?        @relation("PersonalWorkspaceOwner")
-  createdProjects   Project[]         @relation("ProjectCreator")
-  createdProjectTemplates ProjectTemplate[] @relation("ProjectTemplateCreator")
-  createdTaskViews   WorkspaceTaskView[] @relation("TaskViewCreator")
-  assignedTasks     Task[]            @relation("TaskAssignee")
-  createdTasks      Task[]            @relation("TaskCreator")
-  activityEntries   WorkspaceActivity[] @relation("ActivityActor")
-  documentVersions DocumentVersion[] @relation("DocumentVersionCreator")
-  documentComments DocumentComment[] @relation("DocumentCommentCreator")
-  sentWorkspaceInvites WorkspaceInvite[] @relation("WorkspaceInviteCreator")
-  activityReceipts    ActivityReceipt[]
-  knowledgeItems      KnowledgeItem[] @relation("KnowledgeItemCreator")
-  createdKnowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionCreator")
-  createdAutomations AutomationRule[] @relation("AutomationRuleCreator")
-  taskComments TaskComment[] @relation("TaskCommentAuthor")
-  createdTaskChecklistItems TaskChecklistItem[] @relation("TaskChecklistCreator")
+  id                          String              @id @default(uuid()) @db.Uuid
+  email                       String              @unique @db.VarChar(320)
+  displayName                 String              @db.VarChar(120)
+  notifyTeamActivity          Boolean             @default(true)
+  notifyTaskUpdates           Boolean             @default(true)
+  dashboardHiddenWidgets      String[]            @default([])
+  emailNotifications          Boolean             @default(false)
+  emailEnabledAt              DateTime?           @db.Timestamptz(3)
+  identityIssuer              String?             @db.VarChar(512)
+  identitySubject             String?             @db.VarChar(255)
+  createdAt                   DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime            @updatedAt @db.Timestamptz(3)
+  ownedWorkspaces             Workspace[]         @relation("WorkspaceCreator")
+  memberships                 WorkspaceMember[]
+  personalWorkspace           Workspace?          @relation("PersonalWorkspaceOwner")
+  createdProjects             Project[]           @relation("ProjectCreator")
+  createdProjectTemplates     ProjectTemplate[]   @relation("ProjectTemplateCreator")
+  createdTaskViews            WorkspaceTaskView[] @relation("TaskViewCreator")
+  assignedTasks               Task[]              @relation("TaskAssignee")
+  createdTasks                Task[]              @relation("TaskCreator")
+  activityEntries             WorkspaceActivity[] @relation("ActivityActor")
+  documentVersions            DocumentVersion[]   @relation("DocumentVersionCreator")
+  documentComments            DocumentComment[]   @relation("DocumentCommentCreator")
+  sentWorkspaceInvites        WorkspaceInvite[]   @relation("WorkspaceInviteCreator")
+  activityReceipts            ActivityReceipt[]
+  knowledgeItems              KnowledgeItem[]     @relation("KnowledgeItemCreator")
+  createdKnowledgeVersions    KnowledgeVersion[]  @relation("KnowledgeVersionCreator")
+  createdAutomations          AutomationRule[]    @relation("AutomationRuleCreator")
+  taskComments                TaskComment[]       @relation("TaskCommentAuthor")
+  createdTaskChecklistItems   TaskChecklistItem[] @relation("TaskChecklistCreator")
   completedTaskChecklistItems TaskChecklistItem[] @relation("TaskChecklistCompleter")
-  taskFollows TaskFollower[]
+  taskFollows                 TaskFollower[]
 
-  fileFolders FileFolder[] @relation("FileFolderCreator")
-  storedFiles StoredFile[] @relation("FileCreator")
-  fileVersions FileVersion[] @relation("FileVersionCreator")
+  fileFolders     FileFolder[]     @relation("FileFolderCreator")
+  storedFiles     StoredFile[]     @relation("FileCreator")
+  fileVersions    FileVersion[]    @relation("FileVersionCreator")
   fileAttachments FileAttachment[] @relation("FileAttachmentCreator")
   aiConversations AiConversation[]
-  aiUsage AiUsage[]
-  aiAgents AiAgent[]
-  workflows Workflow[]
+  aiUsage         AiUsage[]
+  aiAgents        AiAgent[]
+  workflows       Workflow[]
+  whiteboards     Whiteboard[]
+
   @@unique([identityIssuer, identitySubject])
   @@map("users")
 }
 
 model Workspace {
-  id              String            @id @default(uuid()) @db.Uuid
-  name            String            @db.VarChar(120)
-  createdById     String            @db.Uuid
-  personalOwnerId String?           @unique @db.Uuid
-  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
-  createdBy       User              @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  personalOwner   User?             @relation("PersonalWorkspaceOwner", fields: [personalOwnerId], references: [id], onDelete: Cascade)
-  members         WorkspaceMember[]
-  projects        Project[]
-  tasks           Task[]
-  documents       Document[]
-  events          CalendarEvent[]
-  databases       WorkspaceDatabase[]
-  databaseRecords DatabaseRecord[]
-  databaseViews   DatabaseView[]
-  recordLinks     DatabaseRecordLink[]
-  milestones      ProjectMilestone[]
-  projectTemplates ProjectTemplate[]
-  activity        WorkspaceActivity[]
-  documentVersions DocumentVersion[]
-  documentComments DocumentComment[]
-  invitations     WorkspaceInvite[]
-  knowledgeItems  KnowledgeItem[]
-  knowledgeVersions KnowledgeVersion[]
-  automations     AutomationRule[]
-  automationRuns  AutomationRun[]
-  taskComments TaskComment[]
+  id                 String               @id @default(uuid()) @db.Uuid
+  name               String               @db.VarChar(120)
+  createdById        String               @db.Uuid
+  personalOwnerId    String?              @unique @db.Uuid
+  createdAt          DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime             @updatedAt @db.Timestamptz(3)
+  createdBy          User                 @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  personalOwner      User?                @relation("PersonalWorkspaceOwner", fields: [personalOwnerId], references: [id], onDelete: Cascade)
+  members            WorkspaceMember[]
+  projects           Project[]
+  tasks              Task[]
+  documents          Document[]
+  events             CalendarEvent[]
+  databases          WorkspaceDatabase[]
+  databaseRecords    DatabaseRecord[]
+  databaseViews      DatabaseView[]
+  recordLinks        DatabaseRecordLink[]
+  milestones         ProjectMilestone[]
+  projectTemplates   ProjectTemplate[]
+  activity           WorkspaceActivity[]
+  documentVersions   DocumentVersion[]
+  documentComments   DocumentComment[]
+  invitations        WorkspaceInvite[]
+  knowledgeItems     KnowledgeItem[]
+  knowledgeVersions  KnowledgeVersion[]
+  automations        AutomationRule[]
+  automationRuns     AutomationRun[]
+  taskComments       TaskComment[]
   taskChecklistItems TaskChecklistItem[]
-  taskFollowers TaskFollower[]
-  taskViews WorkspaceTaskView[]
+  taskFollowers      TaskFollower[]
+  taskViews          WorkspaceTaskView[]
 
-  fileFolders FileFolder[]
-  storedFiles StoredFile[]
-  fileVersions FileVersion[]
+  fileFolders     FileFolder[]
+  storedFiles     StoredFile[]
+  fileVersions    FileVersion[]
   fileAttachments FileAttachment[]
   aiConversations AiConversation[]
-  aiUsage AiUsage[]
-  aiAgents AiAgent[]
-  workflows Workflow[]
-  workflowRuns WorkflowRun[]
-  subscription Subscription?
+  aiUsage         AiUsage[]
+  aiAgents        AiAgent[]
+  workflows       Workflow[]
+  workflowRuns    WorkflowRun[]
+  subscription    Subscription?
+  whiteboards     Whiteboard[]
   billingInvoices BillingInvoice[]
+
   @@index([createdById])
   @@map("workspaces")
 }
@@ -213,69 +217,71 @@ model WorkspaceMember {
 }
 
 model Project {
-  id          String        @id @default(uuid()) @db.Uuid
-  workspaceId String        @db.Uuid
-  createdById String        @db.Uuid
-  name        String        @db.VarChar(160)
-  description String?       @db.Text
-  status      ProjectStatus @default(PLANNING)
-  dueAt       DateTime?     @db.Timestamptz(3)
-  budgetTotalCents Int?
-  budgetSpentCents Int      @default(0)
-  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy   User          @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  tasks       Task[]
-  documents   Document[]
-  knowledgeItems KnowledgeItem[] @relation("KnowledgeProject")
+  id                String             @id @default(uuid()) @db.Uuid
+  workspaceId       String             @db.Uuid
+  createdById       String             @db.Uuid
+  name              String             @db.VarChar(160)
+  description       String?            @db.Text
+  status            ProjectStatus      @default(PLANNING)
+  dueAt             DateTime?          @db.Timestamptz(3)
+  budgetTotalCents  Int?
+  budgetSpentCents  Int                @default(0)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy         User               @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  tasks             Task[]
+  documents         Document[]
+  knowledgeItems    KnowledgeItem[]    @relation("KnowledgeProject")
   knowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionProject")
-  calendarEvents CalendarEvent[]
-  milestones  ProjectMilestone[]
+  calendarEvents    CalendarEvent[]
+  milestones        ProjectMilestone[]
 
   fileAttachments FileAttachment[]
+
   @@index([workspaceId, status])
   @@index([workspaceId, dueAt])
   @@map("projects")
 }
 
 model Task {
-  id          String          @id @default(uuid()) @db.Uuid
-  workspaceId String          @db.Uuid
-  projectId   String?         @db.Uuid
-  createdById String          @db.Uuid
-  assigneeId  String?         @db.Uuid
-  parentId    String?         @db.Uuid
-  title       String          @db.VarChar(200)
-  description String?         @db.Text
-  status      TaskStatus      @default(TODO)
-  priority    TaskPriority    @default(MEDIUM)
-  labels      String[]        @default([])
-  dueAt       DateTime?       @db.Timestamptz(3)
-  completedAt DateTime?       @db.Timestamptz(3)
-  recurrence  CalendarRecurrence?
-  recurrenceInterval Int      @default(1)
-  recurrenceUntil DateTime?   @db.Timestamptz(3)
-  recurrenceSpawnedAt DateTime? @db.Timestamptz(3)
-  createdAt   DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime        @updatedAt @db.Timestamptz(3)
-  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project     Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  parent      Task?           @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
-  subtasks    Task[]          @relation("TaskSubtasks")
-  createdBy   User            @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  assignee    User?           @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  events      CalendarEvent[]
-  automationRuns AutomationRun[]
-  knowledgeItems KnowledgeItem[] @relation("KnowledgeTask")
-  knowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionTask")
-  dependsOn   Task[]           @relation("TaskDependencies")
-  blocks      Task[]           @relation("TaskDependencies")
-  comments TaskComment[]
-  checklistItems TaskChecklistItem[]
-  followers TaskFollower[]
+  id                  String              @id @default(uuid()) @db.Uuid
+  workspaceId         String              @db.Uuid
+  projectId           String?             @db.Uuid
+  createdById         String              @db.Uuid
+  assigneeId          String?             @db.Uuid
+  parentId            String?             @db.Uuid
+  title               String              @db.VarChar(200)
+  description         String?             @db.Text
+  status              TaskStatus          @default(TODO)
+  priority            TaskPriority        @default(MEDIUM)
+  labels              String[]            @default([])
+  dueAt               DateTime?           @db.Timestamptz(3)
+  completedAt         DateTime?           @db.Timestamptz(3)
+  recurrence          CalendarRecurrence?
+  recurrenceInterval  Int                 @default(1)
+  recurrenceUntil     DateTime?           @db.Timestamptz(3)
+  recurrenceSpawnedAt DateTime?           @db.Timestamptz(3)
+  createdAt           DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime            @updatedAt @db.Timestamptz(3)
+  workspace           Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project             Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parent              Task?               @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks            Task[]              @relation("TaskSubtasks")
+  createdBy           User                @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignee            User?               @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  events              CalendarEvent[]
+  automationRuns      AutomationRun[]
+  knowledgeItems      KnowledgeItem[]     @relation("KnowledgeTask")
+  knowledgeVersions   KnowledgeVersion[]  @relation("KnowledgeVersionTask")
+  dependsOn           Task[]              @relation("TaskDependencies")
+  blocks              Task[]              @relation("TaskDependencies")
+  comments            TaskComment[]
+  checklistItems      TaskChecklistItem[]
+  followers           TaskFollower[]
 
   fileAttachments FileAttachment[]
+
   @@index([workspaceId, status, dueAt])
   @@index([projectId, status])
   @@index([assigneeId, status])
@@ -284,51 +290,51 @@ model Task {
 }
 
 model TaskComment {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @db.Uuid
-  taskId      String   @db.Uuid
-  authorId    String   @db.Uuid
-  body        String   @db.VarChar(2000)
-  mentionedUserIds String[] @default([])
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task        Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  author      User @relation("TaskCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @db.Uuid
+  taskId           String    @db.Uuid
+  authorId         String    @db.Uuid
+  body             String    @db.VarChar(2000)
+  mentionedUserIds String[]  @default([])
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task             Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author           User      @relation("TaskCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, taskId, createdAt])
   @@map("task_comments")
 }
 
 model TaskChecklistItem {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @db.Uuid
-  taskId      String   @db.Uuid
-  createdById String   @db.Uuid
-  completedById String? @db.Uuid
-  title       String   @db.VarChar(240)
-  position    Int      @default(0)
-  completedAt DateTime? @db.Timestamptz(3)
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task        Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  createdBy   User @relation("TaskChecklistCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  completedBy User? @relation("TaskChecklistCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @db.Uuid
+  taskId        String    @db.Uuid
+  createdById   String    @db.Uuid
+  completedById String?   @db.Uuid
+  title         String    @db.VarChar(240)
+  position      Int       @default(0)
+  completedAt   DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task          Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdBy     User      @relation("TaskChecklistCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  completedBy   User?     @relation("TaskChecklistCompleter", fields: [completedById], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, taskId, position])
   @@map("task_checklist_items")
 }
 
 model TaskFollower {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @db.Uuid
-  taskId      String   @db.Uuid
-  userId      String   @db.Uuid
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  taskId      String    @db.Uuid
+  userId      String    @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task        Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([taskId, userId])
   @@index([workspaceId, taskId])
@@ -352,19 +358,19 @@ model ProjectMilestone {
 }
 
 model ProjectTemplate {
-  id                String   @id @default(uuid()) @db.Uuid
-  workspaceId       String   @db.Uuid
-  createdById       String   @db.Uuid
-  name              String   @db.VarChar(160)
-  description       String?  @db.Text
-  taskTemplates     Json     @default("[]") @db.JsonB
-  milestoneTemplates Json    @default("[]") @db.JsonB
-  useCount          Int      @default(0)
-  lastUsedAt        DateTime? @db.Timestamptz(3)
-  createdAt         DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
-  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy         User @relation("ProjectTemplateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String    @db.Uuid
+  createdById        String    @db.Uuid
+  name               String    @db.VarChar(160)
+  description        String?   @db.Text
+  taskTemplates      Json      @default("[]") @db.JsonB
+  milestoneTemplates Json      @default("[]") @db.JsonB
+  useCount           Int       @default(0)
+  lastUsedAt         DateTime? @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy          User      @relation("ProjectTemplateCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, updatedAt])
   @@map("project_templates")
@@ -387,17 +393,17 @@ model WorkspaceTaskView {
 }
 
 model WorkspaceActivity {
-  id          String    @id @default(uuid()) @db.Uuid
-  workspaceId String    @db.Uuid
-  actorId     String    @db.Uuid
-  entityType  String    @db.VarChar(32)
-  entityId    String    @db.Uuid
-  message     String    @db.VarChar(240)
-  recipientScoped Boolean @default(false)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  actor       User      @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
-  receipts    ActivityReceipt[]
+  id              String            @id @default(uuid()) @db.Uuid
+  workspaceId     String            @db.Uuid
+  actorId         String            @db.Uuid
+  entityType      String            @db.VarChar(32)
+  entityId        String            @db.Uuid
+  message         String            @db.VarChar(240)
+  recipientScoped Boolean           @default(false)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor           User              @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
+  receipts        ActivityReceipt[]
 
   @@index([workspaceId, createdAt])
   @@index([entityType, entityId])
@@ -405,18 +411,18 @@ model WorkspaceActivity {
 }
 
 model ActivityReceipt {
-  id         String           @id @default(uuid()) @db.Uuid
-  activityId String           @db.Uuid
-  userId     String           @db.Uuid
-  isNotificationTarget Boolean @default(false)
-  readAt     DateTime?        @db.Timestamptz(3)
-  dismissedAt DateTime?       @db.Timestamptz(3)
+  id                   String            @id @default(uuid()) @db.Uuid
+  activityId           String            @db.Uuid
+  userId               String            @db.Uuid
+  isNotificationTarget Boolean           @default(false)
+  readAt               DateTime?         @db.Timestamptz(3)
+  dismissedAt          DateTime?         @db.Timestamptz(3)
   /// When this notification was included in an email (null = not emailed).
-  emailedAt  DateTime?        @db.Timestamptz(3)
-  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt  DateTime         @updatedAt @db.Timestamptz(3)
-  activity   WorkspaceActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailedAt            DateTime?         @db.Timestamptz(3)
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
+  activity             WorkspaceActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([activityId, userId])
   @@index([userId, readAt, dismissedAt])
@@ -426,46 +432,47 @@ model ActivityReceipt {
 }
 
 model Document {
-  id          String    @id @default(uuid()) @db.Uuid
-  workspaceId String    @db.Uuid
-  projectId   String?   @db.Uuid
-  title       String    @db.VarChar(200)
-  content     String    @default("") @db.Text
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  versions    DocumentVersion[]
-  comments    DocumentComment[]
-  knowledgeItems KnowledgeItem[] @relation("KnowledgeDocument")
+  id                String             @id @default(uuid()) @db.Uuid
+  workspaceId       String             @db.Uuid
+  projectId         String?            @db.Uuid
+  title             String             @db.VarChar(200)
+  content           String             @default("") @db.Text
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project           Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  versions          DocumentVersion[]
+  comments          DocumentComment[]
+  knowledgeItems    KnowledgeItem[]    @relation("KnowledgeDocument")
   knowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionDocument")
 
   fileAttachments FileAttachment[]
+
   @@index([workspaceId, updatedAt])
   @@index([projectId])
   @@map("documents")
 }
 
 model KnowledgeItem {
-  id          String    @id @default(uuid()) @db.Uuid
-  workspaceId String    @db.Uuid
-  createdById String    @db.Uuid
-  projectId   String?   @db.Uuid
-  documentId  String?   @db.Uuid
-  taskId      String?   @db.Uuid
-  title       String    @db.VarChar(200)
-  content     String    @db.Text
-  sourceUrl   String?   @db.VarChar(2048)
-  tags        String[]  @default([])
-  isPinned    Boolean   @default(false)
-  archivedAt  DateTime? @db.Timestamptz(3)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy   User      @relation("KnowledgeItemCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  project     Project?  @relation("KnowledgeProject", fields: [projectId], references: [id], onDelete: SetNull)
-  document    Document? @relation("KnowledgeDocument", fields: [documentId], references: [id], onDelete: SetNull)
-  task        Task?     @relation("KnowledgeTask", fields: [taskId], references: [id], onDelete: SetNull)
+  id          String             @id @default(uuid()) @db.Uuid
+  workspaceId String             @db.Uuid
+  createdById String             @db.Uuid
+  projectId   String?            @db.Uuid
+  documentId  String?            @db.Uuid
+  taskId      String?            @db.Uuid
+  title       String             @db.VarChar(200)
+  content     String             @db.Text
+  sourceUrl   String?            @db.VarChar(2048)
+  tags        String[]           @default([])
+  isPinned    Boolean            @default(false)
+  archivedAt  DateTime?          @db.Timestamptz(3)
+  createdAt   DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime           @updatedAt @db.Timestamptz(3)
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User               @relation("KnowledgeItemCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  project     Project?           @relation("KnowledgeProject", fields: [projectId], references: [id], onDelete: SetNull)
+  document    Document?          @relation("KnowledgeDocument", fields: [documentId], references: [id], onDelete: SetNull)
+  task        Task?              @relation("KnowledgeTask", fields: [taskId], references: [id], onDelete: SetNull)
   versions    KnowledgeVersion[]
 
   @@index([workspaceId, archivedAt, isPinned, updatedAt])
@@ -477,38 +484,38 @@ model KnowledgeItem {
 }
 
 model KnowledgeVersion {
-  id              String   @id @default(uuid()) @db.Uuid
-  workspaceId     String   @db.Uuid
-  knowledgeItemId String   @db.Uuid
-  createdById     String   @db.Uuid
-  projectId       String?  @db.Uuid
-  documentId      String?  @db.Uuid
-  taskId          String?  @db.Uuid
-  title           String   @db.VarChar(200)
-  content         String   @db.Text
-  sourceUrl       String?  @db.VarChar(2048)
-  tags            String[] @default([])
-  createdAt       DateTime @default(now()) @db.Timestamptz(3)
-  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid()) @db.Uuid
+  workspaceId     String        @db.Uuid
+  knowledgeItemId String        @db.Uuid
+  createdById     String        @db.Uuid
+  projectId       String?       @db.Uuid
+  documentId      String?       @db.Uuid
+  taskId          String?       @db.Uuid
+  title           String        @db.VarChar(200)
+  content         String        @db.Text
+  sourceUrl       String?       @db.VarChar(2048)
+  tags            String[]      @default([])
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   knowledgeItem   KnowledgeItem @relation(fields: [knowledgeItemId], references: [id], onDelete: Cascade)
-  createdBy       User @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  project         Project? @relation("KnowledgeVersionProject", fields: [projectId], references: [id], onDelete: SetNull)
-  document        Document? @relation("KnowledgeVersionDocument", fields: [documentId], references: [id], onDelete: SetNull)
-  task            Task? @relation("KnowledgeVersionTask", fields: [taskId], references: [id], onDelete: SetNull)
+  createdBy       User          @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  project         Project?      @relation("KnowledgeVersionProject", fields: [projectId], references: [id], onDelete: SetNull)
+  document        Document?     @relation("KnowledgeVersionDocument", fields: [documentId], references: [id], onDelete: SetNull)
+  task            Task?         @relation("KnowledgeVersionTask", fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, knowledgeItemId, createdAt])
   @@map("knowledge_versions")
 }
 
 model DocumentVersion {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @db.Uuid
-  documentId  String   @db.Uuid
-  createdById String   @db.Uuid
-  title       String   @db.VarChar(200)
-  content     String   @db.Text
-  label       String?  @db.VarChar(120)
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  documentId  String    @db.Uuid
+  createdById String    @db.Uuid
+  title       String    @db.VarChar(200)
+  content     String    @db.Text
+  label       String?   @db.VarChar(120)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   document    Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
   createdBy   User      @relation("DocumentVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
@@ -535,27 +542,27 @@ model DocumentComment {
 }
 
 model CalendarEvent {
-  id          String    @id @default(uuid()) @db.Uuid
-  workspaceId String    @db.Uuid
-  taskId      String?   @db.Uuid
-  projectId   String?   @db.Uuid
-  title       String    @db.VarChar(200)
-  description String?   @db.VarChar(2000)
-  location    String?   @db.VarChar(250)
-  type        CalendarEventType @default(MEETING)
-  isAllDay    Boolean   @default(false)
-  startsAt    DateTime  @db.Timestamptz(3)
-  endsAt      DateTime? @db.Timestamptz(3)
-  recurrence  CalendarRecurrence?
-  recurrenceInterval Int  @default(1)
-  recurrenceUntil DateTime? @db.Timestamptz(3)
-  recurrenceTimeZone String? @db.VarChar(80)
-  externalUid String?   @db.VarChar(255)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  id                 String              @id @default(uuid()) @db.Uuid
+  workspaceId        String              @db.Uuid
+  taskId             String?             @db.Uuid
+  projectId          String?             @db.Uuid
+  title              String              @db.VarChar(200)
+  description        String?             @db.VarChar(2000)
+  location           String?             @db.VarChar(250)
+  type               CalendarEventType   @default(MEETING)
+  isAllDay           Boolean             @default(false)
+  startsAt           DateTime            @db.Timestamptz(3)
+  endsAt             DateTime?           @db.Timestamptz(3)
+  recurrence         CalendarRecurrence?
+  recurrenceInterval Int                 @default(1)
+  recurrenceUntil    DateTime?           @db.Timestamptz(3)
+  recurrenceTimeZone String?             @db.VarChar(80)
+  externalUid        String?             @db.VarChar(255)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task               Task?               @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  project            Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@unique([workspaceId, externalUid])
   @@index([workspaceId, startsAt])
@@ -565,37 +572,37 @@ model CalendarEvent {
 }
 
 model AutomationRule {
-  id               String           @id @default(uuid()) @db.Uuid
-  workspaceId      String           @db.Uuid
-  createdById      String           @db.Uuid
-  name             String           @db.VarChar(120)
-  fromStatus       TaskStatus?
-  toStatus         TaskStatus
-  action           AutomationAction
-  priority         TaskPriority?
-  activityMessage  String?          @db.VarChar(500)
-  enabled          Boolean          @default(true)
-  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime         @updatedAt @db.Timestamptz(3)
-  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy        User             @relation("AutomationRuleCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  runs             AutomationRun[]
+  id              String           @id @default(uuid()) @db.Uuid
+  workspaceId     String           @db.Uuid
+  createdById     String           @db.Uuid
+  name            String           @db.VarChar(120)
+  fromStatus      TaskStatus?
+  toStatus        TaskStatus
+  action          AutomationAction
+  priority        TaskPriority?
+  activityMessage String?          @db.VarChar(500)
+  enabled         Boolean          @default(true)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy       User             @relation("AutomationRuleCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  runs            AutomationRun[]
 
   @@index([workspaceId, enabled, toStatus])
   @@map("automation_rules")
 }
 
 model AutomationRun {
-  id          String         @id @default(uuid()) @db.Uuid
-  workspaceId String         @db.Uuid
-  ruleId      String         @db.Uuid
-  taskId      String?        @db.Uuid
+  id          String              @id @default(uuid()) @db.Uuid
+  workspaceId String              @db.Uuid
+  ruleId      String              @db.Uuid
+  taskId      String?             @db.Uuid
   status      AutomationRunStatus @default(SUCCEEDED)
-  summary     String         @db.VarChar(500)
-  createdAt   DateTime       @default(now()) @db.Timestamptz(3)
-  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  rule        AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  task        Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  summary     String              @db.VarChar(500)
+  createdAt   DateTime            @default(now()) @db.Timestamptz(3)
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rule        AutomationRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  task        Task?               @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, createdAt])
   @@index([ruleId, createdAt])
@@ -619,14 +626,14 @@ model WorkspaceDatabase {
 }
 
 model DatabaseRecord {
-  id          String           @id @default(uuid()) @db.Uuid
-  workspaceId String           @db.Uuid
-  databaseId  String           @db.Uuid
-  values      Json             @default("{}") @db.JsonB
-  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
-  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  database    WorkspaceDatabase @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  id            String               @id @default(uuid()) @db.Uuid
+  workspaceId   String               @db.Uuid
+  databaseId    String               @db.Uuid
+  values        Json                 @default("{}") @db.JsonB
+  createdAt     DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime             @updatedAt @db.Timestamptz(3)
+  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  database      WorkspaceDatabase    @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   outgoingLinks DatabaseRecordLink[] @relation("DatabaseRecordLinkSource")
   incomingLinks DatabaseRecordLink[] @relation("DatabaseRecordLinkTarget")
 
@@ -652,21 +659,21 @@ model DatabaseRecordLink {
 }
 
 model DatabaseView {
-  id              String               @id @default(uuid()) @db.Uuid
-  workspaceId     String               @db.Uuid
-  databaseId      String               @db.Uuid
-  name            String               @db.VarChar(80)
-  filterQuery     String               @default("") @db.VarChar(200)
-  sortPropertyId  String               @default("updatedAt") @db.VarChar(80)
-  sortDirection   DatabaseSortDirection @default(DESC)
-  layout          DatabaseViewLayout  @default(TABLE)
-  groupByPropertyId String              @default("status") @db.VarChar(80)
-  datePropertyId    String              @default("") @db.VarChar(80)
-  chartPropertyId   String              @default("") @db.VarChar(80)
-  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
-  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  database        WorkspaceDatabase    @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  id                String                @id @default(uuid()) @db.Uuid
+  workspaceId       String                @db.Uuid
+  databaseId        String                @db.Uuid
+  name              String                @db.VarChar(80)
+  filterQuery       String                @default("") @db.VarChar(200)
+  sortPropertyId    String                @default("updatedAt") @db.VarChar(80)
+  sortDirection     DatabaseSortDirection @default(DESC)
+  layout            DatabaseViewLayout    @default(TABLE)
+  groupByPropertyId String                @default("status") @db.VarChar(80)
+  datePropertyId    String                @default("") @db.VarChar(80)
+  chartPropertyId   String                @default("") @db.VarChar(80)
+  createdAt         DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime              @updatedAt @db.Timestamptz(3)
+  workspace         Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  database          WorkspaceDatabase     @relation(fields: [databaseId], references: [id], onDelete: Cascade)
 
   @@unique([databaseId, name])
   @@index([workspaceId, databaseId, createdAt])
@@ -693,22 +700,22 @@ model FileFolder {
 
 /// File contents live in object storage under storageKey; only metadata is in PostgreSQL.
 model StoredFile {
-  id          String       @id @default(uuid()) @db.Uuid
-  workspaceId String       @db.Uuid
-  folderId    String?      @db.Uuid
-  createdById String       @db.Uuid
-  name        String       @db.VarChar(255)
-  mimeType    String       @db.VarChar(127)
+  id          String           @id @default(uuid()) @db.Uuid
+  workspaceId String           @db.Uuid
+  folderId    String?          @db.Uuid
+  createdById String           @db.Uuid
+  name        String           @db.VarChar(255)
+  mimeType    String           @db.VarChar(127)
   sizeBytes   Int
-  checksum    String       @db.VarChar(64)
-  storageKey  String       @unique @db.VarChar(255)
-  version     Int          @default(1)
-  deletedAt   DateTime?    @db.Timestamptz(3)
-  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  folder      FileFolder?  @relation(fields: [folderId], references: [id], onDelete: Restrict)
-  createdBy   User         @relation("FileCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  checksum    String           @db.VarChar(64)
+  storageKey  String           @unique @db.VarChar(255)
+  version     Int              @default(1)
+  deletedAt   DateTime?        @db.Timestamptz(3)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folder      FileFolder?      @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  createdBy   User             @relation("FileCreator", fields: [createdById], references: [id], onDelete: Restrict)
   versions    FileVersion[]
   attachments FileAttachment[]
 
@@ -965,4 +972,20 @@ model BillingInvoice {
 
   @@index([workspaceId, createdAt])
   @@map("billing_invoices")
+}
+
+model Whiteboard {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  createdById String    @db.Uuid
+  name        String    @db.VarChar(120)
+  /// { elements: [...] } checked by parseElements before it is stored.
+  content     Json      @db.JsonB
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, updatedAt])
+  @@map("whiteboards")
 }

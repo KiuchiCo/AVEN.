@@ -141,7 +141,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
   );
 }
 
-type IconName = 'home' | 'inbox' | 'tasks' | 'labels' | 'projects' | 'documents' | 'files' | 'knowledge' | 'calendar' | 'databases' | 'intelligence' | 'automations' | 'activity' | 'people' | 'menu' | 'search';
+type IconName = 'home' | 'inbox' | 'tasks' | 'labels' | 'projects' | 'documents' | 'files' | 'whiteboards' | 'knowledge' | 'calendar' | 'databases' | 'intelligence' | 'automations' | 'activity' | 'people' | 'menu' | 'search';
 
 function NavIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -151,6 +151,7 @@ function NavIcon({ name }: { name: IconName }) {
     labels: <><path d="M20.5 13 13 20.5a2.1 2.1 0 0 1-3 0L3.5 14V3.5H14l6.5 6.5a2.1 2.1 0 0 1 0 3Z" /><circle cx="8" cy="8" r="1.2" /></>,
     projects: <><path d="M3 7.5h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h6" /></>,
     documents: <><path d="M6 3h8l5 5v13H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M14 3v6h5M8 13h8M8 17h8" /></>,
+    whiteboards: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21l4-4 4 4M7 12l3-3 3 3 4-4" /></>,
     files: <><path d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z" /><path d="M13 3v6h6M12 18v-6M9.5 14.5 12 12l2.5 2.5" /></>,
     knowledge: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 1 4 17.5z" /><path d="M4 17.5A2.5 2.5 0 0 1 6.5 15H20M8 7h8M8 10h6" /></>,
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4M17 3v4M3 10h18" /></>,
