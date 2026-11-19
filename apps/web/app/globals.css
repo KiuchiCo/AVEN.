@@ -4130,3 +4130,15 @@ body {
 .analytics-spark { width: 100%; max-width: 420px; height: auto; }
 .analytics-line { stroke: var(--aven-bronze); stroke-width: 2; }
 .workspace-settings-card > .workspace-settings-save { justify-self: start; align-self: start; }
+
+.audit-page { max-width: 1000px; }
+.audit-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 14px 0; }
+.audit-filters label { display: grid; gap: 4px; color: var(--aven-muted); font-size: 12px; }
+.audit-filters select, .audit-filters input { padding: 8px 10px; border: 1px solid var(--aven-border); border-radius: 8px; background: var(--aven-paper); color: var(--aven-charcoal); font: 13px var(--aven-interface-font); }
+.audit-filters__actions { display: flex; gap: 8px; }
+.audit-filters__actions button:not(.workspace-settings-save) { padding: 9px 14px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); color: var(--aven-charcoal); font: 500 12px var(--aven-interface-font); cursor: pointer; }
+.audit-table { overflow-x: auto; }
+.audit-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.audit-table th { padding: 8px 10px; border-bottom: 1px solid var(--aven-border); color: var(--aven-muted); font-weight: 500; text-align: left; }
+.audit-table td { padding: 9px 10px; border-bottom: 1px solid var(--aven-border); vertical-align: top; }
+.audit-table small { display: block; color: var(--aven-muted); font-size: 11px; }

@@ -26,6 +26,7 @@ async function bootstrap() {
   app.enableCors({
     origin: environment.webOrigins,
     credentials: true,
+    exposedHeaders: ['X-Row-Count', 'X-Truncated'],
   });
 
   app.enableShutdownHooks();
