@@ -3914,3 +3914,10 @@ body {
 .chat-mentions button { width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--aven-charcoal); font: 13px var(--aven-interface-font); text-align: left; cursor: pointer; }
 .chat-mentions li[aria-selected='true'] button, .chat-mentions button:hover { background: var(--aven-sand); }
 .chat-mention { padding: 0 3px; border-radius: 4px; background: var(--aven-sand); color: var(--aven-umber); font-weight: 600; }
+
+.inbox-notifications__more { margin-top: 4px; font-size: 12px; color: var(--aven-muted); }
+.inbox-notifications__more summary { cursor: pointer; }
+.inbox-notifications__more ul { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; }
+.inbox-notifications__more li { display: grid; gap: 1px; }
+.inbox-notifications__more li.is-unread { font-weight: 600; }
+.inbox-notifications__more small { color: var(--aven-muted); font-weight: 400; }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
+import { actorSummary, groupUpdates, type Update } from './inbox-groups';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useWorkspaceSession } from './workspace-shell';
@@ -136,7 +137,7 @@ export function InboxWorkspace() {
   const { tasks, projects, loading, savingId, error, updateStatus } = useWorkspaceProductivity();
   const { getToken } = useAuth();
   const { workspace } = useWorkspaceSession();
-  const [updates, setUpdates] = useState<{ id: string; entityType: string; entityId: string; message: string; createdAt: string; isRead: boolean; actor: { displayName: string } }[]>([]);
+  const [updates, setUpdates] = useState<Update[]>([]);
   const [updatesError, setUpdatesError] = useState('');
   const [updatesBusy, setUpdatesBusy] = useState(false);
   const [filter, setFilter] = useState<InboxFilter>('ATTENTION');
@@ -182,12 +183,12 @@ export function InboxWorkspace() {
     return () => { cancelled = true; };
   }, [fetchUpdates]);
 
-  async function updateReadState(activityId: string, read: boolean) {
+  async function updateReadState(activityIds: string[], read: boolean) {
     setUpdatesBusy(true); setUpdatesError('');
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/read`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ read }) });
-      if (!response.ok) throw new Error('Could not update this notification.');
+      const responses = await Promise.all(activityIds.map((activityId) => fetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/read`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ read }) })));
+      if (responses.some((response) => !response.ok)) throw new Error('Could not update this notification.');
       await reloadUpdates();
     } catch (reason) { setUpdatesError(reason instanceof Error ? reason.message : 'Could not update this notification.'); }
     finally { setUpdatesBusy(false); }
@@ -204,18 +205,19 @@ export function InboxWorkspace() {
     finally { setUpdatesBusy(false); }
   }
 
-  async function dismissUpdate(activityId: string) {
+  async function dismissUpdate(activityIds: string[]) {
     setUpdatesBusy(true); setUpdatesError('');
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/dismiss`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error('Could not dismiss this notification.');
+      const responses = await Promise.all(activityIds.map((activityId) => fetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/dismiss`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })));
+      if (responses.some((response) => !response.ok)) throw new Error('Could not dismiss this notification.');
       await reloadUpdates();
     } catch (reason) { setUpdatesError(reason instanceof Error ? reason.message : 'Could not dismiss this notification.'); }
     finally { setUpdatesBusy(false); }
   }
 
   const unreadUpdates = updates.filter((entry) => !entry.isRead).length;
+  const updateGroups = groupUpdates(updates);
   const updateLinks: Record<string, string> = { PROJECT: '/workspace/projects', TASK: '/workspace/tasks', TASK_COMMENT: '/workspace/tasks', TASK_CHECKLIST: '/workspace/tasks', MILESTONE: '/workspace/projects', DOCUMENT: '/workspace/documents', KNOWLEDGE: '/workspace/knowledge', FILE: '/workspace/files', CHANNEL: '/workspace/messages', WORKFLOW: '/workspace/automations', CALENDAR: '/workspace/calendar', WORKSPACE: '/workspace/settings' };
 
   function dueLabel(dueAt: string | null) {
@@ -235,14 +237,15 @@ export function InboxWorkspace() {
       <section className="inbox-notifications" aria-labelledby="inbox-updates-title">
         <div className="workspace-section-heading"><div><p className="workspace-eyebrow">FROM YOUR TEAM</p><h2 id="inbox-updates-title">Workspace updates <span className="inbox-unread-count">{unreadUpdates}</span></h2></div><button type="button" disabled={updatesBusy || unreadUpdates === 0} onClick={() => void markAllUpdatesRead()}>Mark all read</button></div>
         {updatesError && <p className="productivity-error" role="alert">{updatesError}</p>}
-        {updates.length === 0 ? <p className="productivity-message">Teammate activity will show up here when someone else updates this workspace.</p> : <div className="inbox-notifications__list">{updates.slice(0, 8).map((entry) => <article className={!entry.isRead ? 'is-unread' : ''} key={entry.id}>
+        {updates.length === 0 ? <p className="productivity-message">Teammate activity will show up here when someone else updates this workspace.</p> : <div className="inbox-notifications__list">{updateGroups.slice(0, 8).map((group) => { const entry = group.latest; const ids = group.items.map((item) => item.id); return <article className={group.unread ? 'is-unread' : ''} key={group.key}>
           <span className="inbox-notifications__dot" aria-hidden="true" />
-          <div><p><strong>{entry.actor.displayName}</strong> {entry.message}</p><small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.createdAt))} · {entry.entityType.toLowerCase()}</small></div>
+          <div><p><strong>{group.items.length > 1 ? actorSummary(group.actors) : entry.actor.displayName}</strong> {entry.message}</p><small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.createdAt))} · {entry.entityType.toLowerCase()}</small>
+            {group.items.length > 1 && <details className="inbox-notifications__more"><summary>{group.items.length - 1} earlier update{group.items.length === 2 ? '' : 's'}</summary><ul>{group.items.slice(1).map((item) => <li key={item.id} className={item.isRead ? '' : 'is-unread'}><strong>{item.actor.displayName}</strong> {item.message}<small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.createdAt))}</small></li>)}</ul></details>}</div>
           <Link href={['TASK', 'TASK_COMMENT', 'TASK_CHECKLIST'].includes(entry.entityType) ? `/workspace/tasks/${entry.entityId}` : updateLinks[entry.entityType] ?? '/workspace/activity'} aria-label={`Open related ${entry.entityType.toLowerCase()} update`}>→</Link>
-          <button type="button" disabled={updatesBusy} onClick={() => void updateReadState(entry.id, !entry.isRead)}>{entry.isRead ? 'Unread' : 'Read'}</button>
-          <button type="button" disabled={updatesBusy} onClick={() => void dismissUpdate(entry.id)}>Dismiss</button>
-        </article>)}</div>}
-        {updates.length > 8 && <Link className="inbox-updates-more" href="/workspace/activity">See all workspace activity →</Link>}
+          <button type="button" disabled={updatesBusy} onClick={() => void updateReadState(group.unread ? group.items.filter((item) => !item.isRead).map((item) => item.id) : ids, group.unread === 0 ? false : true)}>{group.unread ? (group.items.length > 1 ? 'Read all' : 'Read') : 'Unread'}</button>
+          <button type="button" disabled={updatesBusy} onClick={() => void dismissUpdate(ids)}>{group.items.length > 1 ? 'Dismiss all' : 'Dismiss'}</button>
+        </article>; })}</div>}
+        {updateGroups.length > 8 && <Link className="inbox-updates-more" href="/workspace/activity">See all workspace activity →</Link>}
       </section>
       <div className="inbox-summary" aria-label="Work needing attention">
         <div><span>Needs attention</span><strong>{loading ? '—' : attentionTasks.length}</strong></div>
