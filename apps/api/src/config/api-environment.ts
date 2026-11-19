@@ -8,6 +8,8 @@ export type ApiEnvironment = {
   clerkJwtKey?: string;
   clerkIssuer?: string;
   isProduction: boolean;
+  /** Express `trust proxy`: false, true, or how many proxies sit in front of the API. */
+  trustProxy: boolean | number;
   storageDriver: 'local';
   storageDir: string;
   maxUploadBytes: number;
@@ -56,6 +58,8 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
 
   const clerkSecretKey = source.CLERK_SECRET_KEY?.trim() || undefined;
   const clerkJwtKey = source.CLERK_JWT_KEY?.replaceAll('\\n', '\n').trim() || undefined;
+  const trustRaw = source.TRUST_PROXY?.trim().toLowerCase() || 'false';
+  const trustProxy: boolean | number = trustRaw === 'true' ? true : trustRaw === 'false' ? false : /^\d{1,2}$/.test(trustRaw) ? Number(trustRaw) : (errors.push('TRUST_PROXY must be true, false or the number of proxies in front of the API'), false);
   const clerkIssuer = source.CLERK_ISSUER?.trim() || undefined;
   if (clerkJwtKey && !clerkJwtKey.startsWith('-----BEGIN PUBLIC KEY-----')) errors.push('CLERK_JWT_KEY must be a PEM public key');
   if ((clerkSecretKey || clerkJwtKey) && !clerkIssuer) errors.push('CLERK_ISSUER is required when Clerk verification credentials are configured');
@@ -121,5 +125,5 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
 }

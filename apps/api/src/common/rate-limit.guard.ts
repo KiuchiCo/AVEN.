@@ -15,7 +15,7 @@ export class RateLimitGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const http = context.switchToHttp();
     const request = http.getRequest<Request>();
-    if (request.path.endsWith('/health')) return true;
+    if (/\/health(\/ready)?$/.test(request.path)) return true;
 
     const now = this.now();
     const key = request.ip ?? 'unknown';
