@@ -24,14 +24,18 @@ export class MessagingController {
     response.status(200).set({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     response.flushHeaders();
     response.write(': connected\n\n');
-    const unsubscribe = this.events.subscribe(ws, (event) => { if (!response.writableEnded) response.write(`data: ${JSON.stringify(event)}\n\n`); });
+    response.write(`data: ${JSON.stringify({ type: 'presence', online: this.events.online(ws) })}\n\n`);
+    const unsubscribe = this.events.subscribe(ws, userId, (event) => { if (!response.writableEnded) response.write(`data: ${JSON.stringify(event)}\n\n`); });
     const heartbeat = setInterval(() => { if (!response.writableEnded) response.write(': keep-alive\n\n'); }, 25_000);
     request.on('close', () => { clearInterval(heartbeat); unsubscribe(); release(); });
   }
 
+  @Get('search') search(@CurrentIdentity() who: Who, @workspace() ws: string, @Query() query: { q?: string }) { return this.messaging.search(who, ws, query); }
+  @Post('conversations') startConversation(@CurrentIdentity() who: Who, @workspace() ws: string, @Body() body: unknown) { return this.messaging.startConversation(who, ws, body); }
   @Get() list(@CurrentIdentity() who: Who, @workspace() ws: string) { return this.messaging.list(who, ws); }
   @Post() create(@CurrentIdentity() who: Who, @workspace() ws: string, @Body() body: unknown) { return this.messaging.createChannel(who, ws, body); }
   @Get(':channelId/messages') messages(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Query() query: { before?: string }) { return this.messaging.messages(who, ws, id, query); }
+  @Get(':channelId/messages/:messageId/replies') replies(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Param('messageId', new ParseUUIDPipe()) messageId: string) { return this.messaging.replies(who, ws, id, messageId); }
   @Post(':channelId/messages') send(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Body() body: unknown) { return this.messaging.send(who, ws, id, body); }
   @Patch(':channelId/messages/:messageId') edit(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Param('messageId', new ParseUUIDPipe()) messageId: string, @Body() body: unknown) { return this.messaging.edit(who, ws, id, messageId, body); }
   @Delete(':channelId/messages/:messageId') remove(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Param('messageId', new ParseUUIDPipe()) messageId: string) { return this.messaging.remove(who, ws, id, messageId); }

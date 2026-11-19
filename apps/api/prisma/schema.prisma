@@ -117,18 +117,19 @@ model User {
   completedTaskChecklistItems TaskChecklistItem[] @relation("TaskChecklistCompleter")
   taskFollows                 TaskFollower[]
 
-  fileFolders     FileFolder[]     @relation("FileFolderCreator")
-  storedFiles     StoredFile[]     @relation("FileCreator")
-  fileVersions    FileVersion[]    @relation("FileVersionCreator")
-  fileAttachments FileAttachment[] @relation("FileAttachmentCreator")
-  aiConversations AiConversation[]
-  aiUsage         AiUsage[]
-  aiAgents        AiAgent[]
-  workflows       Workflow[]
-  whiteboards     Whiteboard[]
-  channelsCreated Channel[]        @relation("ChannelCreator")
-  channelMessages ChannelMessage[] @relation("ChannelMessageAuthor")
-  channelReads    ChannelRead[]    @relation("ChannelReader")
+  fileFolders        FileFolder[]     @relation("FileFolderCreator")
+  storedFiles        StoredFile[]     @relation("FileCreator")
+  fileVersions       FileVersion[]    @relation("FileVersionCreator")
+  fileAttachments    FileAttachment[] @relation("FileAttachmentCreator")
+  aiConversations    AiConversation[]
+  aiUsage            AiUsage[]
+  aiAgents           AiAgent[]
+  workflows          Workflow[]
+  whiteboards        Whiteboard[]
+  channelsCreated    Channel[]        @relation("ChannelCreator")
+  channelMessages    ChannelMessage[] @relation("ChannelMessageAuthor")
+  channelReads       ChannelRead[]    @relation("ChannelReader")
+  channelMemberships ChannelMember[]  @relation("ChannelParticipant")
 
   @@unique([identityIssuer, identitySubject])
   @@map("users")
@@ -995,38 +996,67 @@ model Whiteboard {
   @@map("whiteboards")
 }
 
+enum ChannelKind {
+  CHANNEL
+  DIRECT
+  GROUP
+}
+
 model Channel {
   id          String           @id @default(uuid()) @db.Uuid
   workspaceId String           @db.Uuid
   createdById String           @db.Uuid
-  /// Lowercase letters, digits and hyphens.
-  name        String           @db.VarChar(40)
+  kind        ChannelKind      @default(CHANNEL)
+  /// Lowercase letters, digits and hyphens. Null for direct and group conversations.
+  name        String?          @db.VarChar(40)
+  /// Sorted participant ids of a direct conversation, so each pair has exactly one.
+  dmKey       String?          @db.VarChar(80)
   topic       String           @default("") @db.VarChar(200)
   createdAt   DateTime         @default(now()) @db.Timestamptz(3)
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy   User             @relation("ChannelCreator", fields: [createdById], references: [id], onDelete: Cascade)
   messages    ChannelMessage[]
   reads       ChannelRead[]
+  members     ChannelMember[]
 
   @@unique([workspaceId, name])
+  @@unique([workspaceId, dmKey])
   @@map("channels")
 }
 
 model ChannelMessage {
-  id          String    @id @default(uuid()) @db.Uuid
-  channelId   String    @db.Uuid
-  workspaceId String    @db.Uuid
-  authorId    String    @db.Uuid
-  body        String    @db.VarChar(4000)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  editedAt    DateTime? @db.Timestamptz(3)
+  id          String           @id @default(uuid()) @db.Uuid
+  channelId   String           @db.Uuid
+  workspaceId String           @db.Uuid
+  authorId    String           @db.Uuid
+  body        String           @db.VarChar(4000)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  editedAt    DateTime?        @db.Timestamptz(3)
   /// A deleted message keeps its row (so the thread order holds) but its text is cleared.
-  deletedAt   DateTime? @db.Timestamptz(3)
-  channel     Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author      User      @relation("ChannelMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  deletedAt   DateTime?        @db.Timestamptz(3)
+  /// A reply belongs to a root message. Replies to replies are not allowed.
+  parentId    String?          @db.Uuid
+  channel     Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      User             @relation("ChannelMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  parent      ChannelMessage?  @relation("MessageReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     ChannelMessage[] @relation("MessageReplies")
 
   @@index([channelId, createdAt])
+  @@index([parentId, createdAt])
   @@map("channel_messages")
+}
+
+/// Who is in a direct or group conversation. Public channels have no rows: every workspace member can see them.
+model ChannelMember {
+  channelId String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User     @relation("ChannelParticipant", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+  @@index([userId])
+  @@map("channel_members")
 }
 
 model ChannelRead {
