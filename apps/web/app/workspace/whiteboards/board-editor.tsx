@@ -103,7 +103,8 @@ export function BoardEditor({ boardId }: { boardId: string }) {
       setSelected(orig.id); setColor(orig.color);
       gesture.current = handle ? { kind: 'resize', id: orig.id, px, py, orig } : { kind: 'move', id: orig.id, px, py, orig };
     } else if (readOnly || tool === 'select') {
-      setSelected(null); setEditing(null);
+      // The open text editor is left alone: it saves itself when it loses focus, which this click causes.
+      setSelected(null);
       gesture.current = { kind: 'pan', sx: event.clientX, sy: event.clientY, view };
     } else if (tool === 'arrow' || tool === 'pen') {
       const id = uid();
@@ -113,7 +114,8 @@ export function BoardEditor({ boardId }: { boardId: string }) {
     } else {
       const size = defaults[tool]; const id = uid();
       commit([...latest.current.elements, { id, type: tool, x: px - size.w / 2, y: py - size.h / 2, ...size, color, text: '' }]);
-      setSelected(id); setTool('select'); setEditing(id);
+      // Opened a moment later: the browser moves focus on mouse-down, which would otherwise close the editor at once.
+      setSelected(id); setTool('select'); window.setTimeout(() => setEditing(id), 60);
     }
   }
 

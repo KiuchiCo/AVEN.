@@ -16,7 +16,7 @@ type Overview = {
 
 const labels: Record<keyof Limits, string> = { projects: 'Projects', databases: 'Databases', workflows: 'Workflows', customAgents: 'Custom agents', members: 'Members (guests are free)', storageBytes: 'Storage', aiCredits: 'AI credits this month' };
 const bytes = (n: number) => n >= 1024 ** 3 ? `${+(n / 1024 ** 3).toFixed(1)} GB` : `${Math.round(n / 1024 ** 2)} MB`;
-const money = (cents: number, currency = 'aud') => new Intl.NumberFormat('en-AU', { style: 'currency', currency: currency.toUpperCase() }).format(cents / 100);
+const money = (cents: number, currency = 'aud') => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.toUpperCase() }).format(cents / 100);
 
 export function BillingCard() {
   const { workspace } = useWorkspaceSession();
