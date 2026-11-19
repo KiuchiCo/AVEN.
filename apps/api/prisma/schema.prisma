@@ -260,6 +260,7 @@ model Task {
   status              TaskStatus          @default(TODO)
   priority            TaskPriority        @default(MEDIUM)
   labels              String[]            @default([])
+  startAt             DateTime?           @db.Timestamptz(3)
   dueAt               DateTime?           @db.Timestamptz(3)
   completedAt         DateTime?           @db.Timestamptz(3)
   recurrence          CalendarRecurrence?

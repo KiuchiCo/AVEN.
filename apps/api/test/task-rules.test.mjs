@@ -51,3 +51,12 @@ test('invalid repeat settings are rejected', () => {
     assert.throws(() => parseRecurrence(body), BadRequestException, JSON.stringify(body));
   }
 });
+
+test('a task cannot start after it is due, and missing dates are fine', async () => {
+  const { assertDateOrder } = await import('../dist/productivity/task-rules.js');
+  const d = (s) => new Date(s);
+  assert.doesNotThrow(() => assertDateOrder(d('2026-01-01'), d('2026-01-01')));
+  assert.doesNotThrow(() => assertDateOrder(null, d('2026-01-01')));
+  assert.doesNotThrow(() => assertDateOrder(d('2026-01-01'), null));
+  assert.throws(() => assertDateOrder(d('2026-01-02'), d('2026-01-01')), /start date/);
+});

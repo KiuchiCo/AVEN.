@@ -6,11 +6,12 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../../workspace-shell';
 import { TaskLabels } from '../../task-labels';
+import { GanttChart } from './gantt-chart';
 import { AttachmentsPanel } from '../../files/attachments-panel';
 import { parseTaskCsv, type TaskImportRow } from '../task-csv';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; budgetTotalCents: number | null; budgetSpentCents: number };
-type ProjectTask = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; events: { id: string }[]; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
+type ProjectTask = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; startAt: string | null; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; events: { id: string }[]; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
 type ProjectDocument = { id: string; title: string; updatedAt: string; project: { id: string; name: string } | null };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
 type ActivityEntry = { id: string; entityType: string; entityId: string; message: string; createdAt: string; actor: { displayName: string } };
@@ -350,6 +351,7 @@ export default function ProjectWorkspacePage() {
             {milestones.length ? <ul className="project-hub__milestone-list">{milestones.map((milestone) => <li key={milestone.id} className={milestone.completedAt ? 'is-complete' : ''}><label className="project-hub__milestone-check"><input type="checkbox" checked={Boolean(milestone.completedAt)} disabled={saving} onChange={(event) => void updateMilestone(milestone, { completed: event.target.checked })} /><span>{milestone.title}</span></label><label className="project-hub__milestone-date"><span className="visually-hidden">Due date for {milestone.title}</span><input type="date" value={milestone.dueAt?.slice(0, 10) ?? ''} disabled={saving} onChange={(event) => void updateMilestone(milestone, { dueAt: event.target.value || null })} /></label><button type="button" className="project-hub__milestone-remove" disabled={saving} aria-label={`Remove ${milestone.title}`} onClick={() => void deleteMilestone(milestone)}>Remove</button></li>)}</ul> : <p className="productivity-message">No milestones yet. Add a checkpoint to make key outcomes visible on this timeline.</p>}
           </section>
           <section className="project-hub__panel project-hub__full-panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">TASK DATES · MILESTONES</p><h2>Project timeline</h2></div><span>{timelineItems.length} scheduled items</span></div>
+          <GanttChart tasks={tasks.filter((task) => task.status !== 'CANCELLED')} />
           {timelineItems.length === 0 ? <p className="productivity-message">Add due dates to tasks and milestones to build the project timeline.</p> : <div className="project-timeline">{timelineItems.map((item) => <article key={`${item.type}-${item.id}`} className={item.state === 'COMPLETED' ? 'is-complete' : ''}><time>{formatDate(item.date)}</time><span className={`project-timeline__marker project-timeline__marker--${item.type.toLowerCase()}`} /><div><small>{item.type} · {item.state.replaceAll('_', ' ').toLowerCase()}</small>{item.type === 'Task' ? <Link href={`/workspace/tasks/${item.id}`}><strong>{item.title}</strong></Link> : <strong>{item.title}</strong>}</div></article>)}</div>}
           </section>
         </>}

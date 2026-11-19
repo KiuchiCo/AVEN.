@@ -55,3 +55,8 @@ export function parseRecurrence(body: Record<string, unknown>): RecurrenceFields
   }
   return fields;
 }
+
+/** A task can't start after it is due. Either date may be missing; then there is nothing to compare. */
+export function assertDateOrder(startAt: Date | null | undefined, dueAt: Date | null | undefined) {
+  if (startAt && dueAt && startAt.getTime() > dueAt.getTime()) throw new BadRequestException('The start date must be on or before the due date.');
+}

@@ -3884,3 +3884,19 @@ body {
 .chat-compose { display: flex; gap: 10px; align-items: flex-end; }
 .chat-compose textarea { resize: none; }
 @media (max-width: 720px) { .chat { grid-template-columns: 1fr; height: auto; } .chat-channels { border-right: 0; border-bottom: 1px solid var(--aven-border); padding-bottom: 10px; } .chat-thread { min-height: 320px; } }
+
+.gantt { display: grid; gap: 2px; margin-bottom: 18px; overflow-x: auto; font-size: 13px; }
+.gantt__axis, .gantt__row { display: grid; grid-template-columns: minmax(140px, 220px) minmax(520px, 1fr); align-items: center; gap: 12px; }
+.gantt__axis > span { color: var(--aven-muted); font-size: 12px; }
+.gantt__track { position: relative; height: 28px; }
+.gantt__axis .gantt__track { height: 20px; }
+.gantt__axis small { position: absolute; transform: translateX(-2px); color: var(--aven-muted); font-size: 11px; white-space: nowrap; }
+.gantt__row > a { overflow: hidden; color: var(--aven-charcoal); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.gantt__grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--aven-border); opacity: .6; }
+.gantt__today { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--aven-error); }
+.gantt__bar { position: absolute; top: 6px; height: 16px; border-radius: 6px; background: var(--aven-bronze); }
+.gantt__bar--marker { border-radius: 50%; }
+.gantt__bar--in_progress { background: var(--aven-information); }
+.gantt__bar--in_review { background: var(--aven-warning); }
+.gantt__bar--completed { background: var(--aven-success); opacity: .75; }
+.gantt__note { margin: 6px 0 0; color: var(--aven-muted); font-size: 12px; }

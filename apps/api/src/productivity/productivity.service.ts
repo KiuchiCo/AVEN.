@@ -4,7 +4,7 @@ import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { documentConflict, eventConflict, parseBaseUpdatedAt } from './document-concurrency.js';
 import { parseIcs } from './ics.js';
-import { nextDueDate, parseRecurrence } from './task-rules.js';
+import { assertDateOrder, nextDueDate, parseRecurrence } from './task-rules.js';
 import { WorkflowTriggersService } from '../workflows/workflow-triggers.service.js';
 import { workspaceNotificationWhere } from './notification-filter.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -624,6 +624,8 @@ export class ProductivityService {
       if (!project) throw new NotFoundException('Project not found in this workspace.');
     }
     const dueAt = dateField(body.dueAt, 'Due date');
+    const startAt = dateField(body.startAt, 'Start date');
+    assertDateOrder(startAt, dueAt);
     const recurrence = parseRecurrence(body);
     if (recurrence.recurrence && !dueAt) throw new BadRequestException('A repeating task needs a due date.');
     if (recurrence.recurrence && parentId) throw new BadRequestException('Subtasks cannot repeat.');
@@ -644,6 +646,7 @@ export class ProductivityService {
         description: optionalText(body.description, 'Task description', 5000),
         status,
         priority,
+        startAt,
         dueAt,
         labels: taskLabels(body.labels),
         completedAt: status === 'COMPLETED' ? new Date() : null,
@@ -693,13 +696,14 @@ export class ProductivityService {
   async updateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
-    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true, assigneeId: true, dueAt: true, recurrence: true, parentId: true } });
+    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true, assigneeId: true, startAt: true, dueAt: true, recurrence: true, parentId: true } });
     if (!previousTask) throw new NotFoundException('Task not found in this workspace.');
     const data: {
       title?: string;
       description?: string | null;
       status?: TaskStatus;
       priority?: TaskPriority;
+      startAt?: Date | null;
       dueAt?: Date | null;
       completedAt?: Date | null;
       assigneeId?: string | null;
@@ -727,6 +731,8 @@ export class ProductivityService {
     if ('priority' in body) data.priority = enumField(body.priority, taskPriorities, 'Task priority');
     if ('labels' in body) data.labels = taskLabels(body.labels);
     if ('dueAt' in body) data.dueAt = dateField(body.dueAt, 'Due date');
+    if ('startAt' in body) data.startAt = dateField(body.startAt, 'Start date');
+    if ('startAt' in data || 'dueAt' in data) assertDateOrder('startAt' in data ? data.startAt : previousTask.startAt, 'dueAt' in data ? data.dueAt : previousTask.dueAt);
     if ('assigneeId' in body) {
       const assigneeId = optionalUuid(body.assigneeId, 'Assignee');
       if (assigneeId) {
