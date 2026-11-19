@@ -5,6 +5,9 @@ import { useWorkspaceSession } from '../workspace-shell';
 import { formatBytes, type FileListing, type FileRecord, type FileUsage, type FileVersionRecord } from './types';
 import { useFilesApi } from './use-files-api';
 
+/** Files AVEN can read as text for the Knowledge Hub. PDFs and Word documents aren't included. */
+const readableAsText = (file: { name: string; mimeType: string }) => /\.(txt|md|markdown|csv|tsv|json|html?|log)$/i.test(file.name) || file.mimeType.startsWith('text/') || file.mimeType === 'application/json';
+
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const previewable = /^(image\/(png|jpeg|gif|webp)|application\/pdf|text\/plain)$/;
 
@@ -120,6 +123,7 @@ export function FilesWorkspace() {
               <button type="button" onClick={() => void run(() => download(file))}>Download</button>
               <button type="button" onClick={() => void toggleVersions(file)}>Versions</button>
               {canEdit && <>
+                {readableAsText(file) && <button type="button" disabled={busy} title="Save this file’s text as a Knowledge entry" onClick={() => void run(async () => { const entry = await call<{ truncated: boolean }>(`/${file.id}/knowledge`, { method: 'POST', body: {} }); return entry.truncated ? `Added “${file.name}” to Knowledge. It was long, so only the first 20,000 characters were kept.` : `Added “${file.name}” to Knowledge.`; })}>Add to Knowledge</button>}
                 <label className="files-replace">New version<input type="file" disabled={busy} onChange={(event) => { const next = event.target.files?.[0]; event.target.value = ''; if (next) void run(async () => { await upload(next, { replaceFileId: file.id }); return `Saved a new version of “${file.name}”.`; }); }} /></label>
                 <button type="button" disabled={busy} onClick={() => { const name = ask('Rename file', file.name); if (name && name !== file.name) void run(async () => { await call(`/${file.id}`, { method: 'PATCH', body: { name } }); }); }}>Rename</button>
                 {moveTargets.length > 0 && inFolderView && <select aria-label={`Move ${file.name}`} defaultValue="" disabled={busy} onChange={(event) => { const target = event.target.value; event.target.value = ''; if (target !== '') void run(async () => { await call(`/${file.id}`, { method: 'PATCH', body: { folderId: target === 'root' ? null : target } }); return 'Moved.'; }); }}><option value="" disabled>Move to…</option>{moveTargets.map((target) => <option key={target.id || 'root'} value={target.id || 'root'}>{target.name}</option>)}</select>}

@@ -41,6 +41,7 @@ export class FilesController {
   @Get(':fileId/versions') versions(@CurrentIdentity() who: Identity, @workspace() ws: string, @Param('fileId', new ParseUUIDPipe()) fileId: string) { return this.files.versions(who, ws, fileId); }
   @Patch(':fileId') update(@CurrentIdentity() who: Identity, @workspace() ws: string, @Param('fileId', new ParseUUIDPipe()) fileId: string, @Body() body: unknown) { return this.files.updateFile(who, ws, fileId, body); }
   @Delete(':fileId') remove(@CurrentIdentity() who: Identity, @workspace() ws: string, @Param('fileId', new ParseUUIDPipe()) fileId: string) { return this.files.remove(who, ws, fileId); }
+  @Post(':fileId/knowledge') toKnowledge(@CurrentIdentity() who: Identity, @workspace() ws: string, @Param('fileId', new ParseUUIDPipe()) id: string, @Body() body: unknown) { return this.files.addToKnowledge(who, ws, id, body); }
   @Post(':fileId/restore') restore(@CurrentIdentity() who: Identity, @workspace() ws: string, @Param('fileId', new ParseUUIDPipe()) fileId: string) { return this.files.restore(who, ws, fileId); }
   @Delete(':fileId/permanent') purge(@CurrentIdentity() who: Identity, @workspace() ws: string, @Param('fileId', new ParseUUIDPipe()) fileId: string) { return this.files.purge(who, ws, fileId); }
 }

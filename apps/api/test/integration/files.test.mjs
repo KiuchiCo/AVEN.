@@ -87,4 +87,23 @@ describe('file storage', { skip }, () => {
     assert.equal(await t.prisma.storedFile.count({ where: { id: file.id } }), 1);
     assert.equal(await t.prisma.fileAttachment.count({ where: { fileId: file.id } }), 0);
   });
+
+  test('a text file can be added to Knowledge; other files, guests and strangers cannot', async () => {
+    const md = (await t.upload('fay', W.id, Buffer.from('# Launch plan\n\nShip the zebra feature on Friday.'), 'name=launch_plan.md', 'text/markdown')).body;
+    const toKnowledge = (who, id, body = {}) => t.call(who, 'POST', `/workspaces/${W.id}/files/${id}/knowledge`, body);
+    const made = await toKnowledge('fay', md.id, { tags: ['Plans', 'plans'] });
+    assert.equal(made.status, 201, JSON.stringify(made.body)); assert.equal(made.body.title, 'launch plan'); assert.equal(made.body.truncated, false);
+    const found = (await t.call('fay', 'GET', `/workspaces/${W.id}/knowledge?q=zebra`)).body;
+    const item = (found.items ?? found).find((entry) => entry.id === made.body.id);
+    assert.ok(item, 'the new entry is searchable'); assert.deepEqual(item.tags, ['plans']); assert.match(item.content, /Ship the zebra feature/);
+    const big = (await t.upload('fay', W.id, Buffer.from('lorem '.repeat(8000)), 'name=big.txt', 'text/plain')).body;
+    assert.equal((await toKnowledge('fay', big.id)).body.truncated, true);
+    const png = (await t.upload('fay', W.id, Buffer.from([137, 80, 78, 71, 0, 1, 2]), 'name=pic.png', 'image/png')).body;
+    assert.equal((await toKnowledge('fay', png.id)).status, 400);
+    await t.member(W.id, 'gus', 'GUEST');
+    assert.equal((await toKnowledge('gus', md.id)).status, 403, 'guests cannot add entries');
+    await t.user('hal'); assert.equal((await toKnowledge('hal', md.id)).status, 404, 'a stranger cannot reach the file');
+    assert.equal((await toKnowledge('fay', '11111111-1111-4111-8111-111111111111')).status, 404);
+  });
 });
+

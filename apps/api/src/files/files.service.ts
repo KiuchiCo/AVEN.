@@ -8,6 +8,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { cleanFileName, downloadHeaders, formatBytes, normalizeMimeType, uniqueName } from './file-rules.js';
 import type { StorageDriver } from './storage.js';
+import { extractText, titleFromFileName } from './text-extract.js';
 import { FILE_LIMITS, STORAGE, type FileLimits } from './tokens.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -21,6 +22,8 @@ function id(value: unknown, label: string): string {
   if (typeof value !== 'string' || !uuid.test(value)) throw new BadRequestException(`${label} is invalid.`);
   return value;
 }
+
+const READ_AS_TEXT_MAX_BYTES = 5 * 1024 * 1024;
 
 @Injectable()
 export class FilesService {
@@ -184,6 +187,29 @@ export class FilesService {
     try { stored = await this.storage.get(target.storageKey); }
     catch { throw new NotFoundException('The file contents are missing from storage.'); }
     return { stream: stored.stream, headers: { ...downloadHeaders(file.name, target.mimeType, query.inline === '1'), 'Content-Length': String(stored.size) } };
+  }
+
+  /** Reads a stored text file and saves its text as a Knowledge entry, so it can be searched, linked and cited like any other. */
+  async addToKnowledge(identity: AuthenticatedIdentity, workspaceId: string, fileId: string, input: unknown) {
+    const userId = await this.member(identity, workspaceId, true);
+    const body = input && typeof input === 'object' && !Array.isArray(input) ? input as { title?: unknown; tags?: unknown } : {};
+    const file = await this.prisma.storedFile.findFirst({ where: { id: fileId, workspaceId, deletedAt: null }, select: { name: true, mimeType: true, storageKey: true, sizeBytes: true } });
+    if (!file) throw new NotFoundException('File not found in this workspace.');
+    if (file.sizeBytes > READ_AS_TEXT_MAX_BYTES) throw new BadRequestException(`Only files up to ${formatBytes(READ_AS_TEXT_MAX_BYTES)} can be read as text.`);
+    let bytes: Buffer;
+    try { const stored = await this.storage.get(file.storageKey); const parts: Buffer[] = []; for await (const chunk of stored.stream) parts.push(Buffer.from(chunk as Buffer)); bytes = Buffer.concat(parts); }
+    catch { throw new NotFoundException('The file contents are missing from storage.'); }
+    const { text, truncated } = extractText(file.name, file.mimeType, bytes);
+    const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 200) : titleFromFileName(file.name);
+    const rawTags = body.tags === undefined || body.tags === null ? [] : body.tags;
+    if (!Array.isArray(rawTags) || rawTags.length > 20 || rawTags.some((tag) => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 40)) throw new BadRequestException('Use up to 20 tags of up to 40 characters.');
+    const tags = [...new Set((rawTags as string[]).map((tag) => tag.trim().toLocaleLowerCase()))];
+    const item = await this.prisma.$transaction(async (transaction) => {
+      const created = await transaction.knowledgeItem.create({ data: { workspaceId, createdById: userId, title, content: text, tags }, select: { id: true, title: true } });
+      await transaction.workspaceActivity.create({ data: { workspaceId, actorId: userId, entityType: 'KNOWLEDGE', entityId: created.id, message: `added “${title}” to Knowledge from a file` } });
+      return created;
+    });
+    return { ...item, truncated };
   }
 
   async versions(identity: AuthenticatedIdentity, workspaceId: string, fileId: string) {
