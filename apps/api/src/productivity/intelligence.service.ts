@@ -1,5 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
+import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 @Injectable()
@@ -7,15 +8,7 @@ export class IntelligenceService {
   constructor(private readonly prisma: PrismaService) {}
 
   async briefing(identity: AuthenticatedIdentity, workspaceId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } },
-      select: { id: true },
-    });
-    if (!user) throw new ForbiddenException('Your AVEN account is not connected to a workspace yet.');
-    const membership = await this.prisma.workspaceMember.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId: user.id } }, select: { userId: true },
-    });
-    if (!membership) throw new NotFoundException('Workspace not found.');
+    const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId);
 
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -69,16 +62,7 @@ export class IntelligenceService {
   }
 
   async createPlan(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    const user = await this.prisma.user.findUnique({
-      where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } },
-      select: { id: true },
-    });
-    if (!user) throw new ForbiddenException('Your AVEN account is not connected to a workspace yet.');
-    const membership = await this.prisma.workspaceMember.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId: user.id } }, select: { userId: true, role: true },
-    });
-    if (!membership) throw new NotFoundException('Workspace not found.');
-    if (membership.role === 'GUEST') throw new ForbiddenException('Guest members have read-only access to this workspace.');
+    const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A project plan is required.');
     const body = input as Record<string, unknown>;
     const name = requiredText(body.name, 'Project name', 160);
@@ -90,16 +74,16 @@ export class IntelligenceService {
 
     return this.prisma.$transaction(async (transaction) => {
       const project = await transaction.project.create({
-        data: { workspaceId, createdById: user.id, name, description, dueAt, status: 'PLANNING' },
+        data: { workspaceId, createdById: userId, name, description, dueAt, status: 'PLANNING' },
       });
       if (tasks.length) await transaction.task.createMany({
-        data: tasks.map((title) => ({ workspaceId, projectId: project.id, createdById: user.id, title, status: 'TODO', priority: 'MEDIUM' })),
+        data: tasks.map((title) => ({ workspaceId, projectId: project.id, createdById: userId, title, status: 'TODO', priority: 'MEDIUM' })),
       });
       if (milestones.length) await transaction.projectMilestone.createMany({
         data: milestones.map((title) => ({ workspaceId, projectId: project.id, title, dueAt: null })),
       });
       await transaction.workspaceActivity.create({
-        data: { workspaceId, actorId: user.id, entityType: 'PROJECT', entityId: project.id, message: `created project plan “${name}”` },
+        data: { workspaceId, actorId: userId, entityType: 'PROJECT', entityId: project.id, message: `created project plan “${name}”` },
       });
       const created = await transaction.project.findUniqueOrThrow({ where: { id: project.id }, include: { tasks: { orderBy: { createdAt: 'asc' }, select: { id: true, title: true, status: true } }, milestones: { orderBy: { createdAt: 'asc' }, select: { id: true, title: true } } } });
       return { project: created, tasksCreated: tasks.length, milestonesCreated: milestones.length };

@@ -1,6 +1,7 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
+import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 @Injectable()
@@ -267,18 +268,8 @@ export class DatabasesService {
     return { ...base, values };
   }
 
-  private async requireMembership(identity: AuthenticatedIdentity, workspaceId: string, write = false) {
-    const user = await this.prisma.user.findUnique({
-      where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } },
-      select: { id: true },
-    });
-    if (!user) throw new ForbiddenException('Your AVEN account is not connected to a workspace yet.');
-    const membership = await this.prisma.workspaceMember.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId: user.id } },
-      select: { userId: true, role: true },
-    });
-    if (!membership) throw new NotFoundException('Workspace not found.');
-    if (write && membership.role === 'GUEST') throw new ForbiddenException('Guest members have read-only access to this workspace.');
+  private requireMembership(identity: AuthenticatedIdentity, workspaceId: string, write = false) {
+    return requireWorkspaceMember(this.prisma, identity, workspaceId, write);
   }
 }
 
