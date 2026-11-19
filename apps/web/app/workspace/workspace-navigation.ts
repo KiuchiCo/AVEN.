@@ -5,6 +5,7 @@ export const workspaceNavigation = [
   { label: 'Task Labels', href: '/workspace/labels', icon: 'labels' },
   { label: 'Projects', href: '/workspace/projects', icon: 'projects' },
   { label: 'Documents', href: '/workspace/documents', icon: 'documents' },
+  { label: 'Messages', href: '/workspace/messages', icon: 'messages' },
   { label: 'Whiteboards', href: '/workspace/whiteboards', icon: 'whiteboards' },
   { label: 'Files', href: '/workspace/files', icon: 'files' },
   { label: 'Knowledge', href: '/workspace/knowledge', icon: 'knowledge' },

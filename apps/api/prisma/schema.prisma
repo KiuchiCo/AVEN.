@@ -126,6 +126,9 @@ model User {
   aiAgents        AiAgent[]
   workflows       Workflow[]
   whiteboards     Whiteboard[]
+  channelsCreated Channel[]        @relation("ChannelCreator")
+  channelMessages ChannelMessage[] @relation("ChannelMessageAuthor")
+  channelReads    ChannelRead[]    @relation("ChannelReader")
 
   @@unique([identityIssuer, identitySubject])
   @@map("users")
@@ -175,6 +178,7 @@ model Workspace {
   workflowRuns    WorkflowRun[]
   subscription    Subscription?
   whiteboards     Whiteboard[]
+  channels        Channel[]
   billingInvoices BillingInvoice[]
 
   @@index([createdById])
@@ -988,4 +992,49 @@ model Whiteboard {
 
   @@index([workspaceId, updatedAt])
   @@map("whiteboards")
+}
+
+model Channel {
+  id          String           @id @default(uuid()) @db.Uuid
+  workspaceId String           @db.Uuid
+  createdById String           @db.Uuid
+  /// Lowercase letters, digits and hyphens.
+  name        String           @db.VarChar(40)
+  topic       String           @default("") @db.VarChar(200)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User             @relation("ChannelCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  messages    ChannelMessage[]
+  reads       ChannelRead[]
+
+  @@unique([workspaceId, name])
+  @@map("channels")
+}
+
+model ChannelMessage {
+  id          String    @id @default(uuid()) @db.Uuid
+  channelId   String    @db.Uuid
+  workspaceId String    @db.Uuid
+  authorId    String    @db.Uuid
+  body        String    @db.VarChar(4000)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  editedAt    DateTime? @db.Timestamptz(3)
+  /// A deleted message keeps its row (so the thread order holds) but its text is cleared.
+  deletedAt   DateTime? @db.Timestamptz(3)
+  channel     Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      User      @relation("ChannelMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@map("channel_messages")
+}
+
+model ChannelRead {
+  channelId  String   @db.Uuid
+  userId     String   @db.Uuid
+  lastReadAt DateTime @db.Timestamptz(3)
+  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user       User     @relation("ChannelReader", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+  @@map("channel_reads")
 }
