@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
+import { TaskBadges } from '../task-badges';
 import { TemplateLibrary } from './templates/components/TemplateLibrary';
 import { TemplateEditor } from './templates/components/editor/TemplateEditor';
 import { templateDraft } from './templates/editor/normalize';
@@ -13,7 +14,7 @@ import { csvCell, parseTaskCsv, type TaskImportRow } from './task-csv';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Member = { userId: string; displayName: string; role: string };
-type Task = { id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
+type Task = { parent?: { id: string; title: string } | null; subtasks?: { id: string; status: string }[]; recurrence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null; id: string; title: string; description: string | null; status: string; priority: string; labels: string[]; dueAt: string | null; project: { id: string; name: string } | null; assignee: { id: string; displayName: string } | null; dependsOn: { id: string; title: string; status: string }[]; blocks: { id: string; title: string; status: string }[] };
 type Milestone = { id: string; title: string; dueAt: string | null; completedAt: string | null };
 type TaskViewFilters = { projectId: string; search: string; status: string; priority: string; assigneeId: string; label: string; due: string; dependency: string; sort: string };
 type SavedTaskView = { id: string; name: string; filters: TaskViewFilters; createdBy?: { id: string; displayName: string } };
@@ -625,7 +626,7 @@ export default function ProjectsPage() {
               <h3>{column.title}<span>{records.length}</span></h3>
               {records.length === 0 ? <p className="productivity-column__empty">Nothing here yet</p> : records.map((task) => <article className="productivity-task" key={task.id}>
                 <label className="project-task-select"><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={(event) => { if (event.target.checked && selectedTaskIds.length >= 500) { setError('Bulk actions support up to 500 selected tasks.'); return; } setSelectedTaskIds((ids) => event.target.checked ? [...ids, task.id] : ids.filter((id) => id !== task.id)); }} /><span>Select task</span></label>
-                <Link href={`/workspace/tasks/${task.id}`} className="productivity-task__title">{task.title}</Link>
+                <Link href={`/workspace/tasks/${task.id}`} className="productivity-task__title">{task.title}</Link><TaskBadges task={task} />
                 {task.project && <span className="productivity-task__project">{task.project.name}</span>}
                 {(task.dependsOn.some((item) => item.status !== 'COMPLETED') || task.blocks.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status))) && <div className="productivity-task__dependency-hints">{task.dependsOn.some((item) => item.status !== 'COMPLETED') && <span className="is-blocked">Blocked by {task.dependsOn.filter((item) => item.status !== 'COMPLETED').length} prerequisite{task.dependsOn.filter((item) => item.status !== 'COMPLETED').length === 1 ? '' : 's'}</span>}{task.blocks.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)) && <span>Blocks {task.blocks.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length} open task{task.blocks.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length === 1 ? '' : 's'}</span>}</div>}
                 <TaskLabels labels={task.labels} taskTitle={task.title} disabled={busy} onSave={(labels) => void updateTask(task, 'labels', labels)} compact />

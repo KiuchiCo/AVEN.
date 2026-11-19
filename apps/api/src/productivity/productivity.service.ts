@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { documentConflict, parseBaseUpdatedAt } from './document-concurrency.js';
+import { nextDueDate, parseRecurrence } from './task-rules.js';
 import { workspaceNotificationWhere } from './notification-filter.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -321,6 +322,8 @@ export class ProductivityService {
         events: { select: { id: true, title: true, startsAt: true } },
         dependsOn: { select: { id: true, title: true, status: true } },
         blocks: { select: { id: true, title: true, status: true } },
+        parent: { select: { id: true, title: true } },
+        subtasks: { select: { id: true, title: true, status: true }, orderBy: { createdAt: 'asc' } },
       },
     });
   }
@@ -450,6 +453,7 @@ export class ProductivityService {
         const completingIds = previousTasks.filter((task) => task.status !== 'COMPLETED').map((task) => task.id);
         const blocked = completingIds.length ? await transaction.task.findMany({ where: { workspaceId, id: { in: completingIds }, dependsOn: { some: { status: { not: 'COMPLETED' } } } }, select: { id: true, title: true, dependsOn: { where: { status: { not: 'COMPLETED' } }, select: { title: true } } } }) : [];
         if (blocked.length) throw new BadRequestException(`Complete prerequisite tasks first: ${blocked.map((task) => `${task.title} → ${task.dependsOn.map((prerequisite) => prerequisite.title).join(', ')}`).join('; ')}.`);
+        await this.assertSubtasksComplete(transaction, workspaceId, completingIds);
       }
       const updatedLabels = new Map<string, string[]>();
       for (const task of previousTasks) {
@@ -469,6 +473,7 @@ export class ProductivityService {
       }
       for (const task of changedTasks) {
         if (data.status && task.status !== data.status) changedStatuses.push({ id: task.id, status: task.status });
+        if (data.status === 'COMPLETED' && task.status !== 'COMPLETED') await this.spawnNextOccurrence(transaction, workspaceId, task.id, actorId);
         const assignmentRecipients = 'assigneeId' in data && task.assigneeId !== data.assigneeId ? [task.assigneeId, data.assigneeId].filter((id): id is string => Boolean(id)) : [];
         await this.createActivity(transaction, { workspaceId, actorId, entityType: 'TASK', entityId: task.id, message: `bulk updated task “${task.title}”`, recipientScoped: true, additionalRecipientIds: assignmentRecipients });
       }
@@ -567,6 +572,7 @@ export class ProductivityService {
       select: { title: true, dependsOn: { where: { status: { not: 'COMPLETED' } }, select: { title: true } } },
     }) : [];
     if (blocked.length) throw new BadRequestException(`Complete prerequisite tasks first: ${blocked.map((task) => `${task.title} → ${task.dependsOn.map((prerequisite) => prerequisite.title).join(', ')}`).join('; ')}.`);
+    if (updatedIds.length) await this.assertSubtasksComplete(this.prisma, workspaceId, updatedIds);
     const statusChanges: { taskId: string; from: string; to: string }[] = [];
     const result = await this.prisma.$transaction(async (transaction) => {
       let created = 0;
@@ -580,6 +586,7 @@ export class ProductivityService {
           const changed = await transaction.task.updateMany({ where: { workspaceId, id: row.id }, data: { title: row.title, description: row.description, status: row.status, priority: row.priority, dueAt: row.dueAt, labels: row.labels, projectId: row.projectId, assigneeId: row.assigneeId, completedAt } });
           if (changed.count !== 1) throw new NotFoundException('A task disappeared during import. No CSV changes were saved.');
           if (previous.status !== row.status) statusChanges.push({ taskId: row.id, from: previous.status, to: row.status });
+          if (row.status === 'COMPLETED' && previous.status !== 'COMPLETED') await this.spawnNextOccurrence(transaction, workspaceId, row.id, actorId);
           const recipients = previous.assigneeId !== row.assigneeId ? [previous.assigneeId, row.assigneeId].filter((id): id is string => Boolean(id)) : row.assigneeId ? [row.assigneeId] : [];
           await this.createActivity(transaction, { workspaceId, actorId, entityType: 'TASK', entityId: row.id, message: `updated task “${row.title}” from CSV import`, recipientScoped: true, additionalRecipientIds: recipients });
           updated += 1;
@@ -598,12 +605,23 @@ export class ProductivityService {
   async createTask(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const userId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
-    const projectId = optionalUuid(body.projectId, 'Project');
+    let projectId = optionalUuid(body.projectId, 'Project');
     const assigneeId = optionalUuid(body.assigneeId, 'Assignee');
+    const parentId = optionalUuid(body.parentId, 'Parent task');
+    if (parentId) {
+      const parent = await this.prisma.task.findFirst({ where: { id: parentId, workspaceId }, select: { parentId: true, projectId: true } });
+      if (!parent) throw new NotFoundException('Parent task not found in this workspace.');
+      if (parent.parentId) throw new BadRequestException('Subtasks cannot have their own subtasks.');
+      projectId = parent.projectId;
+    }
     if (projectId) {
       const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
       if (!project) throw new NotFoundException('Project not found in this workspace.');
     }
+    const dueAt = dateField(body.dueAt, 'Due date');
+    const recurrence = parseRecurrence(body);
+    if (recurrence.recurrence && !dueAt) throw new BadRequestException('A repeating task needs a due date.');
+    if (recurrence.recurrence && parentId) throw new BadRequestException('Subtasks cannot repeat.');
     if (assigneeId) {
       const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: assigneeId } }, select: { userId: true } });
       if (!member) throw new BadRequestException('Assignee must be a member of this workspace.');
@@ -616,13 +634,15 @@ export class ProductivityService {
         createdById: userId,
         projectId,
         assigneeId,
+        parentId,
         title: textField(body.title, 'Task title', 200),
         description: optionalText(body.description, 'Task description', 5000),
         status,
         priority,
-        dueAt: dateField(body.dueAt, 'Due date'),
+        dueAt,
         labels: taskLabels(body.labels),
         completedAt: status === 'COMPLETED' ? new Date() : null,
+        ...recurrence,
       },
       include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
     });
@@ -667,7 +687,7 @@ export class ProductivityService {
   async updateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
-    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true, assigneeId: true } });
+    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true, assigneeId: true, dueAt: true, recurrence: true, parentId: true } });
     if (!previousTask) throw new NotFoundException('Task not found in this workspace.');
     const data: {
       title?: string;
@@ -678,6 +698,9 @@ export class ProductivityService {
       completedAt?: Date | null;
       assigneeId?: string | null;
       labels?: string[];
+      recurrence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null;
+      recurrenceInterval?: number;
+      recurrenceUntil?: Date | null;
     } = {};
 
     if ('title' in body) data.title = textField(body.title, 'Task title', 200);
@@ -691,6 +714,7 @@ export class ProductivityService {
         });
         if (!blockers) throw new NotFoundException('Task not found in this workspace.');
         if (blockers.dependsOn.length) throw new BadRequestException(`Complete prerequisite tasks first: ${blockers.dependsOn.map((task) => task.title).join(', ')}.`);
+        if (previousTask.status !== 'COMPLETED') await this.assertSubtasksComplete(this.prisma, workspaceId, [taskId]);
       }
       data.completedAt = data.status === 'COMPLETED' ? new Date() : null;
     }
@@ -705,9 +729,18 @@ export class ProductivityService {
       }
       data.assigneeId = assigneeId;
     }
+    Object.assign(data, parseRecurrence(body));
     if (!Object.keys(data).length) throw new BadRequestException('Provide at least one task field to update.');
+    const effectiveRecurrence = 'recurrence' in data ? data.recurrence : previousTask.recurrence;
+    if (effectiveRecurrence && !('dueAt' in data ? data.dueAt : previousTask.dueAt)) throw new BadRequestException('A repeating task needs a due date.');
+    if (effectiveRecurrence && previousTask.parentId) throw new BadRequestException('Subtasks cannot repeat.');
 
-    const result = await this.prisma.task.updateMany({ where: { id: taskId, workspaceId }, data });
+    const completing = data.status === 'COMPLETED' && previousTask.status !== 'COMPLETED';
+    const result = await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.task.updateMany({ where: { id: taskId, workspaceId }, data });
+      if (updated.count === 1 && completing) await this.spawnNextOccurrence(transaction, workspaceId, taskId, actorId);
+      return updated;
+    });
     if (result.count !== 1) throw new NotFoundException('Task not found in this workspace.');
     if (data.status && data.status !== previousTask.status) {
       await this.automations.runForTaskStatusChange(workspaceId, taskId, previousTask.status, data.status, actorId);
@@ -1089,6 +1122,32 @@ export class ProductivityService {
     const recipientIds = [...new Set([...followerIds, ...input.additionalRecipientIds])].filter((userId) => userId !== input.actorId);
     if (recipientIds.length) await transaction.activityReceipt.createMany({ data: recipientIds.map((userId) => ({ activityId: activity.id, userId, isNotificationTarget: true })), skipDuplicates: true });
     return activity;
+  }
+
+  /** A parent task cannot be completed while any of its subtasks are still open (cancelled ones don't count). */
+  private async assertSubtasksComplete(client: Pick<Prisma.TransactionClient, 'task'>, workspaceId: string, taskIds: string[]) {
+    const open = { status: { notIn: ['COMPLETED', 'CANCELLED'] as TaskStatus[] } };
+    const blocked = await client.task.findMany({ where: { workspaceId, id: { in: taskIds }, subtasks: { some: open } }, select: { title: true, subtasks: { where: open, select: { title: true } } } });
+    if (blocked.length) throw new BadRequestException(`Complete subtasks first: ${blocked.map((task) => `${task.title} → ${task.subtasks.map((subtask) => subtask.title).join(', ')}`).join('; ')}.`);
+  }
+
+  /** When a repeating task is completed, create the next one (once per task) with its checklist reset. */
+  private async spawnNextOccurrence(transaction: Prisma.TransactionClient, workspaceId: string, taskId: string, actorId: string) {
+    const task = await transaction.task.findFirst({ where: { id: taskId, workspaceId }, include: { checklistItems: { orderBy: { position: 'asc' }, select: { title: true, position: true } } } });
+    if (!task?.recurrence || !task.dueAt || task.recurrenceSpawnedAt) return null;
+    await transaction.task.update({ where: { id: task.id }, data: { recurrenceSpawnedAt: new Date() } });
+    const next = nextDueDate(task.dueAt, task.recurrence, task.recurrenceInterval, new Date());
+    if (task.recurrenceUntil && next > task.recurrenceUntil) return null;
+    const created = await transaction.task.create({
+      data: {
+        workspaceId, createdById: actorId, projectId: task.projectId, assigneeId: task.assigneeId, title: task.title, description: task.description,
+        status: 'TODO', priority: task.priority, labels: task.labels, dueAt: next,
+        recurrence: task.recurrence, recurrenceInterval: task.recurrenceInterval, recurrenceUntil: task.recurrenceUntil,
+        checklistItems: { create: task.checklistItems.map((item) => ({ workspaceId, createdById: actorId, title: item.title, position: item.position })) },
+      },
+    });
+    await this.createActivity(transaction, { workspaceId, actorId, entityType: 'TASK', entityId: created.id, message: `scheduled the next “${task.title}” for ${next.toISOString().slice(0, 10)}`, recipientScoped: Boolean(task.assigneeId), additionalRecipientIds: task.assigneeId ? [task.assigneeId] : [] });
+    return created;
   }
 
   private notificationPreferences(userId: string) {

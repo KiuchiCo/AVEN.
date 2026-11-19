@@ -13,6 +13,8 @@ export class TaskDetailService {
       project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } },
       dependsOn: { select: { id: true, title: true, status: true } },
       blocks: { select: { id: true, title: true, status: true } },
+      parent: { select: { id: true, title: true } },
+      subtasks: { select: { id: true, title: true, status: true }, orderBy: { createdAt: 'asc' } },
       _count: { select: { comments: true, checklistItems: true, followers: true } },
     } });
     if (!task) return null;

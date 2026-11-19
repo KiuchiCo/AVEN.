@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import Link from 'next/link';
 import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabelFilter, TaskLabels } from './task-labels';
+import { TaskBadges } from './task-badges';
 
 type TaskRecord = {
   id: string;
@@ -15,6 +16,9 @@ type TaskRecord = {
   dueAt: string | null;
   project: { id: string; name: string } | null;
   events: { id: string; title: string; startsAt: string }[];
+  parent?: { id: string; title: string } | null;
+  subtasks?: { id: string; status: string }[];
+  recurrence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null;
 };
 type ProjectRecord = { id: string; name: string; status: string };
 
@@ -113,7 +117,7 @@ export function MyTasksWorkspace() {
           <div className="task-list-empty"><span aria-hidden="true">☑</span><h3>{filter === 'COMPLETED' ? 'No completed tasks yet.' : 'A clear slate.'}</h3><p>{filter === 'COMPLETED' ? 'Completed tasks will be collected here.' : 'Create a task from your projects board and it will appear here.'}</p><Link href="/workspace/projects">Open projects <span aria-hidden="true">→</span></Link></div>
         ) : (
           <div className="task-list-records">{visibleTasks.map((task) => <article className="task-list-record" key={task.id}>
-            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link></h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}{task.dueAt && <time dateTime={task.dueAt}>Due {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(task.dueAt))}</time>}{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
+            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link><TaskBadges task={task} /></h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}{task.dueAt && <time dateTime={task.dueAt}>Due {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(task.dueAt))}</time>}{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
             <label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={savingId === task.id} onChange={(event) => void updateStatus(task.id, event.target.value)}>{taskStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
           </article>)}</div>
         )}
@@ -251,7 +255,7 @@ export function InboxWorkspace() {
         <div className="inbox-filters" role="group" aria-label="Filter inbox tasks">{filters.map((item) => <button type="button" key={item.key} aria-pressed={filter === item.key} className={filter === item.key ? 'is-active' : ''} onClick={() => setFilter(item.key)}>{item.label}<span>{item.count}</span></button>)}</div><TaskLabelFilter labels={allLabels} value={labelFilter} onChange={setLabelFilter} />
         {loading ? <p className="productivity-message">Loading your inbox…</p> : visibleFilteredTasks.length === 0 ? <div className="task-list-empty"><span aria-hidden="true">✓</span><h3>{filter === 'ATTENTION' ? 'You’re all caught up.' : 'Nothing in this queue.'}</h3><p>{filter === 'ATTENTION' ? 'No overdue, near-term, or high-priority work needs your attention.' : 'Tasks will appear here when they match this filter.'}</p><Link href="/workspace/projects">Open projects <span aria-hidden="true">→</span></Link></div> : (
           <div className="task-list-records">{visibleFilteredTasks.map((task) => <article className="task-list-record inbox-task" key={task.id}>
-            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link></h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}<time className={task.dueAt && task.dueAt.slice(0, 10) < todayKey ? 'inbox-task__overdue' : ''}>{dueLabel(task.dueAt)}</time>{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
+            <div className="task-list-record__main"><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><h3><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link><TaskBadges task={task} /></h3><div className="task-list-record__meta">{task.project && <Link href="/workspace/projects">{task.project.name}</Link>}<time className={task.dueAt && task.dueAt.slice(0, 10) < todayKey ? 'inbox-task__overdue' : ''}>{dueLabel(task.dueAt)}</time>{task.events.length > 0 && <span>{task.events.length === 1 ? 'Scheduled' : `${task.events.length} calendar events`}</span>}</div><TaskLabels labels={task.labels} compact /></div>
             <label><span className="visually-hidden">Status for {task.title}</span><select value={task.status} disabled={savingId === task.id} onChange={(event) => void updateStatus(task.id, event.target.value)}>{taskStatuses.slice(0, 4).map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
           </article>)}</div>
         )}

@@ -31,11 +31,24 @@ export default function TaskDetailPage() {
     void loadProjectTasks();
     return () => { live = false; };
   }, [getToken, task?.id, task?.project, workspace.id]);
-  async function updateTask(fields: Record<string, string | null>) { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(fields) }); if (!response.ok) throw new Error('Could not update this task.'); await reload(); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : 'Could not update this task.'); } finally { setBusy(false); } }
+  async function send(method: 'POST' | 'PATCH', path: string, body: Record<string, unknown>, fallback: string): Promise<boolean> {
+    const token = await getToken(); if (!token || !apiBase) return false;
+    setBusy(true); setErrorMessage('');
+    try {
+      const response = await fetch(`${apiBase}/workspaces/${workspace.id}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      if (!response.ok) { const problem = await response.json().catch(() => null) as { message?: string } | null; throw new Error(problem?.message ?? fallback); }
+      await reload();
+      return true;
+    } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : fallback); return false; }
+    finally { setBusy(false); }
+  }
+  const updateTask = (fields: Record<string, string | number | null>) => send('PATCH', `/tasks/${taskId}`, fields, 'Could not update this task.');
+  const addSubtask = (title: string) => send('POST', '/tasks', { title, parentId: taskId }, 'Could not add the subtask.');
+  const toggleSubtask = (subtaskId: string, completed: boolean) => { void send('PATCH', `/tasks/${subtaskId}`, { status: completed ? 'COMPLETED' : 'TODO' }, 'Could not update the subtask.'); };
   async function duplicateTask() { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}/duplicate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => null) as { id?: string; message?: string } | null; if (!response.ok || !body?.id) throw new Error(body?.message ?? 'Could not duplicate this task.'); router.push(`/workspace/tasks/${body.id}`); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : 'Could not duplicate this task.'); } finally { setBusy(false); } }
   async function deleteTask() { if (!window.confirm('Delete this task? Its checklist, comments, and follower links will also be removed.')) return; const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => null) as { message?: string } | null; if (!response.ok) throw new Error(body?.message ?? 'Could not delete this task.'); router.push(task?.project ? `/workspace/projects/${task.project.id}` : '/workspace/tasks'); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : 'Could not delete this task.'); } finally { setBusy(false); } }
   async function saveDependencies(ids: string[]) { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}/dependencies`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ dependsOnTaskIds: ids }) }); const body = await response.json().catch(() => null) as { message?: string } | null; if (!response.ok) throw new Error(body?.message ?? 'Could not save task prerequisites.'); await reload(); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : 'Could not save task prerequisites.'); } finally { setBusy(false); } }
   if (loading) return <TaskDetailLoading />;
   if (error || !task) return <div className="workspace-section-page task-detail"><TaskDetailError message={error || errorMessage || 'Task unavailable.'} /><Link href="/workspace/tasks">Back to My Tasks</Link></div>;
-  return <TaskDetailView task={task} currentUserId={user.id} members={members} projectTasks={projectTasks} busy={busy} errorMessage={errorMessage} onUpdate={(fields) => void updateTask(fields)} onDuplicate={() => void duplicateTask()} onDelete={() => void deleteTask()} onSaveDependencies={(ids) => void saveDependencies(ids)} />;
+  return <TaskDetailView task={task} currentUserId={user.id} members={members} projectTasks={projectTasks} busy={busy} errorMessage={errorMessage} onUpdate={(fields) => void updateTask(fields)} onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onDuplicate={() => void duplicateTask()} onDelete={() => void deleteTask()} onSaveDependencies={(ids) => void saveDependencies(ids)} />;
 }
