@@ -1,4 +1,4 @@
-export type TaskImportRow = { id?: string | null; title: string; description: string | null; status: string; priority: string; dueAt: string | null; labels: string[]; projectId?: string | null; assigneeId?: string | null };
+export type TaskImportRow = { id?: string | null; title: string; description: string | null; status: string; priority: string; startAt?: string | null; dueAt: string | null; labels: string[]; projectId?: string | null; assigneeId?: string | null };
 
 export function csvCell(value: string) {
   const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
@@ -62,9 +62,13 @@ export function parseTaskCsv(source: string): TaskImportRow[] {
     if (!statuses.includes(rawStatus)) throw new Error(`Status on row ${index + 2} must be TODO, IN_PROGRESS, IN_REVIEW, COMPLETED, or CANCELLED.`);
     if (!priorities.includes(rawPriority)) throw new Error(`Priority on row ${index + 2} must be LOW, MEDIUM, HIGH, or URGENT.`);
     if (dueAt && !Number.isFinite(Date.parse(dueAt))) throw new Error(`Due date on row ${index + 2} is not a valid date.`);
+    const startAt = valueAt(values, 'startAt') || null;
+    if (startAt && !Number.isFinite(Date.parse(startAt))) throw new Error(`Start date on row ${index + 2} is not a valid date.`);
+    if (startAt && dueAt && Date.parse(startAt) > Date.parse(dueAt)) throw new Error(`Start date on row ${index + 2} is after its due date.`);
     const labels = valueAt(values, 'labels').split(';').map((label) => label.trim().toLocaleLowerCase()).filter(Boolean);
     if (labels.length > 10 || labels.some((label) => label.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(label))) throw new Error(`Labels on row ${index + 2} must be up to 10 short words using letters, numbers, underscores, or hyphens.`);
     const result: TaskImportRow = { id, title, description: description || null, status: rawStatus, priority: rawPriority, dueAt, labels: [...new Set(labels)] };
+    if (headers.includes('startat')) result.startAt = startAt;
     if (headers.includes('projectid')) result.projectId = valueAt(values, 'projectid') || null;
     if (headers.includes('assigneeid')) result.assigneeId = valueAt(values, 'assigneeid') || null;
     return result;

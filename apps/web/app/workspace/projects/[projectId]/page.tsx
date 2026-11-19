@@ -164,8 +164,8 @@ export default function ProjectWorkspacePage() {
 
   function exportProjectTasks() {
     if (!project || tasks.length === 0) return;
-    const headers = ['id', 'title', 'description', 'status', 'priority', 'dueAt', 'projectId', 'assigneeId', 'labels'];
-    const rows = tasks.map((task) => [task.id, task.title, task.description ?? '', task.status, task.priority, task.dueAt ?? '', project.id, task.assignee?.id ?? '', task.labels.join(';')]);
+    const headers = ['id', 'title', 'description', 'status', 'priority', 'startAt', 'dueAt', 'projectId', 'assigneeId', 'labels'];
+    const rows = tasks.map((task) => [task.id, task.title, task.description ?? '', task.status, task.priority, task.startAt ?? '', task.dueAt ?? '', project.id, task.assignee?.id ?? '', task.labels.join(';')]);
     const csvCell = (value: string) => {
       const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
       return `"${safe.replaceAll('"', '""')}"`;

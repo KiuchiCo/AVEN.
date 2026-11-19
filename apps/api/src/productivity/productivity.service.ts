@@ -500,7 +500,7 @@ export class ProductivityService {
     if (new Set(taskIds).size !== taskIds.length) throw new BadRequestException('A task can only be selected once.');
     const sources = await this.prisma.task.findMany({
       where: { workspaceId, id: { in: taskIds } },
-      select: { id: true, projectId: true, title: true, description: true, priority: true, labels: true, dueAt: true, checklistItems: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }], select: { title: true, position: true } } },
+      select: { id: true, projectId: true, title: true, description: true, priority: true, labels: true, startAt: true, dueAt: true, checklistItems: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }], select: { title: true, position: true } } },
     });
     if (sources.length !== taskIds.length) throw new NotFoundException('One or more selected tasks are not in this workspace.');
     const byId = new Map(sources.map((source) => [source.id, source]));
@@ -514,7 +514,7 @@ export class ProductivityService {
         const duplicate = await transaction.task.create({ data: {
           workspaceId, projectId: source.projectId, createdById: actorId, title,
           description: source.description, status: 'TODO', priority: source.priority,
-          labels: source.labels, dueAt: source.dueAt, completedAt: null,
+          labels: source.labels, startAt: source.startAt, dueAt: source.dueAt, completedAt: null,
         }, select: { id: true } });
         if (source.checklistItems.length) {
           await transaction.taskChecklistItem.createMany({ data: source.checklistItems.map((item) => ({ workspaceId, taskId: duplicate.id, createdById: actorId, title: item.title, position: item.position })) });
@@ -547,6 +547,8 @@ export class ProductivityService {
         description: optionalText(row.description, 'Task description', 5000),
         status, priority: enumField(row.priority, taskPriorities, 'Task priority', 'MEDIUM'),
         dueAt: dateField(row.dueAt, 'Task due date'),
+        // undefined means the file has no start column, so an update leaves the stored start date alone.
+        startAt: 'startAt' in row ? dateField(row.startAt, 'Task start date') : undefined,
         labels: taskLabels(row.labels),
         projectId: 'projectId' in row ? optionalUuid(row.projectId, 'Task project') : projectId,
         assigneeId: 'assigneeId' in row ? optionalUuid(row.assigneeId, 'Task assignee') : null,
@@ -568,7 +570,7 @@ export class ProductivityService {
       const assignees = await this.prisma.workspaceMember.findMany({ where: { workspaceId, userId: { in: assigneeIds } }, select: { userId: true } });
       if (assignees.length !== assigneeIds.length) throw new BadRequestException('Every CSV assignee ID must belong to this workspace.');
     }
-    const existingTasks = ids.length ? await this.prisma.task.findMany({ where: { workspaceId, id: { in: ids } }, select: { id: true, title: true, description: true, status: true, priority: true, dueAt: true, labels: true, projectId: true, assigneeId: true, completedAt: true } }) : [];
+    const existingTasks = ids.length ? await this.prisma.task.findMany({ where: { workspaceId, id: { in: ids } }, select: { id: true, title: true, description: true, status: true, priority: true, startAt: true, dueAt: true, labels: true, projectId: true, assigneeId: true, completedAt: true } }) : [];
     if (existingTasks.length !== ids.length) throw new NotFoundException('One or more task IDs are not in this workspace. Re-export current tasks before updating.');
     const existingById = new Map(existingTasks.map((task) => [task.id, task]));
     const updatedIds = rows.filter((row) => row.id && existingById.get(row.id)?.status !== 'COMPLETED' && row.status === 'COMPLETED').map((row) => row.id!);
@@ -586,9 +588,10 @@ export class ProductivityService {
         if (row.id) {
           const previous = existingById.get(row.id)!;
           const completedAt = row.status === 'COMPLETED' ? (previous.status === 'COMPLETED' ? previous.completedAt : new Date()) : null;
-          const unchanged = previous.title === row.title && previous.description === row.description && previous.status === row.status && previous.priority === row.priority && (previous.dueAt?.getTime() ?? null) === (row.dueAt?.getTime() ?? null) && JSON.stringify(previous.labels) === JSON.stringify(row.labels) && previous.projectId === row.projectId && previous.assigneeId === row.assigneeId;
+          assertDateOrder(row.startAt === undefined ? previous.startAt : row.startAt, row.dueAt);
+          const unchanged = (row.startAt === undefined || (previous.startAt?.getTime() ?? null) === (row.startAt?.getTime() ?? null)) && previous.title === row.title && previous.description === row.description && previous.status === row.status && previous.priority === row.priority && (previous.dueAt?.getTime() ?? null) === (row.dueAt?.getTime() ?? null) && JSON.stringify(previous.labels) === JSON.stringify(row.labels) && previous.projectId === row.projectId && previous.assigneeId === row.assigneeId;
           if (unchanged) continue;
-          const changed = await transaction.task.updateMany({ where: { workspaceId, id: row.id }, data: { title: row.title, description: row.description, status: row.status, priority: row.priority, dueAt: row.dueAt, labels: row.labels, projectId: row.projectId, assigneeId: row.assigneeId, completedAt } });
+          const changed = await transaction.task.updateMany({ where: { workspaceId, id: row.id }, data: { title: row.title, description: row.description, status: row.status, priority: row.priority, dueAt: row.dueAt, ...(row.startAt !== undefined ? { startAt: row.startAt } : {}), labels: row.labels, projectId: row.projectId, assigneeId: row.assigneeId, completedAt } });
           if (changed.count !== 1) throw new NotFoundException('A task disappeared during import. No CSV changes were saved.');
           if (previous.status !== row.status) statusChanges.push({ taskId: row.id, from: previous.status, to: row.status });
           if (row.status === 'COMPLETED' && previous.status !== 'COMPLETED') await this.spawnNextOccurrence(transaction, workspaceId, row.id, actorId);
@@ -596,7 +599,8 @@ export class ProductivityService {
           await this.createActivity(transaction, { workspaceId, actorId, entityType: 'TASK', entityId: row.id, message: `updated task “${row.title}” from CSV import`, recipientScoped: true, additionalRecipientIds: recipients });
           updated += 1;
         } else {
-          const task = await transaction.task.create({ data: { workspaceId, createdById: actorId, projectId: row.projectId, assigneeId: row.assigneeId, title: row.title, description: row.description, status: row.status, priority: row.priority, dueAt: row.dueAt, labels: row.labels, completedAt: row.status === 'COMPLETED' ? new Date() : null }, select: { id: true } });
+          assertDateOrder(row.startAt, row.dueAt);
+          const task = await transaction.task.create({ data: { workspaceId, createdById: actorId, projectId: row.projectId, assigneeId: row.assigneeId, title: row.title, description: row.description, status: row.status, priority: row.priority, startAt: row.startAt ?? null, dueAt: row.dueAt, labels: row.labels, completedAt: row.status === 'COMPLETED' ? new Date() : null }, select: { id: true } });
           await this.createActivity(transaction, { workspaceId, actorId, entityType: 'TASK', entityId: task.id, message: `created task “${row.title}” from CSV import`, recipientScoped: true, additionalRecipientIds: row.assigneeId ? [row.assigneeId] : [] });
           created += 1;
         }
@@ -664,7 +668,7 @@ export class ProductivityService {
     const source = await this.prisma.task.findFirst({
       where: { id: taskId, workspaceId },
       select: {
-        id: true, projectId: true, title: true, description: true, priority: true, labels: true, dueAt: true,
+        id: true, projectId: true, title: true, description: true, priority: true, labels: true, startAt: true, dueAt: true,
         checklistItems: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }], select: { title: true, position: true } },
       },
     });
@@ -676,7 +680,7 @@ export class ProductivityService {
         data: {
           workspaceId, projectId: source.projectId, createdById: actorId, title,
           description: source.description, status: 'TODO', priority: source.priority,
-          labels: source.labels, dueAt: source.dueAt, completedAt: null,
+          labels: source.labels, startAt: source.startAt, dueAt: source.dueAt, completedAt: null,
         },
         include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
       });

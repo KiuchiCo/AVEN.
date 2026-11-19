@@ -54,3 +54,14 @@ test('limits imports to 200 task rows', () => {
   const rows = ['title', ...Array.from({ length: 201 }, (_, index) => `Task ${index + 1}`)];
   assert.throws(() => parseTaskCsv(rows.join('\n')), /Import no more than 200 tasks/);
 });
+
+test('an optional startAt column is read, validated, and not required for round trips', () => {
+  const withStart = ['id', 'title', 'description', 'status', 'priority', 'startAt', 'dueAt', 'projectId', 'assigneeId', 'labels'];
+  const line = (values) => withStart.map((header) => csvCell(String(({ id: '', title: 'A', description: '', status: 'TODO', priority: 'LOW', startAt: '', dueAt: '', projectId: '', assigneeId: '', labels: '', ...values })[header]))).join(',');
+  const parse = (text) => parseTaskCsv(text);
+  assert.equal(parse(`${withStart.join(',')}\n${line({ startAt: '2026-03-01', dueAt: '2026-03-05' })}`)[0].startAt, '2026-03-01');
+  assert.throws(() => parse(`${withStart.join(',')}\n${line({ startAt: 'soon' })}`), /Start date/);
+  assert.throws(() => parse(`${withStart.join(',')}\n${line({ startAt: '2026-03-09', dueAt: '2026-03-05' })}`), /after its due date/);
+  const old = parse(`${headers.join(',')}\n${exportRow()}`)[0];
+  assert.equal('startAt' in old, false, 'a file without the column leaves start dates alone');
+});
