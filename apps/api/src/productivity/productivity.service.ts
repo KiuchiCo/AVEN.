@@ -4,6 +4,7 @@ import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { documentConflict, eventConflict, parseBaseUpdatedAt } from './document-concurrency.js';
 import { parseIcs } from './ics.js';
+import { documentPlainText } from './document-text.js';
 import { assertDateOrder, nextDueDate, parseRecurrence } from './task-rules.js';
 import { WorkflowTriggersService } from '../workflows/workflow-triggers.service.js';
 import { workspaceNotificationWhere } from './notification-filter.js';
@@ -1292,14 +1293,6 @@ function validateRecurrence(recurrence: string | null, until: Date | null, start
 
 function invalidText(message: string): never {
   throw new BadRequestException(message);
-}
-
-function documentPlainText(value: string) {
-  try {
-    const parsed = JSON.parse(value) as { format?: string; blocks?: { text?: string }[] };
-    if (parsed.format === 'aven-doc-v1' && Array.isArray(parsed.blocks)) return parsed.blocks.map((block) => block.text ?? '').filter(Boolean).join(' ');
-  } catch { /* Older documents store plain text. */ }
-  return value;
 }
 
 function excerpt(content: string, needle: string) {

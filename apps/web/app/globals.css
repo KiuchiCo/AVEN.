@@ -4082,3 +4082,17 @@ body {
   .aven-calendar__weekdays { font-size: 9px; }
   .aven-calendar__day { min-height: 58px; padding: 3px; gap: 3px; overflow: hidden; }
 }
+
+.document-table { display: grid; gap: 6px; }
+.document-table__scroll { overflow-x: auto; }
+.document-table table { border-collapse: collapse; min-width: 100%; }
+.document-table td { padding: 0; border: 1px solid var(--aven-border); min-width: 110px; }
+.document-table td input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 0; background: transparent; color: var(--aven-charcoal); font: 14px var(--aven-interface-font); }
+.document-table td.document-table__edge, .document-table tr.document-table__edge td { min-width: 0; border: 0; text-align: center; }
+.document-table button, .document-image__actions button, .document-image__choices button { padding: 3px 10px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); color: var(--aven-charcoal); font: 500 12px var(--aven-interface-font); cursor: pointer; }
+.document-table__actions, .document-image__actions { display: flex; gap: 8px; }
+.document-image { display: grid; gap: 8px; }
+.document-image__img { max-width: 100%; max-height: 520px; border-radius: 8px; object-fit: contain; justify-self: start; }
+.document-image__missing { margin: 0; color: var(--aven-muted); font-size: 13px; }
+.document-image__choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.document-image__caption { padding: 7px 10px; border: 1px solid var(--aven-border); border-radius: 8px; background: transparent; color: var(--aven-charcoal); font: 13px var(--aven-interface-font); }

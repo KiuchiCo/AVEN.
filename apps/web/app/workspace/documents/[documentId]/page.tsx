@@ -6,9 +6,10 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../../workspace-shell';
 import { AttachmentsPanel } from '../../files/attachments-panel';
+import { ImageBlock, TableBlock } from './document-blocks';
 
-type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER';
-type Block = { id: string; type: BlockType; text: string; checked?: boolean };
+type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER' | 'TABLE' | 'IMAGE';
+type Block = { id: string; type: BlockType; text: string; checked?: boolean; rows?: string[][]; fileId?: string };
 type Document = { id: string; title: string; content: string; updatedAt: string; project: { id: string; name: string } | null };
 type Version = { id: string; title: string; label: string | null; createdAt: string; createdBy: { displayName: string } };
 type Comment = { id: string; body: string; createdAt: string; resolvedAt: string | null; createdBy: { id: string; displayName: string } };
@@ -17,10 +18,11 @@ class ConflictError extends Error { constructor(message: string, readonly curren
 const blockTypes: { type: BlockType; label: string }[] = [
   { type: 'PARAGRAPH', label: 'Paragraph' }, { type: 'HEADING_1', label: 'Heading 1' }, { type: 'HEADING_2', label: 'Heading 2' },
   { type: 'BULLET', label: 'Bulleted list' }, { type: 'NUMBERED', label: 'Numbered list' }, { type: 'TODO', label: 'To-do item' },
-  { type: 'QUOTE', label: 'Quote' }, { type: 'CODE', label: 'Code block' }, { type: 'CALLOUT', label: 'Callout' }, { type: 'DIVIDER', label: 'Divider' },
+  { type: 'QUOTE', label: 'Quote' }, { type: 'CODE', label: 'Code block' }, { type: 'CALLOUT', label: 'Callout' }, { type: 'DIVIDER', label: 'Divider' }, { type: 'TABLE', label: 'Table' }, { type: 'IMAGE', label: 'Image' },
 ];
 
 function createBlock(type: BlockType = 'PARAGRAPH'): Block { return { id: crypto.randomUUID(), type, text: '', checked: false }; }
+const readOnlyRole = (role: string | null) => role === 'GUEST';
 function parseBlocks(content: string): Block[] {
   try {
     const value = JSON.parse(content) as { format?: string; blocks?: Block[] };
@@ -204,7 +206,7 @@ export default function DocumentEditorPage() {
           <input className="document-studio__title" value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={200} aria-label="Document title" />
           <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}`} key={block.id}>
             <div className="document-block__controls"><select aria-label={`Block type for block ${index + 1}`} value={block.type} onChange={(event) => changeBlock(block.id, { type: event.target.value as BlockType })}>{blockTypes.map((option) => <option value={option.type} key={option.type}>{option.label}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label="Move block up">↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label="Move block down">↓</button><button type="button" onClick={() => removeBlock(block.id)} aria-label="Delete block">×</button></div>
-            {block.type === 'DIVIDER' ? <hr /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label="Mark to-do complete" />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span><textarea id={`block-${block.id}`} value={block.text} onChange={(event) => changeBlock(block.id, { text: event.target.value })} placeholder={block.type === 'CODE' ? 'Write code…' : block.type === 'CALLOUT' ? 'Add a useful callout…' : 'Write something…'} aria-label={`${blockTypes.find((option) => option.type === block.type)?.label ?? 'Text'} block ${index + 1}`} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}
+            {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label="Mark to-do complete" />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span><textarea id={`block-${block.id}`} value={block.text} onChange={(event) => changeBlock(block.id, { text: event.target.value })} placeholder={block.type === 'CODE' ? 'Write code…' : block.type === 'CALLOUT' ? 'Add a useful callout…' : 'Write something…'} aria-label={`${blockTypes.find((option) => option.type === block.type)?.label ?? 'Text'} block ${index + 1}`} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}
             <div className="document-block__actions">{block.type === 'TODO' && block.text.trim() && <button type="button" disabled={creatingTask === block.id} onClick={() => void createTaskFromBlock(block)}>{creatingTask === block.id ? 'Creating…' : 'Create task'}</button>}<button className="document-block__insert" type="button" onClick={() => insertBlock(block.id)}>＋ Add below</button></div>
           </section>)}</div>
         </main>
