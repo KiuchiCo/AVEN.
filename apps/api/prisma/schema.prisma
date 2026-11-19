@@ -119,19 +119,20 @@ model User {
   completedTaskChecklistItems TaskChecklistItem[] @relation("TaskChecklistCompleter")
   taskFollows                 TaskFollower[]
 
-  fileFolders        FileFolder[]     @relation("FileFolderCreator")
-  storedFiles        StoredFile[]     @relation("FileCreator")
-  fileVersions       FileVersion[]    @relation("FileVersionCreator")
-  fileAttachments    FileAttachment[] @relation("FileAttachmentCreator")
-  aiConversations    AiConversation[]
-  aiUsage            AiUsage[]
-  aiAgents           AiAgent[]
-  workflows          Workflow[]
-  whiteboards        Whiteboard[]
-  channelsCreated    Channel[]        @relation("ChannelCreator")
-  channelMessages    ChannelMessage[] @relation("ChannelMessageAuthor")
-  channelReads       ChannelRead[]    @relation("ChannelReader")
-  channelMemberships ChannelMember[]  @relation("ChannelParticipant")
+  fileFolders         FileFolder[]         @relation("FileFolderCreator")
+  storedFiles         StoredFile[]         @relation("FileCreator")
+  fileVersions        FileVersion[]        @relation("FileVersionCreator")
+  fileAttachments     FileAttachment[]     @relation("FileAttachmentCreator")
+  aiConversations     AiConversation[]
+  aiUsage             AiUsage[]
+  aiAgents            AiAgent[]
+  workflows           Workflow[]
+  whiteboards         Whiteboard[]
+  channelsCreated     Channel[]            @relation("ChannelCreator")
+  channelMessages     ChannelMessage[]     @relation("ChannelMessageAuthor")
+  channelReads        ChannelRead[]        @relation("ChannelReader")
+  calendarConnections CalendarConnection[] @relation("CalendarConnector")
+  channelMemberships  ChannelMember[]      @relation("ChannelParticipant")
 
   @@unique([identityIssuer, identitySubject])
   @@map("users")
@@ -170,19 +171,20 @@ model Workspace {
   taskFollowers      TaskFollower[]
   taskViews          WorkspaceTaskView[]
 
-  fileFolders     FileFolder[]
-  storedFiles     StoredFile[]
-  fileVersions    FileVersion[]
-  fileAttachments FileAttachment[]
-  aiConversations AiConversation[]
-  aiUsage         AiUsage[]
-  aiAgents        AiAgent[]
-  workflows       Workflow[]
-  workflowRuns    WorkflowRun[]
-  subscription    Subscription?
-  whiteboards     Whiteboard[]
-  channels        Channel[]
-  billingInvoices BillingInvoice[]
+  fileFolders         FileFolder[]
+  storedFiles         StoredFile[]
+  fileVersions        FileVersion[]
+  fileAttachments     FileAttachment[]
+  aiConversations     AiConversation[]
+  aiUsage             AiUsage[]
+  aiAgents            AiAgent[]
+  workflows           Workflow[]
+  workflowRuns        WorkflowRun[]
+  subscription        Subscription?
+  whiteboards         Whiteboard[]
+  channels            Channel[]
+  calendarConnections CalendarConnection[]
+  billingInvoices     BillingInvoice[]
 
   @@index([createdById])
   @@map("workspaces")
@@ -571,6 +573,8 @@ model CalendarEvent {
   workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   task               Task?               @relation(fields: [taskId], references: [id], onDelete: SetNull)
   project            Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  externalLinks ExternalEventLink[]
 
   @@unique([workspaceId, externalUid])
   @@index([workspaceId, startsAt])
@@ -1070,4 +1074,59 @@ model ChannelRead {
 
   @@id([channelId, userId])
   @@map("channel_reads")
+}
+
+enum CalendarProviderKey {
+  GOOGLE
+  MICROSOFT
+}
+
+/// A calendar account linked to a workspace, by one person. Tokens are stored encrypted, never in clear text.
+model CalendarConnection {
+  id              String              @id @default(uuid()) @db.Uuid
+  workspaceId     String              @db.Uuid
+  connectedById   String              @db.Uuid
+  provider        CalendarProviderKey
+  accountEmail    String              @db.VarChar(320)
+  accessTokenEnc  String              @db.Text
+  refreshTokenEnc String              @db.Text
+  expiresAt       DateTime            @db.Timestamptz(3)
+  /// Also send events made in AVEN to this calendar. Off unless the person asked for it.
+  pushEnabled     Boolean             @default(false)
+  /// ACTIVE, or NEEDS_ATTENTION when the provider refused our tokens and the person must reconnect.
+  status          String              @default("ACTIVE") @db.VarChar(20)
+  lastSyncedAt    DateTime?           @db.Timestamptz(3)
+  lastError       String?             @db.VarChar(300)
+  /// Set while a sync runs, so two servers never sync the same account at once. Older than ten minutes counts as abandoned.
+  syncingSince    DateTime?           @db.Timestamptz(3)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(3)
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connectedBy     User                @relation("CalendarConnector", fields: [connectedById], references: [id], onDelete: Cascade)
+  links           ExternalEventLink[]
+
+  @@unique([workspaceId, provider, accountEmail])
+  @@index([status, lastSyncedAt])
+  @@map("calendar_connections")
+}
+
+/// Pairs an AVEN event with the same event on a provider, so syncing never creates a duplicate.
+/// A link with no event means the event was deleted in AVEN: it is kept so the deletion is not undone by the next sync.
+model ExternalEventLink {
+  id            String             @id @default(uuid()) @db.Uuid
+  connectionId  String             @db.Uuid
+  eventId       String?            @db.Uuid
+  externalId    String             @db.VarChar(255)
+  /// The provider's version marker for the last copy we saw.
+  etag          String?            @db.VarChar(255)
+  /// The AVEN event's updatedAt when the two were last made equal.
+  localSyncedAt DateTime           @db.Timestamptz(3)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  connection    CalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  event         CalendarEvent?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([connectionId, externalId])
+  @@index([connectionId, eventId])
+  @@index([eventId])
+  @@map("external_event_links")
 }

@@ -74,7 +74,26 @@ Practise a restore into a scratch database before you need one. A backup you hav
 
 Create three monthly prices in Stripe (A$9.99, A$19.99, A$29.99 per seat) and set `STRIPE_PRICE_PLUS|PRO|BUSINESS`. Add a webhook endpoint at `POST <api>/api/v1/billing/webhook` for `checkout.session.completed`, `customer.subscription.*` and `invoice.*`, and set `STRIPE_WEBHOOK_SECRET`. Plan limits can be tuned without code through `BILLING_PLAN_OVERRIDES`.
 
-## 8. Security notes
+## 8. Calendar sync (Google Calendar and Outlook)
+
+Owners and administrators can connect a calendar under **Settings → Connected apps**. AVEN imports events from the last 30 days to the next 6 months into the workspace calendar, and re-checks every five minutes (or on **Sync now**). Events from a connected calendar are visible to everyone in the workspace.
+
+**Set up Google:** in Google Cloud Console create a project, enable the *Google Calendar API*, configure the OAuth consent screen, and create an *OAuth client ID* of type *Web application*. Add `<API_PUBLIC_URL>/api/v1/integrations/calendar/callback` as an authorised redirect URI. Put the client ID and secret in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. AVEN asks for `calendar.events` access and the account's email address.
+
+**Set up Outlook:** in Microsoft Entra admin centre register an application (accounts in any organisational directory and personal accounts), add the same redirect URI as a *Web* redirect, create a client secret, and put them in `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`. AVEN asks for `Calendars.ReadWrite`, `User.Read` and `offline_access`.
+
+Both need `TOKEN_ENCRYPTION_KEY` (32 random bytes, base64: `openssl rand -base64 32`). Sign-in tokens are stored encrypted with it and are never sent to the browser. If you lose the key, people reconnect their calendars; nothing else is affected.
+
+How it behaves, so nothing surprises you:
+- Events are matched by the provider's own id, never by title, so a sync can't create duplicates. Running it twice changes nothing.
+- A change on one side is copied to the other. If an event was edited in both places, the later edit wins and a note is added to the activity feed.
+- An event deleted on the provider is removed from AVEN (if it falls inside the synced window). An event deleted in AVEN stays deleted: it is not re-imported.
+- Sending AVEN events *to* the calendar is off by default and chosen per connection. An event made in AVEN goes to one calendar only, and repeating events made in AVEN are not sent, because providers use their own repeat rules.
+- If the provider revokes access, the connection shows *Needs to be reconnected* and nothing is lost.
+- Disconnecting forgets the tokens; events already imported stay in AVEN but stop updating.
+- Run syncing on one API server (set `CALENDAR_SYNC_DISABLED=true` on others). A claim on each connection stops two servers syncing the same account at once.
+
+## 9. Security notes
 
 - Every request is tied to a Clerk identity and checked against workspace membership on the server; guests are read-only everywhere. Other workspaces' data returns 404.
 - The API sends `nosniff`, `frame-ancestors 'none'` and related headers. The web app sends `nosniff`, `X-Frame-Options: SAMEORIGIN`, a referrer policy and a permissions policy. It does not yet send a Content-Security-Policy: Clerk loads scripts and frames from its own domains, so a correct policy needs testing against your Clerk instance.

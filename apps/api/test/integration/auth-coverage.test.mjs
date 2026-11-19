@@ -7,6 +7,7 @@ const publicRoutes = new Map([
   ['GET /api/v1/health', 'liveness probe'],
   ['GET /api/v1/health/ready', 'readiness probe'],
   ['POST /api/v1/billing/webhook', 'called by the payment provider; protected by its signature'],
+  ['GET /api/v1/integrations/calendar/callback', 'the calendar provider sends the browser here after sign-in; the signed, expiring state proves who started it'],
   ['GET /api/v1/invitations/:token', 'shows the invited person which workspace invited them; the unguessable token is the credential'],
 ]);
 
