@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
-import { documentConflict, parseBaseUpdatedAt } from './document-concurrency.js';
+import { documentConflict, eventConflict, parseBaseUpdatedAt } from './document-concurrency.js';
+import { parseIcs } from './ics.js';
 import { nextDueDate, parseRecurrence } from './task-rules.js';
 import { workspaceNotificationWhere } from './notification-filter.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -1061,6 +1062,7 @@ export class ProductivityService {
   async updateCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, eventId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
+    const baseUpdatedAt = parseBaseUpdatedAt(body.baseUpdatedAt);
     const existing = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, select: { id: true, title: true, startsAt: true, endsAt: true, recurrence: true, recurrenceInterval: true, recurrenceUntil: true, recurrenceTimeZone: true } });
     if (!existing) throw new NotFoundException('Calendar event not found in this workspace.');
     const data: { title?: string; startsAt?: Date; endsAt?: Date | null; taskId?: string | null; projectId?: string | null; description?: string | null; location?: string | null; type?: typeof calendarEventTypes[number]; isAllDay?: boolean; recurrence?: typeof calendarRecurrences[number] | null; recurrenceInterval?: number; recurrenceUntil?: Date | null; recurrenceTimeZone?: string | null } = {};
@@ -1094,9 +1096,50 @@ export class ProductivityService {
     const recurrenceUntil = 'recurrenceUntil' in data ? data.recurrenceUntil : existing.recurrenceUntil;
     const recurrenceTimeZone = 'recurrenceTimeZone' in data ? data.recurrenceTimeZone : existing.recurrenceTimeZone;
     validateRecurrence(recurrence ?? null, recurrenceUntil ?? null, startsAt, recurrenceTimeZone ?? null);
-    const updated = await this.prisma.calendarEvent.update({ where: { id: eventId }, data, include: { task: { select: { id: true, title: true } }, project: { select: { id: true, name: true } } } });
+    const include = { task: { select: { id: true, title: true } }, project: { select: { id: true, name: true } } };
+    const saved = await this.prisma.calendarEvent.updateMany({ where: { id: eventId, workspaceId, updatedAt: baseUpdatedAt }, data });
+    if (saved.count !== 1) {
+      const current = await this.prisma.calendarEvent.findFirst({ where: { id: eventId, workspaceId }, include });
+      if (!current) throw new NotFoundException('Calendar event not found in this workspace.');
+      throw eventConflict(current);
+    }
+    const updated = await this.prisma.calendarEvent.findFirstOrThrow({ where: { id: eventId, workspaceId }, include });
     await this.recordActivity(workspaceId, actorId, 'CALENDAR', eventId, `updated ${updated.recurrence ? 'recurring series' : 'event'} “${updated.title}”`);
     return updated;
+  }
+
+  /** Imports events from an .ics file. Events are matched on their UID, so importing the same file again updates rather than duplicates. */
+  async importCalendarEvents(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    if (typeof body.ics !== 'string' || !body.ics.trim() || body.ics.length > 1_000_000) throw new BadRequestException('Choose an .ics calendar file up to 1 MB.');
+    const parsed = parseIcs(body.ics);
+    if (!parsed.events.length && !parsed.skipped.length) throw new BadRequestException('No events were found in this file.');
+    if (parsed.events.length > 500) throw new BadRequestException('Import up to 500 events at a time. Split the file and try again.');
+    const existing = await this.prisma.calendarEvent.findMany({ where: { workspaceId, externalUid: { in: parsed.events.map((event) => event.uid) } } });
+    const byUid = new Map(existing.map((event) => [event.externalUid!, event]));
+    const sameTime = (a: Date | null, b: Date | null) => (a?.getTime() ?? null) === (b?.getTime() ?? null);
+    let created = 0, updated = 0, unchanged = 0;
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        for (const event of parsed.events) {
+          const { uid, ...fields } = event;
+          const previous = byUid.get(uid);
+          if (!previous) { await transaction.calendarEvent.create({ data: { workspaceId, externalUid: uid, ...fields } }); created += 1; continue; }
+          const same = previous.title === fields.title && previous.description === fields.description && previous.location === fields.location && previous.isAllDay === fields.isAllDay
+            && sameTime(previous.startsAt, fields.startsAt) && sameTime(previous.endsAt, fields.endsAt) && previous.recurrence === fields.recurrence && previous.recurrenceInterval === fields.recurrenceInterval
+            && sameTime(previous.recurrenceUntil, fields.recurrenceUntil) && previous.recurrenceTimeZone === fields.recurrenceTimeZone;
+          if (same) { unchanged += 1; continue; }
+          await transaction.calendarEvent.update({ where: { id: previous.id }, data: fields });
+          updated += 1;
+        }
+        if (created || updated) await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'CALENDAR', entityId: workspaceId, message: `imported ${created + updated} calendar ${created + updated === 1 ? 'event' : 'events'} from a file` } });
+      });
+    } catch (error) {
+      if ((error as { code?: unknown }).code === 'P2002') throw new ConflictException('Another import is running. Wait a moment and try again.');
+      throw error;
+    }
+    return { created, updated, unchanged, skipped: parsed.skipped, notes: parsed.notes };
   }
 
   async deleteCalendarEvent(identity: AuthenticatedIdentity, workspaceId: string, eventId: string) {

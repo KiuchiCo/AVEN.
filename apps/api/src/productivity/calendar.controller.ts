@@ -23,6 +23,11 @@ export class CalendarController {
     return this.productivity.createCalendarEvent(identity, workspaceId, body);
   }
 
+  @Post('import')
+  importEvents(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
+    return this.productivity.importCalendarEvents(identity, workspaceId, body);
+  }
+
   @Patch(':eventId')
   update(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('eventId', new ParseUUIDPipe()) eventId: string, @Body() body: unknown) {
     return this.productivity.updateCalendarEvent(identity, workspaceId, eventId, body);

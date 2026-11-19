@@ -18,3 +18,8 @@ export function documentConflict<T>(current: T) {
 export function recordConflict<T>(current: T) {
   return new ConflictException({ message: 'This record was changed by someone else while you were editing.', current });
 }
+
+/** Same protection for calendar events. */
+export function eventConflict<T>(current: T) {
+  return new ConflictException({ message: 'This event was changed by someone else while you were editing.', current });
+}

@@ -1956,3 +1956,12 @@ body {
 .task-repeat__every { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 400; }
 .task-repeat__every input { width: 72px; }
 .task-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border: 1px solid var(--aven-border); border-radius: 999px; color: var(--aven-umber); font-size: 10px; font-weight: 600; white-space: nowrap; }
+
+/* Calendar import */
+.calendar-import { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); color: var(--aven-charcoal); font: 500 12px var(--aven-interface-font); cursor: pointer; }
+.calendar-import:hover { border-color: var(--aven-bronze); color: var(--aven-umber); }
+.calendar-import input { display: none; }
+.calendar-import-summary { display: grid; gap: 6px; margin: 12px 0; padding: 14px 16px; border: 1px solid var(--aven-bronze); border-radius: 12px; background: #fbf7f0; font-size: 13px; }
+.calendar-import-summary p { margin: 0; color: var(--aven-muted); font-size: 12px; }
+.calendar-import-summary ul { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
+.calendar-import-summary button { justify-self: start; padding: 6px 12px; border: 1px solid var(--aven-border); border-radius: 8px; background: var(--aven-paper); font: 600 11px var(--aven-interface-font); cursor: pointer; }

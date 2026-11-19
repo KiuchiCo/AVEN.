@@ -12,7 +12,7 @@ type Project = { id: string; name: string };
 type Task = { id: string; title: string; status: string; labels: string[]; dueAt: string | null };
 type DocumentRecord = { id: string; title: string; content: string; updatedAt: string; project: Project | null };
 type CalendarEventType = 'MEETING' | 'FOCUS' | 'PERSONAL' | 'REMINDER' | 'OTHER';
-type CalendarEvent = { id: string; title: string; description: string | null; location: string | null; type: CalendarEventType; isAllDay: boolean; startsAt: string; endsAt: string | null; recurrence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null; recurrenceInterval: number; recurrenceUntil: string | null; recurrenceTimeZone: string | null; task: Pick<Task, 'id' | 'title'> | null; project: Project | null };
+type CalendarEvent = { updatedAt: string; id: string; title: string; description: string | null; location: string | null; type: CalendarEventType; isAllDay: boolean; startsAt: string; endsAt: string | null; recurrence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null; recurrenceInterval: number; recurrenceUntil: string | null; recurrenceTimeZone: string | null; task: Pick<Task, 'id' | 'title'> | null; project: Project | null };
 type CalendarItem = { id: string; eventId?: string; taskId?: string; title: string; startsAt: string; endsAt: string | null; kind: 'Event' | 'Deadline'; taskTitle: string | null; labels?: string[]; projectTitle?: string | null; recurrence?: string | null; eventType?: CalendarEventType; isAllDay?: boolean; location?: string | null; description?: string | null };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
@@ -229,6 +229,7 @@ export function CalendarWorkspace() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [importSummary, setImportSummary] = useState<{ created: number; updated: number; unchanged: number; skipped: { title: string; reason: string }[]; notes: string[] } | null>(null);
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -239,7 +240,7 @@ export function CalendarWorkspace() {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string } | null;
-      throw new Error(body?.message ?? 'AVEN could not complete that request.');
+      throw Object.assign(new Error(body?.message ?? 'AVEN could not complete that request.'), { status: response.status });
     }
     return response.json();
   }, [getToken]);
@@ -279,6 +280,7 @@ export function CalendarWorkspace() {
       await request(`/workspaces/${workspace.id}/events${editingEvent ? `/${editingEvent.id}` : ''}`, {
         method: editingEvent ? 'PATCH' : 'POST',
         body: JSON.stringify({
+          baseUpdatedAt: editingEvent?.updatedAt,
           title: form.get('title'),
           startsAt: submittedStart ? dateTimeFromInput(submittedStart, seriesTimeZone).toISOString() : '',
           endsAt: endValue ? dateTimeFromInput(endValue, seriesTimeZone).toISOString() : undefined,
@@ -298,7 +300,10 @@ export function CalendarWorkspace() {
       setEditingEvent(null); setEndValue(''); setRepeatFrequency(''); setRepeatUntilValue('');
       setStartValue(`${selectedDate}T09:00`);
       await reload();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not schedule the event.'); }
+    } catch (reason) {
+      if ((reason as { status?: number }).status === 409) { setEditingEvent(null); setError('Someone else changed this event while you were editing. The latest version has been loaded — open it again to make your change.'); await reload(); }
+      else setError(reason instanceof Error ? reason.message : 'Could not schedule the event.');
+    }
     finally { setBusy(false); }
   }
 
@@ -366,6 +371,17 @@ export function CalendarWorkspace() {
     finally { setBusy(false); }
   }
 
+  async function importCalendar(file: File | undefined) {
+    if (!file) return;
+    setBusy(true); setError(''); setImportSummary(null);
+    try {
+      if (file.size > 1_000_000) throw new Error('Choose an .ics calendar file up to 1 MB.');
+      setImportSummary(await request(`/workspaces/${workspace.id}/events/import`, { method: 'POST', body: JSON.stringify({ ics: await file.text() }) }));
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import this calendar file.'); }
+    finally { setBusy(false); }
+  }
+
   function exportCalendar() {
     const escapeIcs = (value: string) => value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
     const stamp = (value: string) => new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
@@ -385,6 +401,13 @@ export function CalendarWorkspace() {
       <h1>Calendar</h1>
       <p className="workspace-section-page__description">See task deadlines and scheduled events together, then shape your days around the work.</p>
       {error && <p className="productivity-error" role="alert">{error}</p>}
+      {importSummary && <div className="calendar-import-summary" role="status">
+        <strong>Import finished:</strong> {importSummary.created} added, {importSummary.updated} updated, {importSummary.unchanged} already up to date{importSummary.skipped.length ? `, ${importSummary.skipped.length} skipped` : ''}.
+        {importSummary.notes.map((note) => <p key={note}>{note}</p>)}
+        {importSummary.skipped.length > 0 && <details><summary>Why were {importSummary.skipped.length} skipped?</summary><ul>{importSummary.skipped.map((item, index) => <li key={`${item.title}-${index}`}><strong>{item.title}</strong> — {item.reason}</li>)}</ul></details>}
+        <p>Importing the same file again updates these events instead of duplicating them.</p>
+        <button type="button" onClick={() => setImportSummary(null)}>Dismiss</button>
+      </div>}
       <div className="connected-layout">
         <form className="productivity-form connected-compose" key={editingEvent?.id ?? 'new-event'} onSubmit={createEvent}>
           <h2>{editingEvent ? 'Edit event' : 'Schedule time'}</h2>
@@ -406,7 +429,7 @@ export function CalendarWorkspace() {
         </form>
         <section className="connected-record-list" aria-labelledby="calendar-list-title">
           <div className="aven-calendar">
-            <div className="aven-calendar__toolbar"><div><p className="workspace-eyebrow">YOUR SCHEDULE</p><h2 id="calendar-list-title">{calendarView === 'AGENDA' ? 'Coming up · 90 days' : calendarView === 'MONTH' ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(month) : calendarView === 'WEEK' ? `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(weekStart)} – ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6))}` : new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(selectedLocalDate)}</h2></div><div className="aven-calendar__controls"><button type="button" onClick={() => { const today = new Date(); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(localDateKey(today)); }}>Today</button><button type="button" aria-label="Previous period" onClick={() => moveMonth(-1)}>‹</button><button type="button" aria-label="Next period" onClick={() => moveMonth(1)}>›</button><button type="button" onClick={exportCalendar}>Export .ics</button></div></div>
+            <div className="aven-calendar__toolbar"><div><p className="workspace-eyebrow">YOUR SCHEDULE</p><h2 id="calendar-list-title">{calendarView === 'AGENDA' ? 'Coming up · 90 days' : calendarView === 'MONTH' ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(month) : calendarView === 'WEEK' ? `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(weekStart)} – ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6))}` : new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(selectedLocalDate)}</h2></div><div className="aven-calendar__controls"><button type="button" onClick={() => { const today = new Date(); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(localDateKey(today)); }}>Today</button><button type="button" aria-label="Previous period" onClick={() => moveMonth(-1)}>‹</button><button type="button" aria-label="Next period" onClick={() => moveMonth(1)}>›</button><button type="button" onClick={exportCalendar}>Export .ics</button><label className="calendar-import">Import .ics<input type="file" accept=".ics,text/calendar" disabled={busy} onChange={(event) => { void importCalendar(event.target.files?.[0]); event.target.value = ''; }} /></label></div></div>
             <div className="aven-calendar__view-switch">{(['DAY','WEEK','MONTH','AGENDA'] as const).map((view) => <button key={view} type="button" aria-pressed={calendarView === view} className={calendarView === view ? 'is-active' : ''} onClick={() => setCalendarView(view)}>{view[0] + view.slice(1).toLocaleLowerCase()}</button>)}</div>
             <div className="calendar-filters"><button type="button" aria-pressed={showEvents} className={showEvents ? 'is-active' : ''} onClick={() => setShowEvents((value) => !value)}><i className="calendar-filter-dot calendar-filter-dot--event" /> Scheduled events</button><button type="button" aria-pressed={showDeadlines} className={showDeadlines ? 'is-active' : ''} onClick={() => setShowDeadlines((value) => !value)}><i className="calendar-filter-dot calendar-filter-dot--deadline" /> Task deadlines</button></div>
             <div className="calendar-type-filters" role="group" aria-label="Filter event type">{(['ALL','MEETING','FOCUS','PERSONAL','REMINDER','OTHER'] as const).map((type) => <button key={type} type="button" aria-pressed={eventTypeFilter === type} className={eventTypeFilter === type ? 'is-active' : ''} onClick={() => setEventTypeFilter(type)}>{type === 'ALL' ? 'All types' : type[0] + type.slice(1).toLocaleLowerCase()}</button>)}</div>
