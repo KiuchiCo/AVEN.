@@ -20,12 +20,13 @@ import { KnowledgeService } from './knowledge.service.js';
 import { AutomationsController } from './automations.controller.js';
 import { AutomationsService } from './automations.service.js';
 import { WorkflowTriggersService } from '../workflows/workflow-triggers.service.js';
+import { EmailModule } from '../email/email.module.js';
 import { DashboardController } from './dashboard.controller.js';
 import { DashboardService } from './dashboard.service.js';
 import { TaskCollaborationModule } from './task-collaboration/task-collaboration.module.js';
 
 @Module({
-  imports: [TaskCollaborationModule],
+  imports: [TaskCollaborationModule, EmailModule],
   controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController, IntelligenceController, InvitationsController, KnowledgeController, AutomationsController, DashboardController],
   providers: [ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, KnowledgeService, AutomationsService, DashboardService, WorkflowTriggersService, ClerkAuthGuard],
   exports: [ProductivityService, IntelligenceService, WorkflowTriggersService],

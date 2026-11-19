@@ -16,6 +16,10 @@ export type ApiEnvironment = {
   aiMonthlyCredits: number;
   aiMaxOutputTokens: number;
   workflowAllowPrivateWebhooks: boolean;
+  emailApiKey?: string;
+  emailFrom?: string;
+  emailBaseUrl: string;
+  webBaseUrl: string;
 };
 
 type EnvironmentSource = Record<string, string | undefined>;
@@ -78,9 +82,20 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   const workflowAllowPrivateWebhooks = source.WORKFLOW_ALLOW_PRIVATE_WEBHOOKS === 'true';
   if (workflowAllowPrivateWebhooks && source.NODE_ENV === 'production') errors.push('WORKFLOW_ALLOW_PRIVATE_WEBHOOKS cannot be enabled in production');
 
+  const emailApiKey = source.EMAIL_API_KEY?.trim() || undefined;
+  const emailFrom = source.EMAIL_FROM?.trim() || undefined;
+  if (emailApiKey && !emailFrom) errors.push('EMAIL_FROM is required when EMAIL_API_KEY is set');
+  if (emailFrom && !/^(?:[^<>\r\n]{1,100} <[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+>|[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)$/.test(emailFrom)) errors.push('EMAIL_FROM must look like “AVEN <hello@example.com>” or hello@example.com');
+  const emailBaseUrl = source.EMAIL_BASE_URL?.trim() || 'https://api.resend.com';
+  try {
+    const url = new URL(emailBaseUrl);
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (!(url.protocol === 'https:' || (url.protocol === 'http:' && local))) throw new Error();
+  } catch { errors.push('EMAIL_BASE_URL must be an HTTPS URL (HTTP is only allowed for localhost)'); }
+
   const isProduction = source.NODE_ENV === 'production';
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000' };
 }

@@ -150,12 +150,20 @@ export class AuthService {
 
   async getProfile(identity: AuthenticatedIdentity) {
     const user = await this.currentUser(identity);
-    return this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: profileSelect });
+    return { ...await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: profileSelect }), emailAvailable: Boolean(readApiEnvironment().emailApiKey) };
   }
 
   async updateProfile(identity: AuthenticatedIdentity, input: unknown) {
     const user = await this.currentUser(identity);
-    return this.prisma.user.update({ where: { id: user.id }, data: parseProfileUpdate(input), select: profileSelect });
+    const changes = parseProfileUpdate(input);
+    const data: Record<string, unknown> = { ...changes };
+    if (changes.emailNotifications !== undefined) {
+      const current = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { emailNotifications: true } });
+      if (changes.emailNotifications && !readApiEnvironment().emailApiKey) throw new BadRequestException('Email isn’t set up for this AVEN installation yet, so it can’t be turned on.');
+      // Only notifications from this moment on are emailed; turning it on never sends a backlog.
+      if (changes.emailNotifications !== current.emailNotifications) data.emailEnabledAt = changes.emailNotifications ? new Date() : null;
+    }
+    return { ...await this.prisma.user.update({ where: { id: user.id }, data, select: profileSelect }), emailAvailable: Boolean(readApiEnvironment().emailApiKey) };
   }
 
   private async currentUser(identity: AuthenticatedIdentity) {

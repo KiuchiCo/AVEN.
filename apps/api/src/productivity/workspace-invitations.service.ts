@@ -1,6 +1,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
+import { readApiEnvironment } from '../config/api-environment.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { renderInvitationEmail } from '../email/email-templates.js';
+import { TransactionalEmail } from '../email/transactional-email.service.js';
 import { createInvitationToken, hashInvitationToken } from './invitation-token.js';
 
 const roles = ['ADMINISTRATOR', 'MANAGER', 'MEMBER', 'GUEST'] as const;
@@ -8,7 +11,7 @@ type InviteRole = (typeof roles)[number];
 
 @Injectable()
 export class WorkspaceInvitationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly email: TransactionalEmail) {}
 
   async list(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.membership(identity, workspaceId);
@@ -36,7 +39,14 @@ export class WorkspaceInvitationsService {
       workspaceId, createdById: actor.userId, email, role, tokenHash: hashInvitationToken(token),
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     }, select: { id: true, email: true, role: true, expiresAt: true, createdAt: true } });
-    return { invitation: invite, token };
+    // Best effort: the admin still gets the link to share if the email can't be sent.
+    const [inviter, workspace] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: actor.userId }, select: { displayName: true } }),
+      this.prisma.workspace.findUnique({ where: { id: workspaceId }, select: { name: true } }),
+    ]);
+    const link = `${readApiEnvironment().webBaseUrl.replace(/\/$/, '')}/invite?token=${encodeURIComponent(token)}`;
+    const emailed = await this.email.send({ to: email, ...renderInvitationEmail({ inviterName: inviter?.displayName ?? '', workspaceName: workspace?.name ?? 'a workspace', role, link, expiresAt: invite.expiresAt }) });
+    return { invitation: invite, token, email: emailed };
   }
 
   async revoke(identity: AuthenticatedIdentity, workspaceId: string, inviteId: string) {

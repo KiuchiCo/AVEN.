@@ -18,6 +18,7 @@ export function WorkspaceMembers() {
   const [role, setRole] = useState('MEMBER');
   const [inviteLink, setInviteLink] = useState('');
   const [inviteeEmail, setInviteeEmail] = useState('');
+  const [emailOutcome, setEmailOutcome] = useState<'sent' | 'failed' | 'not_configured'>('not_configured');
   const [copied, setCopied] = useState(false);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState('');
@@ -68,7 +69,8 @@ export function WorkspaceMembers() {
     event.preventDefault(); setBusy(true); setError(''); setInviteLink('');
     try {
       const invitedEmail = email;
-      const result = await request(`/workspaces/${workspace.id}/members/invitations`, { method: 'POST', body: JSON.stringify({ email, role }) }) as { token: string };
+      const result = await request(`/workspaces/${workspace.id}/members/invitations`, { method: 'POST', body: JSON.stringify({ email, role }) }) as { token: string; email?: 'sent' | 'failed' | 'not_configured' };
+      setEmailOutcome(result.email ?? 'not_configured');
       const link = `${window.location.origin}/invite?token=${encodeURIComponent(result.token)}`;
       setInviteLink(link); setEmail(''); setInviteeEmail(invitedEmail);
       await reload();
@@ -138,7 +140,7 @@ export function WorkspaceMembers() {
             <small>Invite links expire after 7 days and can only be accepted by the invited email address.</small>
             <button type="submit" disabled={busy || loading}>{busy ? 'Creating…' : 'Create invitation link'}</button>
           </form>
-          {inviteLink && <div className="members-invite-link" role="status"><strong>Invitation ready</strong><p>Share this link with {inviteeEmail}. It is shown once.</p><code>{inviteLink}</code><button type="button" onClick={() => void copyInvite()}>{copied ? 'Copied' : 'Copy link'}</button></div>}
+          {inviteLink && <div className="members-invite-link" role="status"><strong>Invitation ready</strong><p>{emailOutcome === 'sent' ? `We emailed ${inviteeEmail} the link. You can also share it yourself.` : emailOutcome === 'failed' ? `We couldn’t email ${inviteeEmail}, so share this link with them yourself.` : `Share this link with ${inviteeEmail}. Email isn’t set up, so nothing was sent.`} It is shown once.</p><code>{inviteLink}</code><button type="button" onClick={() => void copyInvite()}>{copied ? 'Copied' : 'Copy link'}</button></div>}
         </> : <p className="members-permission-note">Only workspace owners and administrators can invite people.</p>}
       </section>
 

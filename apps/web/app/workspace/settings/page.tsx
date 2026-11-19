@@ -6,7 +6,7 @@ import { useWorkspaceSession } from '../workspace-shell';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
-type Profile = { displayName: string; email: string; notifyTeamActivity: boolean; notifyTaskUpdates: boolean };
+type Profile = { displayName: string; email: string; notifyTeamActivity: boolean; notifyTaskUpdates: boolean; emailNotifications: boolean; emailAvailable: boolean };
 
 function AccountSettings() {
   const { getToken } = useAuth();
@@ -65,6 +65,7 @@ function AccountSettings() {
       <div className="workspace-settings-toggles">
         <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.notifyTaskUpdates} disabled={busy} onChange={(event) => void update({ notifyTaskUpdates: event.target.checked }, 'Notification settings saved.')} /><span><strong>Mentions and task updates</strong><small>Comments, mentions, assignments and changes to tasks you follow.</small></span></label>
         <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.notifyTeamActivity} disabled={busy} onChange={(event) => void update({ notifyTeamActivity: event.target.checked }, 'Notification settings saved.')} /><span><strong>Team activity</strong><small>Workspace-wide changes to projects, documents, calendar and members.</small></span></label>
+        <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.emailNotifications} disabled={busy || !saved.emailAvailable} onChange={(event) => void update({ emailNotifications: event.target.checked }, event.target.checked ? 'You’ll get a summary email a few minutes after new mentions and task updates, if you haven’t read them by then.' : 'Email notifications are off.')} /><span><strong>Email me a summary</strong><small>{saved.emailAvailable ? 'A short email when you have unread mentions, assignments or changes to tasks you follow. Only new notifications from now on are sent, and anything you read first is left out.' : 'Email isn’t set up for this AVEN installation yet. An administrator can add an email provider to turn this on.'}</small></span></label>
       </div>
       {status && <p className="workspace-settings-status" role="status">{status}</p>}
     </div>

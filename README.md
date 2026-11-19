@@ -138,7 +138,7 @@ npm run build
 npm run db:validate
 ```
 
-`npm test` builds the API before running its tests. The API tests cover Clerk token verification and workspace access rules; the web tests cover task CSV import and export. `npm run db:validate` checks the Prisma schema without connecting to PostgreSQL.
+`npm test` builds the API before running its tests. `npm run test:integration` additionally boots the real API against a migrated PostgreSQL database named by `INTEGRATION_DATABASE_URL` (use a throwaway database, for example `createdb aven_integration` then `DATABASE_URL=… npm run db:migrate:deploy`); it covers workspace isolation, guest access, concurrent edits, files, workflows, the AI assistant and email, and CI runs it on every push. Without that variable the integration tests are skipped. The API tests cover Clerk token verification and workspace access rules; the web tests cover task CSV import and export. `npm run db:validate` checks the Prisma schema without connecting to PostgreSQL.
 
 To inspect which migrations a local database has applied, start Docker Desktop and PostgreSQL, then run `npx prisma migrate status` from `apps/api`. This reports migration state without applying migrations. `npm run db:migrate:deploy` applies pending migrations; keep it as an explicit database-change step after reviewing the migration SQL and confirming the local database is available.
 

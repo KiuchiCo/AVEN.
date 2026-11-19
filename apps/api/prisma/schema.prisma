@@ -90,6 +90,8 @@ model User {
   notifyTeamActivity Boolean          @default(true)
   notifyTaskUpdates Boolean           @default(true)
   dashboardHiddenWidgets String[]     @default([])
+  emailNotifications Boolean          @default(false)
+  emailEnabledAt     DateTime?        @db.Timestamptz(3)
   identityIssuer    String?           @db.VarChar(512)
   identitySubject   String?           @db.VarChar(255)
   createdAt         DateTime          @default(now()) @db.Timestamptz(3)
@@ -407,6 +409,8 @@ model ActivityReceipt {
   isNotificationTarget Boolean @default(false)
   readAt     DateTime?        @db.Timestamptz(3)
   dismissedAt DateTime?       @db.Timestamptz(3)
+  /// When this notification was included in an email (null = not emailed).
+  emailedAt  DateTime?        @db.Timestamptz(3)
   createdAt  DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt  DateTime         @updatedAt @db.Timestamptz(3)
   activity   WorkspaceActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
@@ -415,6 +419,7 @@ model ActivityReceipt {
   @@unique([activityId, userId])
   @@index([userId, readAt, dismissedAt])
   @@index([userId, isNotificationTarget, activityId])
+  @@index([isNotificationTarget, emailedAt, createdAt])
   @@map("activity_receipts")
 }
 

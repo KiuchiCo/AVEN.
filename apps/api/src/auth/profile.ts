@@ -2,15 +2,15 @@ import { BadRequestException } from '@nestjs/common';
 
 export const dashboardWidgets = ['stats', 'nextUp', 'projects', 'events', 'documents', 'activity', 'insights'] as const;
 
-export const profileSelect = { id: true, email: true, displayName: true, notifyTeamActivity: true, notifyTaskUpdates: true, dashboardHiddenWidgets: true } as const;
+export const profileSelect = { id: true, email: true, displayName: true, notifyTeamActivity: true, notifyTaskUpdates: true, dashboardHiddenWidgets: true, emailNotifications: true } as const;
 
-export type ProfileUpdate = { displayName?: string; notifyTeamActivity?: boolean; notifyTaskUpdates?: boolean; dashboardHiddenWidgets?: string[] };
+export type ProfileUpdate = { displayName?: string; notifyTeamActivity?: boolean; notifyTaskUpdates?: boolean; dashboardHiddenWidgets?: string[]; emailNotifications?: boolean };
 
 /** Validates a profile PATCH body. Unknown fields are rejected so typos never silently do nothing. */
 export function parseProfileUpdate(input: unknown): ProfileUpdate {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A JSON object is required.');
   const body = input as Record<string, unknown>;
-  const allowed = ['displayName', 'notifyTeamActivity', 'notifyTaskUpdates', 'dashboardHiddenWidgets'];
+  const allowed = ['displayName', 'notifyTeamActivity', 'notifyTaskUpdates', 'dashboardHiddenWidgets', 'emailNotifications'];
   const unknown = Object.keys(body).find((key) => !allowed.includes(key));
   if (unknown) throw new BadRequestException(`Unknown setting “${unknown}”.`);
 
@@ -20,7 +20,7 @@ export function parseProfileUpdate(input: unknown): ProfileUpdate {
     if (!name || name.length > 120) throw new BadRequestException('Display name must be between 1 and 120 characters.');
     update.displayName = name;
   }
-  for (const key of ['notifyTeamActivity', 'notifyTaskUpdates'] as const) {
+  for (const key of ['notifyTeamActivity', 'notifyTaskUpdates', 'emailNotifications'] as const) {
     if (key in body) {
       if (typeof body[key] !== 'boolean') throw new BadRequestException(`${key} must be true or false.`);
       update[key] = body[key];
