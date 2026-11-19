@@ -24,7 +24,7 @@ test('limits only grow as you move up the plans, so an upgrade never takes anyth
   }
   assert.deepEqual(catalog.FREE.features, []);
   assert.deepEqual(catalog.PLUS.features, []);
-  assert.deepEqual([...catalog.PRO.features].sort(), ['advancedAutomation', 'aiAgents']);
+  assert.deepEqual([...catalog.PRO.features].sort(), ['advancedAutomation', 'aiAgents', 'analytics']);
   assert.ok(Object.values(catalog.ENTERPRISE.limits).every((value) => value === null));
 });
 

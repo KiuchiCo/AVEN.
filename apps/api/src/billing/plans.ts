@@ -21,7 +21,7 @@ export type Limits = {
   aiCredits: number | null;
 };
 export type LimitKey = keyof Limits;
-export type Feature = 'advancedAutomation' | 'aiAgents';
+export type Feature = 'advancedAutomation' | 'aiAgents' | 'analytics';
 
 export type Plan = {
   key: PlanKey;
@@ -50,11 +50,11 @@ export function defaultCatalog(env: EnvDefaults): Record<PlanKey, Plan> {
       limits: { projects: 5, databases: 3, workflows: 3, customAgents: 0, members: 3, storageBytes: env.storageBytes, aiCredits: env.aiCredits } },
     PLUS: { key: 'PLUS', name: 'Plus', tagline: 'More room for individual work', priceCents: 999, currency: 'aud', perSeat: false, selfServe: true, features: [],
       limits: { projects: 25, databases: 15, workflows: 10, customAgents: 0, members: 3, storageBytes: 5 * GB, aiCredits: 2_000 } },
-    PRO: { key: 'PRO', name: 'Pro', tagline: 'Advanced automation and AI agents', priceCents: 1999, currency: 'aud', perSeat: false, selfServe: true, features: ['advancedAutomation', 'aiAgents'],
+    PRO: { key: 'PRO', name: 'Pro', tagline: 'Advanced automation, AI agents and analytics', priceCents: 1999, currency: 'aud', perSeat: false, selfServe: true, features: ['advancedAutomation', 'aiAgents', 'analytics'],
       limits: { projects: null, databases: null, workflows: 50, customAgents: 10, members: 5, storageBytes: 50 * GB, aiCredits: 10_000 } },
-    BUSINESS: { key: 'BUSINESS', name: 'Business', tagline: 'Team workspaces, billed per seat', priceCents: 2999, currency: 'aud', perSeat: true, selfServe: true, features: ['advancedAutomation', 'aiAgents'],
+    BUSINESS: { key: 'BUSINESS', name: 'Business', tagline: 'Team workspaces, billed per seat', priceCents: 2999, currency: 'aud', perSeat: true, selfServe: true, features: ['advancedAutomation', 'aiAgents', 'analytics'],
       limits: { projects: null, databases: null, workflows: 200, customAgents: 20, members: null, storageBytes: 0, aiCredits: 0 }, perSeatLimits: { storageBytes: 25 * GB, aiCredits: 5_000 } },
-    ENTERPRISE: { key: 'ENTERPRISE', name: 'Enterprise', tagline: 'Custom terms and limits, arranged directly', priceCents: null, currency: 'aud', perSeat: false, selfServe: false, features: ['advancedAutomation', 'aiAgents'],
+    ENTERPRISE: { key: 'ENTERPRISE', name: 'Enterprise', tagline: 'Custom terms and limits, arranged directly', priceCents: null, currency: 'aud', perSeat: false, selfServe: false, features: ['advancedAutomation', 'aiAgents', 'analytics'],
       limits: { projects: null, databases: null, workflows: null, customAgents: null, members: null, storageBytes: null, aiCredits: null } },
   };
 }
