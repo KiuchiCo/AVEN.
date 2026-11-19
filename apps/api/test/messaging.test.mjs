@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ChannelEvents } from '../dist/messaging/channel-events.js';
-import { parseBefore, parseChannelName, parseMessageBody, parseTopic } from '../dist/messaging/message-rules.js';
+import { extractMentionIds, parseBefore, parseChannelName, parseMessageBody, parseTopic } from '../dist/messaging/message-rules.js';
 
 test('channel names are normalised or refused', () => {
   assert.equal(parseChannelName('  Design Team '), 'design-team'); assert.equal(parseChannelName('#general'), 'general'); assert.equal(parseChannelName('q3_plan'), 'q3-plan');
@@ -21,4 +21,11 @@ test('events reach only subscribers of that workspace, stop after unsubscribe, a
   events.publish('w1', { type: 'message_deleted', channelId: 'c', id: 'm' });
   assert.equal(a.length, 1); assert.equal(b.length, 0);
   off(); events.publish('w1', { type: 'message_deleted', channelId: 'c', id: 'm2' }); assert.equal(a.length, 1);
+});
+
+test('mentions are read by id, de-duplicated, and malformed ones are ignored', () => {
+  const a = '11111111-1111-4111-8111-111111111111'; const b = '22222222-2222-4222-8222-222222222222';
+  assert.deepEqual(extractMentionIds(`hi @[Ana](${a}) and @[Ben Q](${b}) and again @[Ana](${a.toUpperCase()})`), [a, b]);
+  assert.deepEqual(extractMentionIds('@[Ana](not-an-id) @Ana @[](x) plain text'), []);
+  assert.equal(extractMentionIds(Array.from({ length: 30 }, (_, i) => `@[U](${String(i).padStart(8, '0')}-1111-4111-8111-111111111111)`).join(' ')).length, 20);
 });

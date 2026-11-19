@@ -3,7 +3,7 @@ import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { ChannelEvents } from './channel-events.js';
-import { messageLimits, parseBefore, parseChannelName, parseMessageBody, parseTopic } from './message-rules.js';
+import { extractMentionIds, messageLimits, parseBefore, parseChannelName, parseMessageBody, parseTopic } from './message-rules.js';
 
 const messageSelect = { id: true, channelId: true, body: true, createdAt: true, editedAt: true, deletedAt: true, author: { select: { id: true, displayName: true } } } as const;
 const channelSelect = { id: true, name: true, topic: true, createdAt: true } as const;
@@ -64,10 +64,11 @@ export class MessagingService {
 
   async send(identity: AuthenticatedIdentity, workspaceId: string, channelId: string, input: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
-    await this.channel(workspaceId, channelId);
+    const channel = await this.channel(workspaceId, channelId);
     const body = parseMessageBody(object(input).body);
     const message = await this.prisma.channelMessage.create({ data: { channelId, workspaceId, authorId: userId, body }, select: messageSelect });
     await this.markRead(userId, channelId);
+    await this.notifyMentions(workspaceId, userId, channel.name, channelId, extractMentionIds(body));
     this.events.publish(workspaceId, { type: 'message', channelId, message });
     return message;
   }
@@ -75,8 +76,14 @@ export class MessagingService {
   async edit(identity: AuthenticatedIdentity, workspaceId: string, channelId: string, messageId: string, input: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
     const body = parseMessageBody(object(input).body);
+    const previous = await this.prisma.channelMessage.findFirst({ where: { id: messageId, channelId, workspaceId, authorId: userId, deletedAt: null }, select: { body: true } });
+    if (!previous) throw new NotFoundException('You can only edit your own messages.');
     const result = await this.prisma.channelMessage.updateMany({ where: { id: messageId, channelId, workspaceId, authorId: userId, deletedAt: null }, data: { body, editedAt: new Date() } });
     if (result.count !== 1) throw new NotFoundException('You can only edit your own messages.');
+    // Only people newly mentioned by the edit are told, so fixing a typo never pings anyone twice.
+    const already = new Set(extractMentionIds(previous.body));
+    const channel = await this.channel(workspaceId, channelId);
+    await this.notifyMentions(workspaceId, userId, channel.name, channelId, extractMentionIds(body).filter((id) => !already.has(id)));
     const message = await this.prisma.channelMessage.findUniqueOrThrow({ where: { id: messageId }, select: messageSelect });
     this.events.publish(workspaceId, { type: 'message_updated', channelId, message });
     return message;
@@ -91,6 +98,18 @@ export class MessagingService {
     await this.prisma.channelMessage.update({ where: { id: messageId }, data: { body: '', deletedAt: new Date() } });
     this.events.publish(workspaceId, { type: 'message_deleted', channelId, id: messageId });
     return { id: messageId, deleted: true };
+  }
+
+  /** Mentioned workspace members (not the author) get an Inbox notification that opens Messages. Non-members are ignored. */
+  private async notifyMentions(workspaceId: string, actorId: string, channelName: string, channelId: string, ids: string[]) {
+    const targets = ids.filter((id) => id !== actorId);
+    if (!targets.length) return;
+    const members = await this.prisma.workspaceMember.findMany({ where: { workspaceId, userId: { in: targets } }, select: { userId: true } });
+    if (!members.length) return;
+    await this.prisma.$transaction(async (transaction) => {
+      const activity = await transaction.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'CHANNEL', entityId: channelId, message: `mentioned you in #${channelName}`, recipientScoped: true } });
+      await transaction.activityReceipt.createMany({ data: members.map((member) => ({ activityId: activity.id, userId: member.userId, isNotificationTarget: true })), skipDuplicates: true });
+    });
   }
 
   private markRead(userId: string, channelId: string) {

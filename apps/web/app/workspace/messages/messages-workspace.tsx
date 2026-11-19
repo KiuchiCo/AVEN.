@@ -3,11 +3,13 @@
 import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
+import { activeMention, mentionToken, parseSegments } from './mention-text';
 import { readEvents } from './sse';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 type Channel = { id: string; name: string; topic: string; unread: number };
 type Message = { id: string; channelId: string; body: string; createdAt: string; editedAt: string | null; deletedAt: string | null; author: { id: string; displayName: string } };
+type Member = { userId: string; displayName: string };
 type LiveEvent = { type: 'message' | 'message_updated'; channelId: string; message: Message } | { type: 'message_deleted'; channelId: string; id: string } | { type: 'channel'; channel: Channel };
 
 export function MessagesWorkspace() {
@@ -23,6 +25,10 @@ export function MessagesWorkspace() {
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   const [error, setError] = useState('');
   const [live, setLive] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [caret, setCaret] = useState(0);
+  const [pick, setPick] = useState(0);
+  const composer = useRef<HTMLTextAreaElement>(null);
   const active = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -40,6 +46,13 @@ export function MessagesWorkspace() {
   const loadMessages = useCallback((id: string) => call<{ messages: Message[]; hasMore: boolean }>(`/${id}/messages`).then((page) => { if (active.current === id) { setMessages(page.messages); setHasMore(page.hasMore); } }).catch(fail), [call]);
 
   useEffect(() => { void loadChannels(); }, [loadChannels]);
+  useEffect(() => {
+    void (async () => {
+      const token = await getToken(); if (!token || !apiBase) return;
+      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/members`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      if (response.ok) setMembers(await response.json() as Member[]);
+    })().catch(() => undefined);
+  }, [getToken, workspace.id]);
   useEffect(() => {
     active.current = activeId;
     if (!activeId) return;
@@ -106,6 +119,16 @@ export function MessagesWorkspace() {
 
   const channel = channels.find((item) => item.id === activeId);
   const visible = messages.filter((message) => message.channelId === activeId);
+  const names = new Map(members.map((member) => [member.userId, member.displayName]));
+  const typing = activeMention(draft, caret);
+  const options = typing ? members.filter((member) => member.userId !== user.id && member.displayName.toLowerCase().includes(typing.query)).slice(0, 6) : [];
+  function choose(member: Member) {
+    if (!typing) return;
+    const inserted = mentionToken(member.displayName, member.userId);
+    const next = draft.slice(0, typing.start) + inserted + draft.slice(caret);
+    setDraft(next); setPick(0);
+    requestAnimationFrame(() => { const end = typing.start + inserted.length; composer.current?.focus(); composer.current?.setSelectionRange(end, end); setCaret(end); });
+  }
   const canModerate = workspace.role === 'OWNER' || workspace.role === 'ADMINISTRATOR';
   return <section className="chat">
     <aside className="chat-channels" aria-label="Channels">
@@ -121,12 +144,12 @@ export function MessagesWorkspace() {
           {hasMore && <button className="chat-older" onClick={() => void older()}>Load earlier messages</button>}
           {visible.map((message) => <article key={message.id} className="chat-message">
             <header><strong>{message.author.displayName}</strong><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</time>{message.editedAt && !message.deletedAt && <small>edited</small>}</header>
-            {message.deletedAt ? <p className="chat-deleted">This message was deleted.</p> : editing?.id === message.id ? <div className="chat-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label="Edit message" /><button onClick={() => void saveEdit()} disabled={!editing.body.trim()}>Save</button><button onClick={() => setEditing(null)}>Cancel</button></div> : <p>{message.body}</p>}
+            {message.deletedAt ? <p className="chat-deleted">This message was deleted.</p> : editing?.id === message.id ? <div className="chat-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label="Edit message" /><button onClick={() => void saveEdit()} disabled={!editing.body.trim()}>Save</button><button onClick={() => setEditing(null)}>Cancel</button></div> : <p>{parseSegments(message.body).map((segment, index) => 'mention' in segment ? <strong key={index} className="chat-mention">@{names.get(segment.mention.id) ?? segment.mention.name}</strong> : segment.text)}</p>}
             {!message.deletedAt && !readOnly && editing?.id !== message.id && (message.author.id === user.id || canModerate) && <div className="chat-actions">{message.author.id === user.id && <button onClick={() => setEditing({ id: message.id, body: message.body })}>Edit</button>}<button onClick={() => void remove(message)}>Delete</button></div>}
           </article>)}
           <div ref={endRef} />
         </div>
-        {readOnly ? <p className="workspace-settings-note">Guests can read channels but not post.</p> : <form className="chat-compose" onSubmit={send}><label className="visually-hidden" htmlFor="chat-draft">Message #{channel.name}</label><textarea id="chat-draft" value={draft} maxLength={4000} rows={2} placeholder={`Message #${channel.name}`} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /><button className="workspace-settings-save" disabled={!draft.trim()}>Send</button></form>}
+        {readOnly ? <p className="workspace-settings-note">Guests can read channels but not post.</p> : <form className="chat-compose" onSubmit={send}><label className="visually-hidden" htmlFor="chat-draft">Message #{channel.name}</label><div className="chat-compose__field">{options.length > 0 && <ul className="chat-mentions" role="listbox" aria-label="Mention someone">{options.map((member, index) => <li key={member.userId} role="option" aria-selected={index === pick}><button type="button" onMouseDown={(event) => { event.preventDefault(); choose(member); }}>{member.displayName}</button></li>)}</ul>}<textarea ref={composer} id="chat-draft" value={draft} maxLength={4000} rows={2} placeholder={`Message #${channel.name} · type @ to mention`} onChange={(event) => { setDraft(event.target.value); setCaret(event.target.selectionStart); setPick(0); }} onSelect={(event) => setCaret(event.currentTarget.selectionStart)} onKeyDown={(event) => { if (options.length) { if (event.key === 'ArrowDown') { event.preventDefault(); setPick((pick + 1) % options.length); return; } if (event.key === 'ArrowUp') { event.preventDefault(); setPick((pick + options.length - 1) % options.length); return; } if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); choose(options[pick]); return; } if (event.key === 'Escape') { event.preventDefault(); setCaret(0); return; } } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /></div><button className="workspace-settings-save" disabled={!draft.trim()}>Send</button></form>}
       </>}
     </div>
   </section>;

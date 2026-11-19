@@ -82,4 +82,24 @@ describe('channels and messages', { skip }, () => {
       assert.equal(other.events.length, 0, 'another workspace heard nothing');
     } finally { watching.close(); other.close(); }
   });
+
+  test('mentioning someone notifies them in the Inbox once; the author, outsiders and silent edits do not', async () => {
+    const channel = (await t.call('ana', 'POST', ws(), { name: 'mentions' })).body;
+    const base = `${ws()}/${channel.id}/messages`;
+    const ben = await t.prisma.user.findFirstOrThrow({ where: { email: { contains: `ben-${t.run}` } } });
+    const ana = await t.prisma.user.findFirstOrThrow({ where: { email: { contains: `ana-${t.run}` } } });
+    const zed = await t.prisma.user.findFirstOrThrow({ where: { email: { contains: `zed-${t.run}` } } });
+    const inbox = async (who) => (await t.call(who, 'GET', `/workspaces/${W.id}/activity/inbox`)).body;
+    const count = async (who) => (await inbox(who)).filter((n) => n.message === 'mentioned you in #mentions').length;
+    const sent = await t.call('ana', 'POST', base, { body: `Hey @[Ben](${ben.id}) and @[Me](${ana.id}) and @[Outsider](${zed.id})` });
+    assert.equal(sent.status, 201);
+    assert.equal(await count('ben'), 1); assert.equal(await count('ana'), 0, 'you are not told about mentioning yourself');
+    const rows = await t.prisma.activityReceipt.count({ where: { activity: { entityId: channel.id, workspaceId: W.id } } });
+    assert.equal(rows, 1, 'only the workspace member was notified');
+    await t.call('ana', 'PATCH', `${base}/${sent.body.id}`, { body: `Hey @[Ben](${ben.id}), typo fixed` });
+    assert.equal(await count('ben'), 1, 'an edit that adds nobody notifies nobody');
+    await t.call('ana', 'PATCH', `${base}/${sent.body.id}`, { body: `Hey @[Ben](${ben.id}) and @[Gil](${(await t.prisma.user.findFirstOrThrow({ where: { email: { contains: `gil-${t.run}` } } })).id})` });
+    assert.equal(await count('ben'), 1); assert.equal(await count('gil'), 1, 'only the newly added person is told');
+  });
 });
+

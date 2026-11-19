@@ -3900,3 +3900,17 @@ body {
 .gantt__bar--in_review { background: var(--aven-warning); }
 .gantt__bar--completed { background: var(--aven-success); opacity: .75; }
 .gantt__note { margin: 6px 0 0; color: var(--aven-muted); font-size: 12px; }
+
+.chat-compose__field { position: relative; flex: 1; display: flex; }
+.chat-compose__field textarea { width: 100%; }
+.chat-mentions { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 5; display: grid; min-width: 200px; margin: 0; padding: 4px; list-style: none; border: 1px solid var(--aven-border); border-radius: 10px; background: var(--aven-paper); box-shadow: 0 10px 28px rgb(0 0 0 / 14%); }
+.chat-mentions button { width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--aven-charcoal); font: 13px var(--aven-interface-font); text-align: left; cursor: pointer; }
+.chat-mentions li[aria-selected='true'] button, .chat-mentions button:hover { background: var(--aven-sand); }
+.chat-mention { padding: 0 3px; border-radius: 4px; background: var(--aven-sand); color: var(--aven-umber); font-weight: 600; }
+
+.chat-compose__field { position: relative; flex: 1; display: flex; }
+.chat-compose__field textarea { width: 100%; }
+.chat-mentions { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 5; display: grid; min-width: 200px; margin: 0; padding: 4px; list-style: none; border: 1px solid var(--aven-border); border-radius: 10px; background: var(--aven-paper); box-shadow: 0 10px 28px rgb(0 0 0 / 14%); }
+.chat-mentions button { width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--aven-charcoal); font: 13px var(--aven-interface-font); text-align: left; cursor: pointer; }
+.chat-mentions li[aria-selected='true'] button, .chat-mentions button:hover { background: var(--aven-sand); }
+.chat-mention { padding: 0 3px; border-radius: 4px; background: var(--aven-sand); color: var(--aven-umber); font-weight: 600; }

@@ -29,3 +29,9 @@ export function parseBefore(value: unknown): Date | null {
   if (!date || Number.isNaN(date.getTime())) throw new BadRequestException('before must be a date.');
   return date;
 }
+
+/** A mention is stored as `@[Name](user-id)`. Only the id is trusted: the name is just what the sender saw. */
+const mention = /@\[[^\]\n]{1,120}\]\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi;
+export function extractMentionIds(body: string, limit = 20): string[] {
+  return [...new Set([...body.matchAll(mention)].map((match) => match[1].toLowerCase()))].slice(0, limit);
+}

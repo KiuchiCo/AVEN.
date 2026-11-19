@@ -39,6 +39,7 @@ const dateTime = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: '
 function activityLink(entityType: string, entityId: string) {
   if (entityType.startsWith('TASK')) return `/workspace/tasks/${entityId}`;
   if (entityType === 'DOCUMENT') return `/workspace/documents/${entityId}`;
+  if (entityType === 'CHANNEL') return '/workspace/messages';
   return '/workspace/activity';
 }
 

@@ -11,6 +11,7 @@ export function notificationHref(entityType: string, entityId: string): string {
   if (entityType === 'DOCUMENT') return `/workspace/documents/${encodeURIComponent(entityId)}`;
   if (entityType === 'WORKFLOW') return '/workspace/automations';
   if (entityType === 'FILE') return '/workspace/files';
+  if (entityType === 'CHANNEL') return '/workspace/messages';
   if (entityType === 'KNOWLEDGE') return '/workspace/knowledge';
   return '/workspace/inbox';
 }
