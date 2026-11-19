@@ -4,6 +4,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { BillingCard } from './billing-card';
+import { ThemeCard } from './theme-card';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -97,6 +98,7 @@ export default function WorkspaceSettingsPage() {
   return <section className="workspace-settings-page">
     <header><p className="workspace-page-eyebrow">SETTINGS</p><h1>Settings</h1><p>Manage your profile, notifications and this workspace.</p></header>
     <AccountSettings />
+    <ThemeCard />
     <BillingCard />
     <div className="workspace-settings-card">
       <div><h2>Workspace details</h2><p>Members will see this name in their workspace switcher.</p></div>
