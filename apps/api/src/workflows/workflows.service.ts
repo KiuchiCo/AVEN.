@@ -1,23 +1,29 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { readApiEnvironment } from '../config/api-environment.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { WorkflowRunner } from './workflow-runner.service.js';
-import { nextScheduledRun, parseWorkflow, type Trigger } from './workflow-rules.js';
+import { nextScheduledRun, parseWorkflow, type Step, type Trigger } from './workflow-rules.js';
 
-const MAX_WORKFLOWS = 25;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class WorkflowsService {
-  constructor(private readonly prisma: PrismaService, private readonly runner: WorkflowRunner) {}
+  constructor(private readonly prisma: PrismaService, private readonly runner: WorkflowRunner, private readonly entitlements: EntitlementsService) {}
 
   private options() { return { allowPrivateWebhooks: readApiEnvironment().workflowAllowPrivateWebhooks }; }
 
   private async roleOf(workspaceId: string, userId: string) {
     return (await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId } }, select: { role: true } }))?.role;
+  }
+
+  /** Calling other systems and running a model inside a workflow are paid features. Workflows already saved are never removed. */
+  private async assertSteps(workspaceId: string, steps: Step[]) {
+    const advanced = (list: Step[]): boolean => list.some((step) => step.type === 'webhook' || step.type === 'ai' || ('then' in step && (advanced(step.then) || advanced(step.else))));
+    if (advanced(steps)) await this.entitlements.assertFeature(workspaceId, 'advancedAutomation', 'Webhook and AI steps');
   }
 
   private scheduleFor(trigger: Trigger, enabled: boolean) {
@@ -45,7 +51,8 @@ export class WorkflowsService {
   async create(identity: AuthenticatedIdentity, workspaceId: string, body: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
     const input = parseWorkflow(body, this.options());
-    if (await this.prisma.workflow.count({ where: { workspaceId } }) >= MAX_WORKFLOWS) throw new BadRequestException(`A workspace can have up to ${MAX_WORKFLOWS} workflows.`);
+    await this.entitlements.assertCanAdd(workspaceId, 'workflows');
+    await this.assertSteps(workspaceId, input.steps);
     await this.assertNameFree(workspaceId, input.name);
     const enabled = input.enabled ?? false;
     try {
@@ -62,6 +69,7 @@ export class WorkflowsService {
     if (!body || typeof body !== 'object' || Array.isArray(body) || !Object.keys(body).length) throw new BadRequestException('Provide something to change.');
     const merged = { name: workflow.name, description: workflow.description, trigger: workflow.trigger, steps: workflow.steps, enabled: workflow.enabled, ...(body as Record<string, unknown>) };
     const input = parseWorkflow(merged, this.options());
+    await this.assertSteps(workspaceId, input.steps);
     if (input.name.toLocaleLowerCase() !== workflow.name.toLocaleLowerCase()) await this.assertNameFree(workspaceId, input.name, workflow.id);
     const enabled = input.enabled ?? workflow.enabled;
     const triggerChanged = JSON.stringify(input.trigger) !== JSON.stringify(workflow.trigger);

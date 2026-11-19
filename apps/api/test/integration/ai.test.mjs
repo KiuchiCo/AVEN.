@@ -26,7 +26,7 @@ describe('AVEN Intelligence assistant', { skip }, () => {
     await new Promise((resolve) => model.listen(0, '127.0.0.1', resolve));
     t = await boot({ ANTHROPIC_API_KEY: 'sk-test', AI_BASE_URL: `http://127.0.0.1:${model.address().port}`, AI_MONTHLY_CREDITS: '30' });
     for (const name of ['ada', 'bo', 'cy', 'mal']) await t.user(name);
-    W = await t.workspace('ada'); await t.member(W.id, 'bo', 'MEMBER'); await t.member(W.id, 'cy', 'GUEST');
+    W = await t.workspace('ada'); await t.plan(W.id, 'ENTERPRISE', { limitsOverride: { aiCredits: 100 } }); await t.member(W.id, 'bo', 'MEMBER'); await t.member(W.id, 'cy', 'GUEST');
     const owner = await t.prisma.user.findFirstOrThrow({ where: { email: { contains: `ada-${t.run}` } } });
     await t.prisma.task.create({ data: { workspaceId: W.id, createdById: owner.id, title: 'Ship launch checklist', dueAt: new Date(Date.now() - 86_400_000) } });
     await t.prisma.task.create({ data: { workspaceId: W.id, createdById: owner.id, title: 'Far future task', dueAt: new Date(Date.now() + 90 * 86_400_000) } });

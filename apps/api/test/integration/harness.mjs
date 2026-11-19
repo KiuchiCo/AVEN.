@@ -23,7 +23,7 @@ export async function boot(env = {}) {
     request.authenticatedIdentity = { issuer: 'https://integration.test', subject };
     return true;
   };
-  const app = await NestFactory.create(AppModule, { bodyParser: false, logger: false });
+  const app = await NestFactory.create(AppModule, { bodyParser: false, rawBody: true, logger: false });
   app.useBodyParser('json', { limit: '4mb' });
   app.setGlobalPrefix('api/v1');
   app.useGlobalFilters(new AllExceptionsFilter());
@@ -51,6 +51,8 @@ export async function boot(env = {}) {
     async member(workspaceId, name, role) {
       return prisma.workspaceMember.upsert({ where: { workspaceId_userId: { workspaceId, userId: users.get(name).row.id } }, create: { workspaceId, userId: users.get(name).row.id, role }, update: { role } });
     },
+    /** Puts a workspace on a paid plan, as the payment provider would after a successful checkout. */
+    plan: (workspaceId, planKey, extra = {}) => prisma.subscription.upsert({ where: { workspaceId }, create: { workspaceId, planKey, status: 'ACTIVE', seats: 1, ...extra }, update: { planKey, status: 'ACTIVE', ...extra } }),
     headers: (name, extra = {}) => ({ 'x-test-user': name ? users.get(name).subject : '', 'content-type': 'application/json', ...extra }),
     /** JSON request as a named user. Returns { status, body }. */
     async call(name, method, path, body) {

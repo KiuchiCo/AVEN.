@@ -20,7 +20,7 @@ describe('email notifications and invitations', { skip }, () => {
     t = await boot({ EMAIL_API_KEY: 're_test_key', EMAIL_FROM: 'AVEN <hello@aven.test>', EMAIL_BASE_URL: `http://127.0.0.1:${service.address().port}`, WEB_ORIGIN: 'https://app.aven.test' });
     users = {};
     for (const name of ['ann', 'bob', 'cat', 'dan']) users[name] = await t.user(name);
-    W = await t.workspace('ann');
+    W = await t.workspace('ann'); await t.plan(W.id, 'ENTERPRISE');
     for (const name of ['bob', 'cat', 'dan']) await t.member(W.id, name, 'MEMBER');
     const { NotificationEmailer } = await import('../../dist/email/notification-emailer.service.js');
     emailer = t.get(NotificationEmailer);

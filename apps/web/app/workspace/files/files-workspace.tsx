@@ -66,7 +66,7 @@ export function FilesWorkspace() {
 
   const ask = (message: string, initial = '') => window.prompt(message, initial)?.trim() || null;
   const inFolderView = view === 'files' && debounced.length < 2;
-  const quota = usage ? Math.min(100, Math.round((usage.usedBytes / usage.quotaBytes) * 100)) : 0;
+  const quota = usage?.quotaBytes ? Math.min(100, Math.round((usage.usedBytes / usage.quotaBytes) * 100)) : 0;
   const moveTargets = [
     ...(folderId ? [{ id: '', name: 'All files (top level)' }] : []),
     ...(listing && listing.path.length > 1 ? [{ id: listing.path[listing.path.length - 2].id, name: `Up to ${listing.path[listing.path.length - 2].name}` }] : []),
@@ -86,7 +86,7 @@ export function FilesWorkspace() {
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {notice && <p className="files-notice" role="status">{notice}</p>}
 
-    {usage && <div className="files-usage" aria-label="Storage used"><div className="files-usage__bar" role="img" aria-label={`${quota}% of storage used`}><span style={{ width: `${quota}%` }} /></div><small>{formatBytes(usage.usedBytes)} of {formatBytes(usage.quotaBytes)} used · files can be up to {formatBytes(usage.maxFileBytes)}</small></div>}
+    {usage && <div className="files-usage" aria-label="Storage used"><div className="files-usage__bar" role="img" aria-label={`${quota}% of storage used`}><span style={{ width: `${quota}%` }} /></div><small>{usage.quotaBytes === null ? `${formatBytes(usage.usedBytes)} used` : `${formatBytes(usage.usedBytes)} of ${formatBytes(usage.quotaBytes)} used`} · files can be up to {formatBytes(usage.maxFileBytes)}</small></div>}
 
     <div className="files-toolbar">
       <div className="files-views" role="group" aria-label="View"><button type="button" aria-pressed={view === 'files'} onClick={() => { setView('files'); setVersions(null); }}>Files</button><button type="button" aria-pressed={view === 'bin'} onClick={() => { setView('bin'); setVersions(null); }}>Recycle bin</button></div>

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { EntitlementsService } from '../billing/entitlements.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
@@ -8,7 +9,7 @@ import { parseBaseUpdatedAt, recordConflict } from './document-concurrency.js';
 
 @Injectable()
 export class DatabasesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly entitlements: EntitlementsService) {}
 
   async list(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.requireMembership(identity, workspaceId);
@@ -34,6 +35,7 @@ export class DatabasesService {
     const description = body.description == null || body.description === ''
       ? null
       : textField(body.description, 'Database description', 500);
+    await this.entitlements.assertCanAdd(workspaceId, 'databases');
     return this.prisma.workspaceDatabase.create({ data: { workspaceId, name, description } });
   }
 

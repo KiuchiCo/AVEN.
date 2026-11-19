@@ -1,15 +1,15 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { isWriteTool, monthWindow } from './ai-rules.js';
 import { generalAgent, parseAgentInput, systemAgents, type AgentInput } from './agents.js';
 
-const MAX_CUSTOM_AGENTS = 20;
 
 @Injectable()
 export class AiAgentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly entitlements: EntitlementsService) {}
 
   /** Built-in agents followed by this workspace's custom ones, each with this month's credit use. */
   async list(identity: AuthenticatedIdentity, workspaceId: string) {
@@ -37,7 +37,8 @@ export class AiAgentsService {
   async create(identity: AuthenticatedIdentity, workspaceId: string, body: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
     const data = parseAgentInput(body) as AgentInput;
-    if (await this.prisma.aiAgent.count({ where: { workspaceId } }) >= MAX_CUSTOM_AGENTS) throw new BadRequestException(`A workspace can have up to ${MAX_CUSTOM_AGENTS} custom agents.`);
+    await this.entitlements.assertFeature(workspaceId, 'aiAgents', 'Custom agents');
+    await this.entitlements.assertCanAdd(workspaceId, 'customAgents');
     await this.assertNameFree(workspaceId, data.name);
     try { return await this.prisma.aiAgent.create({ data: { workspaceId, createdById: userId, ...data }, select: { id: true, name: true } }); }
     catch (error) { throw this.conflict(error); }

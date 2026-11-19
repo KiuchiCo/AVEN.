@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 @Injectable()
 export class IntelligenceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly entitlements: EntitlementsService) {}
 
   async briefing(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId);
@@ -70,6 +71,7 @@ export class IntelligenceService {
     const dueAt = optionalDate(body.dueAt, 'Project due date');
     const tasks = titleList(body.tasks, 'Tasks', 30, 200);
     const milestones = titleList(body.milestones, 'Milestones', 20, 160);
+    await this.entitlements.assertCanAdd(workspaceId, 'projects');
     if (!tasks.length && !milestones.length) throw new BadRequestException('Add at least one task or milestone to the plan.');
 
     return this.prisma.$transaction(async (transaction) => {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { Readable } from 'node:stream';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -27,6 +28,7 @@ export class FilesService {
     private readonly prisma: PrismaService,
     @Inject(STORAGE) private readonly storage: StorageDriver,
     @Inject(FILE_LIMITS) private readonly limits: FileLimits,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   private member(identity: AuthenticatedIdentity, workspaceId: string, write = false) {
@@ -73,7 +75,7 @@ export class FilesService {
 
   async usage(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.member(identity, workspaceId);
-    return { usedBytes: await this.usedBytes(this.prisma, workspaceId), quotaBytes: this.limits.storageQuotaBytes, maxFileBytes: this.limits.maxUploadBytes };
+    return { usedBytes: await this.usedBytes(this.prisma, workspaceId), quotaBytes: await this.entitlements.limit(workspaceId, 'storageBytes'), maxFileBytes: this.limits.maxUploadBytes };
   }
 
   /** Everything not yet permanently deleted counts: current files, files in the recycle bin, and old versions. */
@@ -134,7 +136,8 @@ export class FilesService {
     if (replaceFileId && !await this.prisma.storedFile.findFirst({ where: { id: replaceFileId, workspaceId, deletedAt: null }, select: { id: true } })) throw new NotFoundException('File not found in this workspace.');
 
     const declared = Number(request.headers['content-length']);
-    const { maxUploadBytes, storageQuotaBytes } = this.limits;
+    const { maxUploadBytes } = this.limits;
+    const storageQuotaBytes = (await this.entitlements.limit(workspaceId, 'storageBytes')) ?? Infinity;
     if (Number.isFinite(declared) && declared > maxUploadBytes) throw new PayloadTooLargeException(`Files can be up to ${formatBytes(maxUploadBytes)}.`);
     if (Number.isFinite(declared) && declared > 0 && await this.usedBytes(this.prisma, workspaceId) + declared > storageQuotaBytes) throw new PayloadTooLargeException('This workspace is out of storage space.');
 

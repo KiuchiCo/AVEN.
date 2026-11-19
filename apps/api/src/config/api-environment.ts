@@ -1,3 +1,5 @@
+import { parsePlanOverrides, type PlanOverrides } from '../billing/plans.js';
+
 export type ApiEnvironment = {
   apiPort: number;
   webOrigins: string[];
@@ -20,6 +22,11 @@ export type ApiEnvironment = {
   emailFrom?: string;
   emailBaseUrl: string;
   webBaseUrl: string;
+  billingPlanOverrides: PlanOverrides;
+  stripeSecretKey?: string;
+  stripeWebhookSecret?: string;
+  stripeBaseUrl: string;
+  stripePrices: Partial<Record<'PLUS' | 'PRO' | 'BUSINESS', string>>;
 };
 
 type EnvironmentSource = Record<string, string | undefined>;
@@ -75,7 +82,7 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
     if (!(url.protocol === 'https:' || (url.protocol === 'http:' && local))) throw new Error();
   } catch { errors.push('AI_BASE_URL must be an HTTPS URL (HTTP is only allowed for localhost)'); }
-  const aiMonthlyCredits = byteSetting('AI_MONTHLY_CREDITS', 2000, 100_000_000);
+  const aiMonthlyCredits = byteSetting('AI_MONTHLY_CREDITS', 200, 100_000_000);
   const aiMaxOutputTokens = byteSetting('AI_MAX_OUTPUT_TOKENS', 2048, 32_000);
 
   // For local development and tests only: lets webhooks reach localhost. Never enable in production.
@@ -93,9 +100,26 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
     if (!(url.protocol === 'https:' || (url.protocol === 'http:' && local))) throw new Error();
   } catch { errors.push('EMAIL_BASE_URL must be an HTTPS URL (HTTP is only allowed for localhost)'); }
 
+  const parsedOverrides = parsePlanOverrides(source.BILLING_PLAN_OVERRIDES);
+  errors.push(...parsedOverrides.errors);
+  const stripeSecretKey = source.STRIPE_SECRET_KEY?.trim() || undefined;
+  const stripeWebhookSecret = source.STRIPE_WEBHOOK_SECRET?.trim() || undefined;
+  if (stripeSecretKey && !stripeWebhookSecret) errors.push('STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set');
+  const stripeBaseUrl = source.STRIPE_BASE_URL?.trim() || 'https://api.stripe.com';
+  try {
+    const url = new URL(stripeBaseUrl);
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (!(url.protocol === 'https:' || (url.protocol === 'http:' && local))) throw new Error();
+  } catch { errors.push('STRIPE_BASE_URL must be an HTTPS URL (HTTP is only allowed for localhost)'); }
+  const stripePrices: ApiEnvironment['stripePrices'] = {};
+  for (const plan of ['PLUS', 'PRO', 'BUSINESS'] as const) {
+    const price = source[`STRIPE_PRICE_${plan}`]?.trim();
+    if (price) { if (/^price_[A-Za-z0-9_]+$/.test(price)) stripePrices[plan] = price; else errors.push(`STRIPE_PRICE_${plan} must be a Stripe price id such as price_123`); }
+  }
+
   const isProduction = source.NODE_ENV === 'production';
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000' };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
 }

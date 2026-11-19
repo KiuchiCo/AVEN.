@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { EntitlementsService } from '../billing/entitlements.service.js';
 import { BadRequestException, ConflictException, HttpException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
@@ -34,6 +35,7 @@ export class AiService {
     private readonly intelligence: IntelligenceService,
     @Inject(LLM_PROVIDER) private readonly provider: OptionalProvider,
     @Inject(AI_SETTINGS) private readonly settings: AiSettings,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   // ---- status, usage ---------------------------------------------------------------------------------------
@@ -46,7 +48,7 @@ export class AiService {
 
   async status(identity: AuthenticatedIdentity, workspaceId: string) {
     await requireWorkspaceMember(this.prisma, identity, workspaceId);
-    return { configured: this.provider !== null, provider: this.provider?.name ?? null, model: this.settings.model, creditsUsed: await this.creditsUsed(workspaceId), creditsLimit: this.settings.monthlyCredits, resetsAt: monthWindow().end };
+    return { configured: this.provider !== null, provider: this.provider?.name ?? null, model: this.settings.model, creditsUsed: await this.creditsUsed(workspaceId), creditsLimit: await this.entitlements.limit(workspaceId, 'aiCredits'), resetsAt: monthWindow().end };
   }
 
   // ---- conversations ---------------------------------------------------------------------------------------
@@ -82,6 +84,7 @@ export class AiService {
       if (typeof requested !== 'string') throw new BadRequestException('Choose one of the listed agents.');
       const agent = await this.agentFor(workspaceId, requested);
       if (agent.key !== requested) throw new BadRequestException('That agent does not exist in this workspace.');
+      if (agent.key !== generalAgent.key) await this.entitlements.assertFeature(workspaceId, 'aiAgents', 'AI agents');
       agentKey = agent.key;
     }
     return this.prisma.aiConversation.create({ data: { workspaceId, userId, title: 'New conversation', agentKey }, select: { id: true, title: true, agentKey: true, updatedAt: true } });
@@ -115,7 +118,8 @@ export class AiService {
     const text = parseUserMessage(body);
     if (!this.provider) throw new ServiceUnavailableException('AVEN Intelligence needs a model provider. Set ANTHROPIC_API_KEY for the API and restart it.');
     const conversation = await this.own(userId, workspaceId, conversationId);
-    if (await this.creditsUsed(workspaceId) >= this.settings.monthlyCredits) throw new HttpException('This workspace has used its AI credits for the month. They reset at the start of next month.', 402);
+    const creditLimit = await this.entitlements.limit(workspaceId, 'aiCredits');
+    if (creditLimit !== null && await this.creditsUsed(workspaceId) >= creditLimit) throw new HttpException('This workspace has used its AI credits for the month. They reset at the start of next month.', 402);
     const membership = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId } }, select: { role: true } });
     const rows = await this.prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'asc' }, select: { role: true, kind: true, content: true } });
     const history: StoredTurn[] = rows.map((row) => ({ role: row.role as 'user' | 'assistant', kind: row.kind as 'text' | 'tool_result', blocks: row.content as LlmBlock[] }));

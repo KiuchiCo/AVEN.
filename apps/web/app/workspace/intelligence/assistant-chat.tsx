@@ -15,7 +15,7 @@ type Source = { type: string; id: string; title: string; href: string };
 type Action = { id: string; tool: string; summary?: string; details?: string[]; input: { title?: string }; status: 'pending' | 'confirmed' | 'declined' | 'failed'; result?: { id: string; title: string; href: string }; error?: string };
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string; citations: Source[]; actions: Action[] };
 type Conversation = { id: string; title: string; agentKey: string };
-type Status = { configured: boolean; model: string; creditsUsed: number; creditsLimit: number; resetsAt: string };
+type Status = { configured: boolean; model: string; creditsUsed: number; creditsLimit: number | null; resetsAt: string };
 type StreamEvent = { type: 'delta'; text: string } | { type: 'status'; text: string } | { type: 'citations'; sources: Source[] } | { type: 'action'; action: Action } | { type: 'done'; messageId: string } | { type: 'error'; message: string };
 
 export function AssistantChat() {
@@ -133,7 +133,7 @@ export function AssistantChat() {
   }
 
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(); } };
-  const percent = status ? Math.min(100, Math.round((status.creditsUsed / status.creditsLimit) * 100)) : 0;
+  const percent = status?.creditsLimit ? Math.min(100, Math.round((status.creditsUsed / status.creditsLimit) * 100)) : 0;
 
   if (status && !status.configured) return <section className="assistant assistant--off" aria-label="Assistant">
     <p className="workspace-eyebrow">ASK AVEN</p><h2>The assistant needs a model provider</h2>
@@ -144,7 +144,7 @@ export function AssistantChat() {
 
   return <section className="assistant" aria-label="Assistant">
     <div className="assistant__heading"><div><p className="workspace-eyebrow">ASK AVEN</p><h2>Ask about your work</h2></div>
-      {status && <div className="assistant__credits" title={`Resets ${new Date(status.resetsAt).toLocaleDateString()}`}><span>{status.creditsUsed} of {status.creditsLimit} AI credits this month</span><div className="assistant__bar" role="img" aria-label={`${percent}% of credits used`}><span style={{ width: `${percent}%` }} /></div></div>}</div>
+      {status && <div className="assistant__credits" title={`Resets ${new Date(status.resetsAt).toLocaleDateString()}`}><span>{status.creditsLimit === null ? `${status.creditsUsed} AI credits used this month` : `${status.creditsUsed} of ${status.creditsLimit} AI credits this month`}</span>{status.creditsLimit !== null && <div className="assistant__bar" role="img" aria-label={`${percent}% of credits used`}><span style={{ width: `${percent}%` }} /></div>}</div>}</div>
     <div className="assistant__layout">
       <aside className="assistant__list" aria-label="Conversations">
         <label className="assistant__agent">Agent<select value={agentKey} disabled={activeId !== null} onChange={(event) => setAgentKey(event.target.value)}>{agents.map((agent) => <option key={agent.key} value={agent.key}>{agent.name}</option>)}</select></label>

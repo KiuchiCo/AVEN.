@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { documentConflict, eventConflict, parseBaseUpdatedAt } from './document-concurrency.js';
@@ -30,7 +31,7 @@ const databaseRecordSearchMaxScan = 3000;
 
 @Injectable()
 export class ProductivityService {
-  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService) {}
+  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService) {}
 
   async listProjects(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
@@ -91,6 +92,7 @@ export class ProductivityService {
     if (!template) throw new NotFoundException('Project template not found in this workspace.');
     const tasks = parseTemplateTasks(template.taskTemplates);
     const milestones = parseTemplateMilestones(template.milestoneTemplates);
+    await this.entitlements.assertCanAdd(workspaceId, 'projects');
     return this.prisma.$transaction(async (transaction) => {
       const project = await transaction.project.create({ data: { workspaceId, createdById: actorId, name, description: template.description, status: 'PLANNING' } });
       const createdTasks: { id: string }[] = [];
@@ -232,6 +234,7 @@ export class ProductivityService {
     const status = enumField(body.status, projectStatuses, 'Project status', 'PLANNING');
     const dueAt = dateField(body.dueAt, 'Due date');
     const budgetTotalCents = moneyCentsField(body.budgetTotal, 'Project budget', true);
+    await this.entitlements.assertCanAdd(workspaceId, 'projects');
     const project = await this.prisma.project.create({
       data: { workspaceId, createdById: userId, name, description, status, dueAt, budgetTotalCents },
     });

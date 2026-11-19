@@ -4,6 +4,8 @@ import { readApiEnvironment } from '../config/api-environment.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { renderInvitationEmail } from '../email/email-templates.js';
 import { TransactionalEmail } from '../email/transactional-email.service.js';
+import { BillingService } from '../billing/billing.service.js';
+import { EntitlementsService } from '../billing/entitlements.service.js';
 import { createInvitationToken, hashInvitationToken } from './invitation-token.js';
 
 const roles = ['ADMINISTRATOR', 'MANAGER', 'MEMBER', 'GUEST'] as const;
@@ -11,7 +13,7 @@ type InviteRole = (typeof roles)[number];
 
 @Injectable()
 export class WorkspaceInvitationsService {
-  constructor(private readonly prisma: PrismaService, private readonly email: TransactionalEmail) {}
+  constructor(private readonly prisma: PrismaService, private readonly email: TransactionalEmail, private readonly entitlements: EntitlementsService, private readonly billing: BillingService) {}
 
   async list(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.membership(identity, workspaceId);
@@ -34,6 +36,7 @@ export class WorkspaceInvitationsService {
     }
     const existing = await this.prisma.workspaceInvite.findFirst({ where: { workspaceId, email, status: 'PENDING', expiresAt: { gt: new Date() } }, select: { id: true } });
     if (existing) throw new ConflictException('There is already an active invitation for this email.');
+    if (role !== 'GUEST') await this.entitlements.assertCanAddMember(workspaceId, { includePending: true });
     const token = createInvitationToken();
     const invite = await this.prisma.workspaceInvite.create({ data: {
       workspaceId, createdById: actor.userId, email, role, tokenHash: hashInvitationToken(token),
@@ -65,11 +68,13 @@ export class WorkspaceInvitationsService {
     const target = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: memberId } }, select: { role: true, user: { select: { displayName: true } } } });
     if (!target) throw new NotFoundException('Workspace member not found.');
     if (target.role === 'OWNER') throw new BadRequestException('The workspace owner role cannot be changed.');
+    if (target.role === 'GUEST' && role !== 'GUEST') await this.entitlements.assertCanAddMember(workspaceId, { includePending: true });
     await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.workspaceMember.updateMany({ where: { workspaceId, userId: memberId, role: { not: 'OWNER' } }, data: { role } });
       if (updated.count !== 1) throw new NotFoundException('Workspace member not found.');
       await transaction.workspaceActivity.create({ data: { workspaceId, actorId: actor.userId, entityType: 'MEMBER', entityId: memberId, message: `changed ${target.user.displayName}'s role to ${role.toLocaleLowerCase()}` } });
     });
+    await this.billing.syncSeatsQuietly(workspaceId);
     return { userId: memberId, role };
   }
 
@@ -85,6 +90,7 @@ export class WorkspaceInvitationsService {
       if (removed.count !== 1) throw new NotFoundException('Workspace member not found.');
       await transaction.workspaceActivity.create({ data: { workspaceId, actorId: actor.userId, entityType: 'MEMBER', entityId: memberId, message: `removed ${target.user.displayName} from the workspace` } });
     });
+    await this.billing.syncSeatsQuietly(workspaceId);
     return { removed: true };
   }
 
@@ -101,6 +107,7 @@ export class WorkspaceInvitationsService {
     const invite = await this.prisma.workspaceInvite.findUnique({ where: { tokenHash }, select: { id: true, workspaceId: true, email: true, role: true, status: true, expiresAt: true } });
     if (!invite || invite.status !== 'PENDING' || invite.expiresAt <= new Date()) throw new NotFoundException('This invitation is invalid, expired, or has already been used.');
     if (user.email.toLowerCase() !== invite.email.toLowerCase()) throw new ForbiddenException(`This invitation was sent to ${invite.email}. Sign in with that verified email address.`);
+    if (invite.role !== 'GUEST') await this.entitlements.assertCanAddMember(invite.workspaceId, { includePending: false });
     try {
       await this.prisma.$transaction(async (transaction) => {
         await transaction.workspaceMember.create({ data: { workspaceId: invite.workspaceId, userId: user.id, role: invite.role } });
@@ -113,6 +120,7 @@ export class WorkspaceInvitationsService {
       if ((error as { code?: string }).code === 'P2002') throw new ConflictException('You are already a member of this workspace or the invitation was just used.');
       throw error;
     }
+    await this.billing.syncSeatsQuietly(invite.workspaceId);
     return { accepted: true, workspaceId: invite.workspaceId };
   }
 

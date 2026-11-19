@@ -171,6 +171,8 @@ model Workspace {
   aiAgents AiAgent[]
   workflows Workflow[]
   workflowRuns WorkflowRun[]
+  subscription Subscription?
+  billingInvoices BillingInvoice[]
   @@index([createdById])
   @@map("workspaces")
 }
@@ -908,4 +910,59 @@ model WorkflowStepRun {
 
   @@index([runId, startedAt])
   @@map("workflow_step_runs")
+}
+
+/// The paid plan of a workspace. No row means the Free plan. Rows are changed only by verified payment-provider
+/// webhooks (or by hand for Enterprise agreements, using `limitsOverride`).
+model Subscription {
+  id                     String    @id @default(uuid()) @db.Uuid
+  workspaceId            String    @unique @db.Uuid
+  planKey                String    @db.VarChar(20)
+  /// ACTIVE, TRIALING, PAST_DUE keep paid limits; anything else counts as Free.
+  status                 String    @db.VarChar(20)
+  seats                  Int       @default(1)
+  currentPeriodEnd       DateTime? @db.Timestamptz(3)
+  cancelAtPeriodEnd      Boolean   @default(false)
+  provider               String?   @db.VarChar(20)
+  providerCustomerId     String?   @db.VarChar(100)
+  providerSubscriptionId String?   @unique @db.VarChar(100)
+  limitsOverride         Json?     @db.JsonB
+  createdAt              DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime  @updatedAt @db.Timestamptz(3)
+  workspace              Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+/// Every webhook event processed, so a repeated delivery is recognised and ignored.
+model BillingEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  provider        String   @db.VarChar(20)
+  providerEventId String   @db.VarChar(100)
+  type            String   @db.VarChar(80)
+  workspaceId     String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([provider, providerEventId])
+  @@map("billing_events")
+}
+
+/// Billing history shown to workspace owners, copied from the provider's invoices.
+model BillingInvoice {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  providerInvoiceId String    @unique @db.VarChar(100)
+  number            String?   @db.VarChar(60)
+  status            String    @db.VarChar(20)
+  amountCents       Int
+  currency          String    @db.VarChar(3)
+  hostedUrl         String?   @db.VarChar(500)
+  periodStart       DateTime? @db.Timestamptz(3)
+  periodEnd         DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("billing_invoices")
 }

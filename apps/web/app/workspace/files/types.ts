@@ -4,7 +4,7 @@ export type FileRecord = {
 };
 export type FolderRecord = { id: string; name: string; parentId: string | null; createdAt: string };
 export type FileListing = { folder: { id: string; name: string } | null; path: { id: string; name: string }[]; folders: FolderRecord[]; files: FileRecord[] };
-export type FileUsage = { usedBytes: number; quotaBytes: number; maxFileBytes: number };
+export type FileUsage = { usedBytes: number; quotaBytes: number | null; maxFileBytes: number };
 export type FileVersionRecord = { version: number; sizeBytes: number; createdAt: string; createdBy: { displayName: string }; current: boolean };
 export type AttachmentRecord = { id: string; createdAt: string; file: FileRecord };
 export type AttachmentTarget = { taskId: string } | { documentId: string } | { projectId: string };

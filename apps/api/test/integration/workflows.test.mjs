@@ -21,7 +21,7 @@ describe('workflow engine', { skip }, () => {
     hook = (path) => `http://127.0.0.1:${receiver.address().port}${path}`;
     t = await boot({ WORKFLOW_ALLOW_PRIVATE_WEBHOOKS: 'true' });
     for (const name of ['wren', 'sol', 'gwen']) await t.user(name);
-    W = await t.workspace('wren'); await t.member(W.id, 'sol', 'MEMBER'); await t.member(W.id, 'gwen', 'GUEST');
+    W = await t.workspace('wren'); await t.plan(W.id, 'ENTERPRISE'); await t.member(W.id, 'sol', 'MEMBER'); await t.member(W.id, 'gwen', 'GUEST');
     const { WorkflowRunner } = await import('../../dist/workflows/workflow-runner.service.js');
     runner = t.get(WorkflowRunner);
   });

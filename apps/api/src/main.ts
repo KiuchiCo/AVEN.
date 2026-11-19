@@ -13,7 +13,7 @@ config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)) });
 
 async function bootstrap() {
   const environment = readApiEnvironment();
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false, rawBody: true });
   app.use(requestLogging);
   app.useBodyParser('json', { limit: '4mb' });
   app.useGlobalFilters(new AllExceptionsFilter());

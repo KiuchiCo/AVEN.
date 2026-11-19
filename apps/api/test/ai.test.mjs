@@ -182,7 +182,7 @@ test('history drops a tool call whose result is missing, so the provider never s
 test('AI settings default safely, accept overrides, and reject unsafe values', () => {
   const base = { DATABASE_URL: 'postgresql://aven:x@localhost:5432/aven' };
   const defaults = readApiEnvironment(base);
-  assert.deepEqual([defaults.aiApiKey, defaults.aiModel, defaults.aiBaseUrl, defaults.aiMonthlyCredits, defaults.aiMaxOutputTokens], [undefined, 'claude-sonnet-5-5', 'https://api.anthropic.com', 2000, 2048]);
+  assert.deepEqual([defaults.aiApiKey, defaults.aiModel, defaults.aiBaseUrl, defaults.aiMonthlyCredits, defaults.aiMaxOutputTokens], [undefined, 'claude-sonnet-5-5', 'https://api.anthropic.com', 200, 2048]);
   assert.equal(readApiEnvironment({ ...base, ANTHROPIC_API_KEY: ' sk-x ', AI_MODEL: 'claude-opus-5-5', AI_BASE_URL: 'http://localhost:8080' }).aiApiKey, 'sk-x');
   for (const bad of [{ AI_BASE_URL: 'http://example.com' }, { AI_BASE_URL: 'ftp://x' }, { AI_BASE_URL: 'nonsense' }, { AI_MODEL: 'bad model!' }, { AI_MONTHLY_CREDITS: '0' }, { AI_MAX_OUTPUT_TOKENS: '99999999' }]) assert.throws(() => readApiEnvironment({ ...base, ...bad }), /Invalid API environment/, JSON.stringify(bad));
 });
