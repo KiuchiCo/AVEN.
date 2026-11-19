@@ -60,3 +60,10 @@ test('your own changes are hidden from your Inbox, but workflow notices about yo
   assert.ok(either.some((clause) => clause.actorId?.not === 'u1'));
   assert.ok(either.some((clause) => clause.entityType === 'WORKFLOW'));
 });
+
+test('time zone must be a real IANA zone, or null to follow the device', () => {
+  assert.equal(parseProfileUpdate({ timeZone: 'Australia/Sydney' }).timeZone, 'Australia/Sydney');
+  assert.equal(parseProfileUpdate({ timeZone: 'UTC' }).timeZone, 'UTC');
+  assert.equal(parseProfileUpdate({ timeZone: null }).timeZone, null);
+  for (const bad of ['Mars/Olympus', '', 'x'.repeat(65), 5, undefined]) assert.throws(() => parseProfileUpdate({ timeZone: bad }), /time zone|Provide at least one/);
+});

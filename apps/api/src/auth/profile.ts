@@ -2,15 +2,21 @@ import { BadRequestException } from '@nestjs/common';
 
 export const dashboardWidgets = ['stats', 'nextUp', 'projects', 'events', 'documents', 'activity', 'insights'] as const;
 
-export const profileSelect = { id: true, email: true, displayName: true, notifyTeamActivity: true, notifyTaskUpdates: true, dashboardHiddenWidgets: true, emailNotifications: true } as const;
+export const profileSelect = { id: true, email: true, displayName: true, notifyTeamActivity: true, notifyTaskUpdates: true, dashboardHiddenWidgets: true, emailNotifications: true, timeZone: true } as const;
 
-export type ProfileUpdate = { displayName?: string; notifyTeamActivity?: boolean; notifyTaskUpdates?: boolean; dashboardHiddenWidgets?: string[]; emailNotifications?: boolean };
+export type ProfileUpdate = { displayName?: string; notifyTeamActivity?: boolean; notifyTaskUpdates?: boolean; dashboardHiddenWidgets?: string[]; emailNotifications?: boolean; timeZone?: string | null };
+
+/** True for a real IANA time zone such as "Australia/Sydney" or "UTC". */
+export function isTimeZone(value: unknown): value is string {
+  if (typeof value !== 'string' || !value || value.length > 64) return false;
+  try { new Intl.DateTimeFormat('en', { timeZone: value }); return true; } catch { return false; }
+}
 
 /** Validates a profile PATCH body. Unknown fields are rejected so typos never silently do nothing. */
 export function parseProfileUpdate(input: unknown): ProfileUpdate {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A JSON object is required.');
   const body = input as Record<string, unknown>;
-  const allowed = ['displayName', 'notifyTeamActivity', 'notifyTaskUpdates', 'dashboardHiddenWidgets', 'emailNotifications'];
+  const allowed = ['displayName', 'notifyTeamActivity', 'notifyTaskUpdates', 'dashboardHiddenWidgets', 'emailNotifications', 'timeZone'];
   const unknown = Object.keys(body).find((key) => !allowed.includes(key));
   if (unknown) throw new BadRequestException(`Unknown setting “${unknown}”.`);
 
@@ -25,6 +31,10 @@ export function parseProfileUpdate(input: unknown): ProfileUpdate {
       if (typeof body[key] !== 'boolean') throw new BadRequestException(`${key} must be true or false.`);
       update[key] = body[key];
     }
+  }
+  if ('timeZone' in body) {
+    if (body.timeZone !== null && !isTimeZone(body.timeZone)) throw new BadRequestException('Choose a valid time zone, for example Australia/Sydney.');
+    update.timeZone = body.timeZone as string | null;
   }
   if ('dashboardHiddenWidgets' in body) {
     const value = body.dashboardHiddenWidgets;

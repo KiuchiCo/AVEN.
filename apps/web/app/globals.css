@@ -4073,3 +4073,5 @@ body {
 .settings-clerk-root { width: 100%; color-scheme: light; color: #2b2a27; }
 .settings-clerk-card { width: 100%; max-width: 100%; box-shadow: none; border: 1px solid var(--aven-border); }
 .settings-security { max-width: 1000px; }
+.workspace-settings-toggles .workspace-settings-save { justify-self: start; }
+.workspace-settings-toggles select { max-width: 420px; padding: 9px 11px; border: 1px solid var(--aven-border); border-radius: 10px; background: var(--aven-paper); color: var(--aven-charcoal); font: inherit; }

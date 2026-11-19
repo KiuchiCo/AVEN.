@@ -6,7 +6,7 @@ import { AuthSetupNotice } from '../auth-setup-notice';
 import { WorkspaceShell } from './workspace-shell';
 
 export interface WorkspaceSession {
-  user: { id: string; displayName: string; email: string };
+  user: { id: string; displayName: string; email: string; timeZone?: string | null };
   workspace: { id: string; name: string; role: string | null; memberCount?: number; isPersonal?: boolean };
 }
 

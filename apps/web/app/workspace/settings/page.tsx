@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { BillingCard } from './billing-card';
 import { ThemeCard } from './theme-card';
+import { TimeZoneCard } from './time-zone-card';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -99,6 +100,7 @@ export default function WorkspaceSettingsPage() {
     <header><p className="workspace-page-eyebrow">SETTINGS</p><h1>Settings</h1><p>Manage your profile, notifications and this workspace.</p></header>
     <AccountSettings />
     <ThemeCard />
+    <TimeZoneCard />
     <BillingCard />
     <div className="workspace-settings-card">
       <div><h2>Workspace details</h2><p>Members will see this name in their workspace switcher.</p></div>

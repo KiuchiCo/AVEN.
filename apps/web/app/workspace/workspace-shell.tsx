@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { WorkspaceSession } from './layout';
+import { timeZoneCookie, timeZoneCookieValue } from '../time-zone-script';
 import { workspaceNavigation } from './workspace-navigation';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
@@ -23,6 +24,17 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
   const [createOpen, setCreateOpen] = useState(false);
   const activeItem = workspaceNavigation.find((item) => item.href === pathname);
   const pageTitle = pathname === '/workspace/search' ? 'Search' : activeItem?.label ?? 'Workspace';
+
+  // A time zone chosen on another device is applied here too: remember it in the cookie the page reads on load, then reload once.
+  useEffect(() => {
+    const wanted = session.user.timeZone ?? null;
+    const current = document.cookie.match(new RegExp(`(?:^|; )${timeZoneCookie}=([^;]+)`));
+    const have = current ? decodeURIComponent(current[1]) : null;
+    if (wanted === have) return;
+    try { if (sessionStorage.getItem('aven-tz-synced')) return; sessionStorage.setItem('aven-tz-synced', '1'); } catch { return; }
+    document.cookie = timeZoneCookieValue(wanted);
+    window.location.reload();
+  }, [session.user.timeZone]);
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {

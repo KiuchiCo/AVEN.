@@ -95,7 +95,7 @@ export class AuthService {
           });
 
           return {
-            user: { id: user.id, email: user.email, displayName: user.displayName },
+            user: { id: user.id, email: user.email, displayName: user.displayName, timeZone: user.timeZone ?? null },
             workspace: { id: activeMembership.workspace.id, name: activeMembership.workspace.name, role: activeMembership.role, memberCount: activeMembership.workspace._count.members, isPersonal: Boolean(activeMembership.workspace.personalOwnerId) },
           };
         });
