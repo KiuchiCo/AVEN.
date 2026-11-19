@@ -15,6 +15,16 @@ export class SessionController {
     return this.authService.bootstrapWorkspace(identity, workspaceId);
   }
 
+  @Get('me')
+  profile(@CurrentIdentity() identity: AuthenticatedIdentity) {
+    return this.authService.getProfile(identity);
+  }
+
+  @Patch('me')
+  updateProfile(@CurrentIdentity() identity: AuthenticatedIdentity, @Body() body: unknown) {
+    return this.authService.updateProfile(identity, body);
+  }
+
   @Get('workspaces')
   listWorkspaces(@CurrentIdentity() identity: AuthenticatedIdentity) {
     return this.authService.listWorkspaces(identity);

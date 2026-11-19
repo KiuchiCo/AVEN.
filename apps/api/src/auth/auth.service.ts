@@ -2,6 +2,7 @@ import { createClerkClient } from '@clerk/backend';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import type { AuthenticatedIdentity } from './auth.types.js';
+import { parseProfileUpdate, profileSelect } from './profile.js';
 import { readApiEnvironment } from '../config/api-environment.js';
 
 @Injectable()
@@ -42,7 +43,7 @@ export class AuthService {
           if (user) {
             user = await transaction.user.update({
               where: { id: user.id },
-              data: { email, displayName },
+              data: { email },
             });
           } else {
             const emailOwner = await transaction.user.findUnique({ where: { email } });
@@ -145,6 +146,16 @@ export class AuthService {
       await transaction.workspaceActivity.create({ data: { workspaceId, actorId: user.id, entityType: 'WORKSPACE', entityId: workspaceId, message: `renamed workspace to “${name}”` } });
       return transaction.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
     });
+  }
+
+  async getProfile(identity: AuthenticatedIdentity) {
+    const user = await this.currentUser(identity);
+    return this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: profileSelect });
+  }
+
+  async updateProfile(identity: AuthenticatedIdentity, input: unknown) {
+    const user = await this.currentUser(identity);
+    return this.prisma.user.update({ where: { id: user.id }, data: parseProfileUpdate(input), select: profileSelect });
   }
 
   private async currentUser(identity: AuthenticatedIdentity) {

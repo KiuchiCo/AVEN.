@@ -317,6 +317,12 @@ body {
 .workspace-settings-card dl div { display: grid; gap: 5px; }
 .workspace-settings-card dt { color: #8a8176; font-size: 10px; }
 .workspace-settings-card dd { margin: 0; color: #3c3934; font-size: 12px; font-weight: 600; text-transform: capitalize; }
+.workspace-settings-toggles { display: grid; gap: 14px; }
+.workspace-settings-card .workspace-settings-toggle { display: flex; align-items: flex-start; gap: 12px; font-weight: 400; cursor: pointer; }
+.workspace-settings-card .workspace-settings-toggle input { width: 16px; height: 16px; margin-top: 2px; padding: 0; accent-color: var(--aven-bronze); }
+.workspace-settings-toggle strong { display: block; color: var(--aven-charcoal); font-size: 13px; }
+.workspace-settings-toggle small { display: block; margin-top: 3px; color: var(--aven-muted); font-size: 12px; line-height: 1.4; }
+.workspace-settings-page { display: grid; gap: 20px; }
 .workspace-settings-note,.workspace-settings-status { color: #71675c; font-size: 11px; }
 .inbox-notifications { margin: 24px 0; padding: 20px; border: 1px solid #e8e0d6; border-radius: 15px; background: rgb(255 253 250 / 92%); box-shadow: 0 4px 16px rgb(65 50 34 / 4%); }
 .inbox-notifications .workspace-section-heading { align-items: center; margin-bottom: 12px; }

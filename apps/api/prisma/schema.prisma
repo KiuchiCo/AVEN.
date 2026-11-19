@@ -87,6 +87,8 @@ model User {
   id                String            @id @default(uuid()) @db.Uuid
   email             String            @unique @db.VarChar(320)
   displayName       String            @db.VarChar(120)
+  notifyTeamActivity Boolean          @default(true)
+  notifyTaskUpdates Boolean           @default(true)
   identityIssuer    String?           @db.VarChar(512)
   identitySubject   String?           @db.VarChar(255)
   createdAt         DateTime          @default(now()) @db.Timestamptz(3)

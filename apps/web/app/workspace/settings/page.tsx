@@ -1,10 +1,75 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+
+type Profile = { displayName: string; email: string; notifyTeamActivity: boolean; notifyTaskUpdates: boolean };
+
+function AccountSettings() {
+  const { getToken } = useAuth();
+  const [saved, setSaved] = useState<Profile | null>(null);
+  const [displayName, setDisplayName] = useState('');
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function request(method: 'GET' | 'PATCH', body?: Partial<Profile>) {
+    const token = await getToken();
+    const response = await fetch(`${apiBase}/session/me`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message ?? 'Could not update your settings.');
+    return result as Profile;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    request('GET').then((profile) => { if (!cancelled) { setSaved(profile); setDisplayName(profile.displayName); } })
+      .catch((error) => { if (!cancelled) setStatus(error instanceof Error ? error.message : 'Could not load your settings.'); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function update(change: Partial<Profile>, message: string, reload = false) {
+    setBusy(true); setStatus('');
+    try {
+      const profile = await request('PATCH', change);
+      setSaved(profile); setDisplayName(profile.displayName); setStatus(message);
+      if (reload) window.location.reload();
+    } catch (error) { setStatus(error instanceof Error ? error.message : 'Could not update your settings.'); }
+    finally { setBusy(false); }
+  }
+
+  function saveName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void update({ displayName }, 'Your name was updated.', true);
+  }
+
+  if (!saved) return <div className="workspace-settings-card"><p role="status">{status || 'Loading your settings…'}</p></div>;
+
+  return <>
+    <div className="workspace-settings-card">
+      <div><h2>Your profile</h2><p>Teammates see this name on comments, assignments and activity.</p></div>
+      <form onSubmit={saveName}>
+        <label htmlFor="display-name">Display name</label>
+        <input id="display-name" maxLength={120} value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+        <label htmlFor="account-email">Email</label>
+        <input id="account-email" value={saved.email} disabled readOnly />
+        <p className="workspace-settings-note">Your email comes from your sign-in account and can’t be changed here.</p>
+        <button className="workspace-settings-save" disabled={busy || !displayName.trim() || displayName.trim() === saved.displayName}>{busy ? 'Saving…' : 'Save name'}</button>
+      </form>
+    </div>
+    <div className="workspace-settings-card">
+      <div><h2>Inbox notifications</h2><p>Choose what appears in your Inbox. Changes apply immediately and to every workspace you belong to.</p></div>
+      <div className="workspace-settings-toggles">
+        <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.notifyTaskUpdates} disabled={busy} onChange={(event) => void update({ notifyTaskUpdates: event.target.checked }, 'Notification settings saved.')} /><span><strong>Mentions and task updates</strong><small>Comments, mentions, assignments and changes to tasks you follow.</small></span></label>
+        <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.notifyTeamActivity} disabled={busy} onChange={(event) => void update({ notifyTeamActivity: event.target.checked }, 'Notification settings saved.')} /><span><strong>Team activity</strong><small>Workspace-wide changes to projects, documents, calendar and members.</small></span></label>
+      </div>
+      {status && <p className="workspace-settings-status" role="status">{status}</p>}
+    </div>
+  </>;
+}
 
 export default function WorkspaceSettingsPage() {
   const session = useWorkspaceSession();
@@ -28,7 +93,8 @@ export default function WorkspaceSettingsPage() {
   }
 
   return <section className="workspace-settings-page">
-    <header><p className="workspace-page-eyebrow">WORKSPACE</p><h1>Settings</h1><p>Manage the name and details for this workspace.</p></header>
+    <header><p className="workspace-page-eyebrow">SETTINGS</p><h1>Settings</h1><p>Manage your profile, notifications and this workspace.</p></header>
+    <AccountSettings />
     <div className="workspace-settings-card">
       <div><h2>Workspace details</h2><p>Members will see this name in their workspace switcher.</p></div>
       <form onSubmit={save}>

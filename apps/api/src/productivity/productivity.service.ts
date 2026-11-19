@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
+import { workspaceNotificationWhere } from './notification-filter.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { AutomationsService } from './automations.service.js';
@@ -173,7 +174,7 @@ export class ProductivityService {
   async listWorkspaceNotifications(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
     const rows = await this.prisma.workspaceActivity.findMany({
-      where: workspaceNotificationWhere(workspaceId, userId),
+      where: workspaceNotificationWhere(workspaceId, userId, await this.notificationPreferences(userId)),
       orderBy: { createdAt: 'desc' }, take: 50,
       include: { actor: { select: { displayName: true } }, receipts: { where: { userId }, select: { readAt: true, dismissedAt: true } } },
     });
@@ -206,7 +207,7 @@ export class ProductivityService {
 
   async markAllWorkspaceActivityRead(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
-    const activities = await this.prisma.workspaceActivity.findMany({ where: workspaceNotificationWhere(workspaceId, userId), select: { id: true } });
+    const activities = await this.prisma.workspaceActivity.findMany({ where: workspaceNotificationWhere(workspaceId, userId, await this.notificationPreferences(userId)), select: { id: true } });
     const now = new Date();
     const batchSize = 500;
     for (let offset = 0; offset < activities.length; offset += batchSize) {
@@ -1084,21 +1085,13 @@ export class ProductivityService {
     return activity;
   }
 
+  private notificationPreferences(userId: string) {
+    return this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { notifyTeamActivity: true, notifyTaskUpdates: true } });
+  }
+
   private requireMembership(identity: AuthenticatedIdentity, workspaceId: string, write = false) {
     return requireWorkspaceMember(this.prisma, identity, workspaceId, write);
   }
-}
-
-function workspaceNotificationWhere(workspaceId: string, userId: string): Prisma.WorkspaceActivityWhereInput {
-  return {
-    workspaceId,
-    actorId: { not: userId },
-    OR: [
-      { recipientScoped: false, entityType: { notIn: ['TASK_COMMENT', 'TASK_CHECKLIST'] } },
-      { receipts: { some: { userId, isNotificationTarget: true } } },
-    ],
-    NOT: { receipts: { some: { userId, dismissedAt: { not: null } } } },
-  };
 }
 
 function objectInput(input: unknown): Record<string, unknown> {
