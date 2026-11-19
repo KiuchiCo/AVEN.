@@ -6,11 +6,12 @@ import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { IntelligenceService } from '../productivity/intelligence.service.js';
 import { ProductivityService } from '../productivity/productivity.service.js';
-import { allTools, checkToolInput, citedSources, clip, creditsFor, documentText, estimateTokens, isWriteTool, monthWindow, parseDecision, parseUserMessage, readTools, systemPrompt, windowHistory, type SourceRef, type StoredTurn } from './ai-rules.js';
+import { allTools, checkToolInput, citedSources, clip, creditsFor, describeAction, documentText, estimateTokens, isWriteTool, monthWindow, parseDecision, parseUserMessage, systemPrompt, toDocumentContent, windowHistory, type SourceRef, type StoredTurn } from './ai-rules.js';
+import { agentSection, generalAgent, systemAgents, type AgentDefinition } from './agents.js';
 import type { LlmBlock, LlmMessage } from './llm.js';
 import { AI_SETTINGS, LLM_PROVIDER, type AiSettings, type OptionalProvider } from './tokens.js';
 
-export type PendingAction = { id: string; tool: 'create_task'; input: Record<string, unknown>; status: 'pending' | 'confirmed' | 'declined' | 'failed'; result?: { id: string; title: string; href: string }; error?: string };
+export type PendingAction = { id: string; tool: string; summary?: string; details?: string[]; input: Record<string, unknown>; status: 'pending' | 'confirmed' | 'declined' | 'failed'; result?: { id: string; title: string; href: string }; error?: string };
 export type AiEvent =
   | { type: 'delta'; text: string }
   | { type: 'status'; text: string }
@@ -20,7 +21,7 @@ export type AiEvent =
   | { type: 'error'; message: string };
 
 const MAX_STEPS = 6;
-const statusText: Record<string, string> = { search_workspace: 'Searching the workspace…', list_tasks: 'Looking at tasks…', list_projects: 'Looking at projects…', get_document: 'Reading a document…', get_briefing: 'Checking this week…', create_task: 'Preparing a task for your review…' };
+const statusText: Record<string, string> = { search_workspace: 'Searching the workspace…', list_tasks: 'Looking at tasks…', list_projects: 'Looking at projects…', get_document: 'Reading a document…', get_briefing: 'Checking this week…', create_task: 'Preparing a task for your review…', update_task: 'Preparing a change for your review…', create_document: 'Drafting a document for your review…', create_event: 'Preparing an event for your review…' };
 const isoDay = (date: Date | null) => (date ? date.toISOString().slice(0, 10) : null);
 const sourceHref = (type: string, id: string) => type === 'Task' ? `/workspace/tasks/${id}` : type === 'Project' ? `/workspace/projects/${id}` : type === 'Document' ? `/workspace/documents/${id}` : type === 'Knowledge' ? '/workspace/knowledge' : type === 'Event' ? '/workspace/calendar' : '/workspace/databases';
 const sourceType = (type: string): SourceRef['type'] => ({ Task: 'task', Project: 'project', Document: 'document', Knowledge: 'knowledge', Event: 'event', Database: 'database', Record: 'record' } as const)[type as 'Task'] ?? 'record';
@@ -51,19 +52,39 @@ export class AiService {
   // ---- conversations ---------------------------------------------------------------------------------------
 
   private async own(userId: string, workspaceId: string, conversationId: string) {
-    const conversation = await this.prisma.aiConversation.findFirst({ where: { id: conversationId, workspaceId, userId }, select: { id: true, title: true } });
+    const conversation = await this.prisma.aiConversation.findFirst({ where: { id: conversationId, workspaceId, userId }, select: { id: true, title: true, agentKey: true } });
     if (!conversation) throw new NotFoundException('Conversation not found.');
     return conversation;
   }
 
   async list(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId);
-    return this.prisma.aiConversation.findMany({ where: { workspaceId, userId }, orderBy: { updatedAt: 'desc' }, take: 50, select: { id: true, title: true, updatedAt: true } });
+    return this.prisma.aiConversation.findMany({ where: { workspaceId, userId }, orderBy: { updatedAt: 'desc' }, take: 50, select: { id: true, title: true, agentKey: true, updatedAt: true } });
   }
 
-  async create(identity: AuthenticatedIdentity, workspaceId: string) {
+  /** Looks up an agent by key. A deleted custom agent falls back to the general assistant so old conversations keep working. */
+  async agentFor(workspaceId: string, key: string): Promise<AgentDefinition> {
+    if (key === generalAgent.key) return generalAgent;
+    const builtIn = systemAgents.find((agent) => agent.key === key);
+    if (builtIn) return builtIn;
+    if (/^[0-9a-f-]{36}$/i.test(key)) {
+      const custom = await this.prisma.aiAgent.findFirst({ where: { id: key, workspaceId } });
+      if (custom) return { key: custom.id, name: custom.name, description: custom.description, instructions: custom.instructions, tools: custom.tools, system: false };
+    }
+    return generalAgent;
+  }
+
+  async create(identity: AuthenticatedIdentity, workspaceId: string, body: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId);
-    return this.prisma.aiConversation.create({ data: { workspaceId, userId, title: 'New conversation' }, select: { id: true, title: true, updatedAt: true } });
+    const requested = body && typeof body === 'object' && !Array.isArray(body) ? (body as { agentKey?: unknown }).agentKey : undefined;
+    let agentKey: string = generalAgent.key;
+    if (requested !== undefined && requested !== null) {
+      if (typeof requested !== 'string') throw new BadRequestException('Choose one of the listed agents.');
+      const agent = await this.agentFor(workspaceId, requested);
+      if (agent.key !== requested) throw new BadRequestException('That agent does not exist in this workspace.');
+      agentKey = agent.key;
+    }
+    return this.prisma.aiConversation.create({ data: { workspaceId, userId, title: 'New conversation', agentKey }, select: { id: true, title: true, agentKey: true, updatedAt: true } });
   }
 
   async remove(identity: AuthenticatedIdentity, workspaceId: string, conversationId: string) {
@@ -83,7 +104,7 @@ export class AiService {
       text: (row.content as LlmBlock[]).filter((block) => block.type === 'text').map((block) => (block as { text: string }).text).join(''),
       citations: row.citations as SourceRef[], actions: row.pendingActions as PendingAction[],
     })).filter((message) => message.text || message.actions.length);
-    return { id: conversation.id, title: conversation.title, messages };
+    return { id: conversation.id, title: conversation.title, agentKey: conversation.agentKey, messages };
   }
 
   // ---- sending a message -----------------------------------------------------------------------------------
@@ -102,15 +123,16 @@ export class AiService {
       this.prisma.aiMessage.create({ data: { conversationId, role: 'user', kind: 'text', content: [{ type: 'text', text }] as unknown as Prisma.InputJsonValue } }),
       this.prisma.aiConversation.update({ where: { id: conversationId }, data: { ...(rows.length === 0 ? { title: text.replace(/\s+/g, ' ').slice(0, 60) } : {}) } }),
     ]);
-    const context = { identity, workspaceId, userId, conversationId, canWrite: membership?.role !== 'GUEST' };
+    const agent = await this.agentFor(workspaceId, conversation.agentKey);
+    const context = { identity, workspaceId, userId, conversationId, canWrite: membership?.role !== 'GUEST', agent };
     return (emit: (event: AiEvent) => void, signal: AbortSignal) => this.run(context, [...windowHistory(history), { role: 'user' as const, content: [{ type: 'text' as const, text }] }], emit, signal);
   }
 
-  private async run(context: { identity: AuthenticatedIdentity; workspaceId: string; userId: string; conversationId: string; canWrite: boolean }, messages: LlmMessage[], emit: (event: AiEvent) => void, signal: AbortSignal) {
+  private async run(context: { identity: AuthenticatedIdentity; workspaceId: string; userId: string; conversationId: string; canWrite: boolean; agent: AgentDefinition }, messages: LlmMessage[], emit: (event: AiEvent) => void, signal: AbortSignal) {
     const provider = this.provider!;
     const workspace = await this.prisma.workspace.findUnique({ where: { id: context.workspaceId }, select: { name: true } });
-    const system = systemPrompt(workspace?.name ?? 'workspace', new Date());
-    const tools = context.canWrite ? allTools : readTools;
+    const system = systemPrompt(workspace?.name ?? 'workspace', new Date()) + agentSection(context.agent);
+    const tools = allToolsFor(context.agent.tools, context.canWrite);
     const candidates: SourceRef[] = [];
     const actions: PendingAction[] = [];
     let creditsUsed = 0;
@@ -179,17 +201,24 @@ export class AiService {
 
   // ---- tools -----------------------------------------------------------------------------------------------
 
-  private async runTool(context: { identity: AuthenticatedIdentity; workspaceId: string; userId: string; canWrite: boolean }, call: { id: string; name: string; input: Record<string, unknown> }, candidates: SourceRef[], actions: PendingAction[], emit: (event: AiEvent) => void): Promise<LlmBlock> {
+  private async runTool(context: { identity: AuthenticatedIdentity; workspaceId: string; userId: string; canWrite: boolean; agent: AgentDefinition }, call: { id: string; name: string; input: Record<string, unknown> }, candidates: SourceRef[], actions: PendingAction[], emit: (event: AiEvent) => void): Promise<LlmBlock> {
     const answer = (content: string, isError = false): LlmBlock => ({ type: 'tool_result', tool_use_id: call.id, content: clip(content), ...(isError ? { is_error: true } : {}) });
+    if (!context.agent.tools.includes(call.name)) return answer(`The ${context.agent.name} role does not have the ${call.name} tool.`, true);
     const checked = checkToolInput(call.name, call.input);
     if (!checked.ok) return answer(checked.error, true);
     const input = checked.value;
     try {
       if (isWriteTool(call.name)) {
-        if (!context.canWrite) return answer('This member has read-only access, so nothing can be created.', true);
-        const action: PendingAction = { id: randomUUID(), tool: 'create_task', input, status: 'pending' };
+        if (!context.canWrite) return answer('This member has read-only access, so nothing can be changed.', true);
+        let taskTitle: string | undefined;
+        if (call.name === 'update_task') {
+          const task = await this.prisma.task.findFirst({ where: { id: input.taskId as string, workspaceId: context.workspaceId }, select: { title: true } });
+          if (!task) return answer('That task was not found in this workspace. Look it up with list_tasks first.', true);
+          taskTitle = task.title;
+        }
+        const action: PendingAction = { id: randomUUID(), tool: call.name, ...describeAction(call.name, input, taskTitle), input, status: 'pending' };
         actions.push(action); emit({ type: 'action', action });
-        return answer('Proposed. Nothing has been created yet: the user must review and confirm it in the app.');
+        return answer('Proposed. Nothing has changed yet: the user must review and confirm it in the app.');
       }
       const { text, sources } = await this.readTool(context, call.name, input);
       candidates.push(...sources);
@@ -243,11 +272,23 @@ export class AiService {
     });
     if (decision === 'decline') return claimed;
     try {
-      const task = await this.productivity.createTask(identity, workspaceId, claimed.input) as { id: string; title: string };
-      return await this.updateAction(conversationId, actionId, (action) => ({ ...action, result: { id: task.id, title: task.title, href: `/workspace/tasks/${task.id}` } }));
+      const result = await this.execute(identity, workspaceId, claimed);
+      return await this.updateAction(conversationId, actionId, (action) => ({ ...action, result }));
     } catch (error) {
       const message = error instanceof HttpException ? error.message : 'The task could not be created.';
       return await this.updateAction(conversationId, actionId, (action) => ({ ...action, status: 'failed', error: message }));
+    }
+  }
+
+  /** Carries out a confirmed proposal as the member, through the same services (and permission checks) as the app itself. */
+  private async execute(identity: AuthenticatedIdentity, workspaceId: string, action: PendingAction): Promise<{ id: string; title: string; href: string }> {
+    const input = action.input;
+    switch (action.tool) {
+      case 'create_task': { const task = await this.productivity.createTask(identity, workspaceId, input) as { id: string; title: string }; return { id: task.id, title: task.title, href: `/workspace/tasks/${task.id}` }; }
+      case 'update_task': { const { taskId, ...changes } = input; const task = await this.productivity.updateTask(identity, workspaceId, taskId as string, changes) as { id: string; title: string }; return { id: task.id, title: task.title, href: `/workspace/tasks/${task.id}` }; }
+      case 'create_document': { const document = await this.productivity.createDocument(identity, workspaceId, { title: input.title, projectId: input.projectId, content: toDocumentContent(input.blocks as Array<{ type: string; text: string }>) }) as { id: string; title: string }; return { id: document.id, title: document.title, href: `/workspace/documents/${document.id}` }; }
+      case 'create_event': { const event = await this.productivity.createCalendarEvent(identity, workspaceId, input) as { id: string; title: string }; return { id: event.id, title: event.title, href: '/workspace/calendar' }; }
+      default: throw new BadRequestException('That kind of proposal is not supported.');
     }
   }
 
@@ -265,3 +306,7 @@ export class AiService {
   }
 }
 
+/** The tool definitions an agent may use. Guests never get write tools, whatever the agent allows. */
+function allToolsFor(allowed: string[], canWrite: boolean) {
+  return allTools.filter((tool) => allowed.includes(tool.name) && (canWrite || !isWriteTool(tool.name)));
+}

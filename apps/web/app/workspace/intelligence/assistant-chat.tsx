@@ -4,13 +4,17 @@ import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
+import { AgentsPanel, type AgentInfo } from './agents-panel';
+import { encodeBlocks, textToBlocks, titleFromText } from './text-to-blocks';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+const actionLabels: Record<string, string> = { create_task: 'Proposed task', update_task: 'Proposed change', create_document: 'Proposed document', create_event: 'Proposed event' };
+const confirmLabels: Record<string, string> = { create_task: 'Create task', update_task: 'Apply change', create_document: 'Create document', create_event: 'Add to calendar' };
 
 type Source = { type: string; id: string; title: string; href: string };
-type Action = { id: string; tool: 'create_task'; input: { title: string; description?: string; priority?: string; dueAt?: string; projectId?: string }; status: 'pending' | 'confirmed' | 'declined' | 'failed'; result?: { id: string; title: string; href: string }; error?: string };
+type Action = { id: string; tool: string; summary?: string; details?: string[]; input: { title?: string }; status: 'pending' | 'confirmed' | 'declined' | 'failed'; result?: { id: string; title: string; href: string }; error?: string };
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string; citations: Source[]; actions: Action[] };
-type Conversation = { id: string; title: string };
+type Conversation = { id: string; title: string; agentKey: string };
 type Status = { configured: boolean; model: string; creditsUsed: number; creditsLimit: number; resetsAt: string };
 type StreamEvent = { type: 'delta'; text: string } | { type: 'status'; text: string } | { type: 'citations'; sources: Source[] } | { type: 'action'; action: Action } | { type: 'done'; messageId: string } | { type: 'error'; message: string };
 
@@ -20,6 +24,9 @@ export function AssistantChat() {
   const base = `${apiBase}/workspaces/${workspace.id}/ai`;
   const [status, setStatus] = useState<Status | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [agentKey, setAgentKey] = useState('general');
+  const [saved, setSaved] = useState<Record<string, { id: string; title: string }>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -39,14 +46,14 @@ export function AssistantChat() {
   }, [base, getToken]);
 
   const refresh = useCallback(async () => {
-    const [state, list] = await Promise.all([call<Status>('/status'), call<Conversation[]>('/conversations')]);
-    setStatus(state); setConversations(list);
+    const [state, list, roster] = await Promise.all([call<Status>('/status'), call<Conversation[]>('/conversations'), call<AgentInfo[]>('/agents')]);
+    setStatus(state); setConversations(list); setAgents(roster);
   }, [call]);
 
   useEffect(() => {
     let live = true;
-    void Promise.all([call<Status>('/status'), call<Conversation[]>('/conversations')])
-      .then(([state, list]) => { if (live) { setStatus(state); setConversations(list); } })
+    void Promise.all([call<Status>('/status'), call<Conversation[]>('/conversations'), call<AgentInfo[]>('/agents')])
+      .then(([state, list, roster]) => { if (live) { setStatus(state); setConversations(list); setAgents(roster); } })
       .catch((reason) => { if (live) setError(reason instanceof Error ? reason.message : 'Could not load the assistant.'); });
     return () => { live = false; };
   }, [call]);
@@ -54,7 +61,7 @@ export function AssistantChat() {
 
   async function open(id: string) {
     setActiveId(id); setError('');
-    try { setMessages((await call<{ messages: ChatMessage[] }>(`/conversations/${id}`)).messages); }
+    try { const opened = await call<{ agentKey: string; messages: ChatMessage[] }>(`/conversations/${id}`); setAgentKey(opened.agentKey); setMessages(opened.messages); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not open this conversation.'); }
   }
 
@@ -71,7 +78,7 @@ export function AssistantChat() {
     setBusy(true); setError(''); setDraft('');
     try {
       let id = activeId;
-      if (!id) { const created = await call<Conversation>('/conversations', { method: 'POST', body: {} }); id = created.id; setActiveId(id); }
+      if (!id) { const created = await call<Conversation>('/conversations', { method: 'POST', body: { agentKey } }); id = created.id; setActiveId(id); }
       const mine: ChatMessage = { id: `local-${Date.now()}`, role: 'user', text, citations: [], actions: [] };
       const reply: ChatMessage = { id: `reply-${Date.now()}`, role: 'assistant', text: '', citations: [], actions: [] };
       setMessages((current) => [...current, mine, reply]);
@@ -100,6 +107,24 @@ export function AssistantChat() {
     }
   }
 
+  async function saveAsDocument(message: ChatMessage) {
+    setError('');
+    try {
+      const token = await getToken();
+      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: titleFromText(message.text), content: encodeBlocks(textToBlocks(message.text)) }) });
+      const body = await response.json().catch(() => null) as { id?: string; title?: string; message?: string } | null;
+      if (!response.ok || !body?.id) throw new Error(body?.message ?? 'Could not save this as a document.');
+      setSaved((current) => ({ ...current, [message.id]: { id: body.id!, title: body.title ?? 'Document' } }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save this as a document.'); }
+  }
+
+  function downloadMarkdown(message: ChatMessage) {
+    const url = URL.createObjectURL(new Blob([message.text], { type: 'text/markdown;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url; anchor.download = `${titleFromText(message.text).replace(/[^\w -]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'note'}.md`; anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
   async function decide(conversationId: string, action: Action, decision: 'confirm' | 'decline') {
     try {
       const updated = await call<Action>(`/conversations/${conversationId}/actions/${action.id}`, { method: 'POST', body: { decision } });
@@ -122,8 +147,10 @@ export function AssistantChat() {
       {status && <div className="assistant__credits" title={`Resets ${new Date(status.resetsAt).toLocaleDateString()}`}><span>{status.creditsUsed} of {status.creditsLimit} AI credits this month</span><div className="assistant__bar" role="img" aria-label={`${percent}% of credits used`}><span style={{ width: `${percent}%` }} /></div></div>}</div>
     <div className="assistant__layout">
       <aside className="assistant__list" aria-label="Conversations">
-        <button type="button" onClick={() => { setActiveId(null); setMessages([]); setError(''); }}>＋ New conversation</button>
-        <ul>{conversations.map((conversation) => <li key={conversation.id} className={conversation.id === activeId ? 'is-active' : ''}><button type="button" onClick={() => void open(conversation.id)}>{conversation.title}</button><button type="button" aria-label={`Delete ${conversation.title}`} onClick={() => void remove(conversation.id)}>✕</button></li>)}</ul>
+        <label className="assistant__agent">Agent<select value={agentKey} disabled={activeId !== null} onChange={(event) => setAgentKey(event.target.value)}>{agents.map((agent) => <option key={agent.key} value={agent.key}>{agent.name}</option>)}</select></label>
+        {agents.find((agent) => agent.key === agentKey) && <p className="assistant__agent-note">{agents.find((agent) => agent.key === agentKey)!.description}</p>}
+        <button type="button" onClick={() => { setActiveId(null); setMessages([]); setError(''); setAgentKey('general'); }}>＋ New conversation</button>
+        <ul>{conversations.map((conversation) => <li key={conversation.id} className={conversation.id === activeId ? 'is-active' : ''}><button type="button" onClick={() => void open(conversation.id)} title={agents.find((agent) => agent.key === conversation.agentKey)?.name}>{conversation.title}</button><button type="button" aria-label={`Delete ${conversation.title}`} onClick={() => void remove(conversation.id)}>✕</button></li>)}</ul>
       </aside>
       <div className="assistant__thread">
         <div className="assistant__messages" aria-live="polite">
@@ -132,13 +159,17 @@ export function AssistantChat() {
             {message.text ? <p>{message.text}</p> : message.role === 'assistant' && busy && !message.actions.length ? <p className="assistant__working">{working || 'Thinking…'}</p> : null}
             {message.citations.length > 0 && <div className="assistant__sources"><span>Sources</span>{message.citations.map((source) => <Link key={`${source.type}-${source.id}`} href={source.href}>{source.title}</Link>)}</div>}
             {message.actions.map((action) => <div key={action.id} className={`assistant__action assistant__action--${action.status}`}>
-              <strong>Proposed task</strong><p>{action.input.title}</p>
-              <small>{[action.input.priority && `${action.input.priority.toLowerCase()} priority`, action.input.dueAt && `due ${action.input.dueAt.slice(0, 10)}`].filter(Boolean).join(' · ') || 'Nothing is created until you confirm.'}</small>
-              {action.status === 'pending' && activeId && <div><button type="button" onClick={() => void decide(activeId, action, 'confirm')}>Create task</button><button type="button" onClick={() => void decide(activeId, action, 'decline')}>Dismiss</button></div>}
-              {action.status === 'confirmed' && (action.result ? <p>Created — <Link href={action.result.href}>open task</Link></p> : <p>Creating…</p>)}
-              {action.status === 'declined' && <p>Dismissed. Nothing was created.</p>}
-              {action.status === 'failed' && <p role="alert">Couldn’t create it: {action.error}</p>}
+              <strong>{actionLabels[action.tool] ?? 'Proposed change'}</strong><p>{action.summary ?? action.input.title}</p>
+              <small>{(action.details ?? []).join(' · ') || 'Nothing changes until you confirm.'}</small>
+              {action.status === 'pending' && activeId && <div><button type="button" onClick={() => void decide(activeId, action, 'confirm')}>{confirmLabels[action.tool] ?? 'Confirm'}</button><button type="button" onClick={() => void decide(activeId, action, 'decline')}>Dismiss</button></div>}
+              {action.status === 'confirmed' && (action.result ? <p>Done — <Link href={action.result.href}>open {action.result.title.length > 40 ? 'it' : `“${action.result.title}”`}</Link></p> : <p>Working…</p>)}
+              {action.status === 'declined' && <p>Dismissed. Nothing was changed.</p>}
+              {action.status === 'failed' && <p role="alert">Couldn’t do it: {action.error}</p>}
             </div>)}
+            {message.role === 'assistant' && message.text && !busy && <div className="assistant__export">
+              <button type="button" onClick={() => void saveAsDocument(message)}>Save as document</button><button type="button" onClick={() => downloadMarkdown(message)}>Download .md</button>
+              {saved[message.id] && <span>Saved — <Link href={`/workspace/documents/${saved[message.id].id}`}>open “{saved[message.id].title}”</Link></span>}
+            </div>}
           </article>)}
           {busy && working && messages.at(-1)?.text && <p className="assistant__working">{working}</p>}
           <div ref={bottom} />
@@ -151,5 +182,6 @@ export function AssistantChat() {
         <p className="assistant__note">Answers use only this workspace, can be wrong, and never change anything until you confirm.</p>
       </div>
     </div>
+    <AgentsPanel agents={agents} call={call} onChanged={refresh} />
   </section>;
 }

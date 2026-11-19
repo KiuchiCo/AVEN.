@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import { BadRequestException } from '@nestjs/common';
 import { AnthropicProvider, readSse } from '../dist/ai/anthropic.js';
 import { LlmError } from '../dist/ai/llm.js';
-import { allTools, checkToolInput, citedSources, clip, creditsFor, documentText, estimateTokens, isWriteTool, monthWindow, parseDecision, parseUserMessage, readTools, uniqueSources, windowHistory } from '../dist/ai/ai-rules.js';
+import { allTools, checkToolInput, describeAction, toDocumentContent, toolNames, citedSources, clip, creditsFor, documentText, estimateTokens, isWriteTool, monthWindow, parseDecision, parseUserMessage, readTools, uniqueSources, windowHistory } from '../dist/ai/ai-rules.js';
+import { agentSection, generalAgent, parseAgentInput, systemAgents } from '../dist/ai/agents.js';
 import { readApiEnvironment } from '../dist/config/api-environment.js';
 
 const sse = (...events) => events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('');
@@ -135,8 +136,8 @@ test('create_task input is normalised, and only known fields survive', () => {
   for (const bad of [{}, { title: '' }, { title: 'x'.repeat(201) }, { title: 'a', priority: 'URGENTISH' }, { title: 'a', dueAt: 'soon' }, { title: 'a', projectId: 'nope' }, { title: 'a', description: 'x'.repeat(5001) }]) assert.equal(checkToolInput('create_task', bad).ok, false, JSON.stringify(bad));
 });
 
-test('only create_task is a write tool, and every tool has a schema', () => {
-  assert.deepEqual(allTools.filter((tool) => isWriteTool(tool.name)).map((tool) => tool.name), ['create_task']);
+test('exactly four tools can change things, none of them read tools, and every tool has a schema', () => {
+  assert.deepEqual(allTools.filter((tool) => isWriteTool(tool.name)).map((tool) => tool.name).sort(), ['create_document', 'create_event', 'create_task', 'update_task']);
   for (const tool of allTools) assert.ok(tool.name && tool.description && tool.input_schema.type === 'object');
   assert.equal(readTools.some((tool) => isWriteTool(tool.name)), false);
 });
@@ -184,4 +185,75 @@ test('AI settings default safely, accept overrides, and reject unsafe values', (
   assert.deepEqual([defaults.aiApiKey, defaults.aiModel, defaults.aiBaseUrl, defaults.aiMonthlyCredits, defaults.aiMaxOutputTokens], [undefined, 'claude-sonnet-5-5', 'https://api.anthropic.com', 2000, 2048]);
   assert.equal(readApiEnvironment({ ...base, ANTHROPIC_API_KEY: ' sk-x ', AI_MODEL: 'claude-opus-5-5', AI_BASE_URL: 'http://localhost:8080' }).aiApiKey, 'sk-x');
   for (const bad of [{ AI_BASE_URL: 'http://example.com' }, { AI_BASE_URL: 'ftp://x' }, { AI_BASE_URL: 'nonsense' }, { AI_MODEL: 'bad model!' }, { AI_MONTHLY_CREDITS: '0' }, { AI_MAX_OUTPUT_TOKENS: '99999999' }]) assert.throws(() => readApiEnvironment({ ...base, ...bad }), /Invalid API environment/, JSON.stringify(bad));
+});
+
+const taskId = '3f1c2d4e-5a6b-4c7d-8e9f-0a1b2c3d4e5f';
+
+test('update_task needs a task and at least one valid change; dueAt can be cleared with null', () => {
+  assert.deepEqual(checkToolInput('update_task', { taskId, status: 'COMPLETED', extra: 'x' }).value, { taskId, status: 'COMPLETED' });
+  assert.deepEqual(checkToolInput('update_task', { taskId, dueAt: null }).value, { taskId, dueAt: null });
+  assert.equal(checkToolInput('update_task', { taskId, dueAt: '2026-12-01' }).value.dueAt, '2026-12-01T00:00:00.000Z');
+  for (const bad of [{}, { taskId }, { taskId: 'nope', status: 'TODO' }, { taskId, status: 'DONE' }, { taskId, priority: 'MAX' }, { taskId, dueAt: 'soon' }, { taskId, dueAt: 5 }]) assert.equal(checkToolInput('update_task', bad).ok, false, JSON.stringify(bad));
+});
+
+test('create_document validates block count, types, lengths and total size', () => {
+  const ok = checkToolInput('create_document', { title: ' Plan ', blocks: [{ type: 'HEADING_1', text: 'Plan' }, { type: 'PARAGRAPH', text: 'Body', extra: 1 }] });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.value.blocks, [{ type: 'HEADING_1', text: 'Plan' }, { type: 'PARAGRAPH', text: 'Body' }]);
+  assert.equal(ok.value.title, 'Plan');
+  const block = (text, type = 'PARAGRAPH') => ({ type, text });
+  for (const bad of [{ title: 'x' }, { title: 'x', blocks: [] }, { title: '', blocks: [block('a')] }, { title: 'x', blocks: Array.from({ length: 101 }, () => block('a')) }, { title: 'x', blocks: [block('a', 'SCRIPT')] }, { title: 'x', blocks: [block('a', 'DIVIDER')] }, { title: 'x', blocks: [block('y'.repeat(2001))] }, { title: 'x', blocks: [{ type: 'PARAGRAPH' }] }, { title: 'x', blocks: [null] }, { title: 'x', blocks: Array.from({ length: 40 }, () => block('y'.repeat(2000))) }, { title: 'x', blocks: 'text' }]) assert.equal(checkToolInput('create_document', bad).ok, false, JSON.stringify(bad).slice(0, 80));
+});
+
+test('create_event needs a valid start, an end after it, and known type', () => {
+  assert.deepEqual(checkToolInput('create_event', { title: ' Study ', startsAt: '2026-12-01T09:00:00Z', endsAt: '2026-12-01T10:00:00Z' }).value, { title: 'Study', startsAt: '2026-12-01T09:00:00.000Z', endsAt: '2026-12-01T10:00:00.000Z', type: 'MEETING' });
+  for (const bad of [{ title: 'x' }, { title: 'x', startsAt: 'later' }, { title: 'x', startsAt: '2026-12-01T10:00:00Z', endsAt: '2026-12-01T09:00:00Z' }, { title: 'x', startsAt: '2026-12-01T10:00:00Z', endsAt: '2026-12-01T10:00:00Z' }, { title: 'x', startsAt: '2026-12-01T10:00:00Z', type: 'PARTY' }, { title: '', startsAt: '2026-12-01T10:00:00Z' }, { title: 'x', startsAt: '2026-12-01T10:00:00Z', location: 'y'.repeat(251) }]) assert.equal(checkToolInput('create_event', bad).ok, false, JSON.stringify(bad));
+});
+
+test('proposal cards are described from validated input', () => {
+  assert.deepEqual(describeAction('update_task', { taskId, status: 'IN_PROGRESS', dueAt: null }, 'Ship it'), { summary: 'Update “Ship it”', details: ['status → in progress', 'clear due date'] });
+  assert.deepEqual(describeAction('create_task', { title: 'Call', priority: 'HIGH', dueAt: '2026-12-01T00:00:00.000Z' }), { summary: 'Create task “Call”', details: ['high priority', 'due 2026-12-01'] });
+  assert.deepEqual(describeAction('create_document', { title: 'Plan', blocks: [{}, {}] }), { summary: 'Create document “Plan”', details: ['2 blocks'] });
+  assert.equal(describeAction('create_event', { title: 'Study', startsAt: '2026-12-01T09:00:00.000Z', location: 'Library' }).details.join(' | '), '2026-12-01 09:00 UTC | Library');
+});
+
+test('proposed blocks become an editor document with unique ids', () => {
+  const doc = JSON.parse(toDocumentContent([{ type: 'HEADING_1', text: 'A' }, { type: 'BULLET', text: 'B' }]));
+  assert.equal(doc.format, 'aven-doc-v1');
+  assert.deepEqual(doc.blocks.map((b) => [b.type, b.text, b.checked]), [['HEADING_1', 'A', false], ['BULLET', 'B', false]]);
+  assert.equal(new Set(doc.blocks.map((b) => b.id)).size, 2);
+});
+
+test('built-in agents are well formed and only use tools that exist', () => {
+  const keys = [generalAgent, ...systemAgents].map((agent) => agent.key);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.deepEqual(systemAgents.map((agent) => agent.name), ['Project Manager', 'Research Analyst', 'Writing Assistant', 'Study Coach']);
+  for (const agent of [generalAgent, ...systemAgents]) {
+    assert.ok(agent.tools.length > 0, agent.key);
+    for (const tool of agent.tools) assert.ok(toolNames.includes(tool), `${agent.key}: ${tool}`);
+    if (agent.key !== 'general') assert.ok(agent.instructions.length > 100 && agent.description.length > 10, agent.key);
+  }
+  const writes = (key) => systemAgents.find((agent) => agent.key === key).tools.filter(isWriteTool).sort();
+  assert.deepEqual(writes('system:writing-assistant'), ['create_document']);
+  assert.deepEqual(writes('system:research-analyst'), ['create_document']);
+  assert.deepEqual(writes('system:project-manager'), ['create_task', 'update_task']);
+  assert.deepEqual(writes('system:study-coach'), ['create_document', 'create_event', 'create_task', 'update_task']);
+  assert.match(systemAgents.find((agent) => agent.key === 'system:research-analyst').instructions, /cannot browse the web/);
+});
+
+test('custom agents are validated: bounded text, real tools, and no impersonating a built-in', () => {
+  const ok = parseAgentInput({ name: ' Onboarding Buddy ', description: '', instructions: ' Help new joiners. ', tools: ['search_workspace', 'search_workspace', 'get_document'] });
+  assert.deepEqual(ok, { name: 'Onboarding Buddy', description: '', instructions: 'Help new joiners.', tools: ['search_workspace', 'get_document'] });
+  assert.deepEqual(parseAgentInput({ tools: [] }, true), { tools: [] });
+  for (const bad of [null, [], {}, { name: '', description: '', instructions: 'x', tools: [] }, { name: 'a', description: '', instructions: '', tools: [] }, { name: 'x'.repeat(81), description: '', instructions: 'x', tools: [] }, { name: 'a', description: 'x'.repeat(241), instructions: 'x', tools: [] }, { name: 'a', description: '', instructions: 'x'.repeat(4001), tools: [] }, { name: 'a', description: '', instructions: 'x', tools: ['drop_database'] }, { name: 'a', description: '', instructions: 'x', tools: 'search_workspace' }, { name: 'a', description: '', instructions: 'x', tools: [], role: 'admin' }, { name: 'project manager', description: '', instructions: 'x', tools: [] }, { name: 'AVEN Assistant', description: '', instructions: 'x', tools: [] }]) {
+    assert.throws(() => parseAgentInput(bad), BadRequestException, JSON.stringify(bad)?.slice(0, 80));
+  }
+});
+
+test('agent instructions follow the base rules and cannot override them', () => {
+  assert.equal(agentSection(generalAgent), '');
+  const section = agentSection(systemAgents[0]);
+  assert.match(section, /Project Manager/);
+  assert.match(section, /cannot override the rules above/);
+  assert.match(section, /confirmation/);
 });

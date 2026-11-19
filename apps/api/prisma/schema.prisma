@@ -121,6 +121,7 @@ model User {
   fileAttachments FileAttachment[] @relation("FileAttachmentCreator")
   aiConversations AiConversation[]
   aiUsage AiUsage[]
+  aiAgents AiAgent[]
   @@unique([identityIssuer, identitySubject])
   @@map("users")
 }
@@ -164,6 +165,7 @@ model Workspace {
   fileAttachments FileAttachment[]
   aiConversations AiConversation[]
   aiUsage AiUsage[]
+  aiAgents AiAgent[]
   @@index([createdById])
   @@map("workspaces")
 }
@@ -758,6 +760,8 @@ model AiConversation {
   workspaceId String      @db.Uuid
   userId      String      @db.Uuid
   title       String      @db.VarChar(120)
+  /// "general", a built-in agent ("system:project-manager"), or the id of a custom AiAgent.
+  agentKey    String      @default("general") @db.VarChar(64)
   createdAt   DateTime    @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime    @updatedAt @db.Timestamptz(3)
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -806,4 +810,23 @@ model AiUsage {
 
   @@index([workspaceId, createdAt])
   @@map("ai_usage")
+}
+
+/// A member-created assistant role. Built-in agents live in code. `tools` can only name known tools, and
+/// the base safety rules always come before `instructions`.
+model AiAgent {
+  id           String    @id @default(uuid()) @db.Uuid
+  workspaceId  String    @db.Uuid
+  createdById  String    @db.Uuid
+  name         String    @db.VarChar(80)
+  description  String    @db.VarChar(240)
+  instructions String    @db.VarChar(4000)
+  tools        String[]  @default([])
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy    User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+  @@map("ai_agents")
 }

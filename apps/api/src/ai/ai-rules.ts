@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException } from '@nestjs/common';
 import type { LlmBlock, LlmMessage, LlmTool } from './llm.js';
 
@@ -50,7 +51,18 @@ export const writeTools: LlmTool[] = [
   { name: 'create_task', description: 'Propose creating a task. Nothing is created until the user confirms in the app, so after calling this tell the user to review and confirm it.', input_schema: { type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 200 }, description: { type: 'string', maxLength: 5000 }, projectId: { type: 'string', pattern: uuidPattern }, dueAt: { type: 'string', description: 'ISO 8601 date or date-time.' }, priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] } }, required: ['title'] } },
 ];
 
+const blockTypes = ['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CALLOUT'] as const;
+const taskStatuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'CANCELLED'] as const;
+const eventTypes = ['MEETING', 'FOCUS', 'PERSONAL', 'REMINDER', 'OTHER'] as const;
+
+writeTools.push(
+  { name: 'update_task', description: 'Propose changing a task’s status, priority or due date. Nothing changes until the user confirms in the app.', input_schema: { type: 'object', properties: { taskId: { type: 'string', pattern: uuidPattern }, status: { type: 'string', enum: [...taskStatuses] }, priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] }, dueAt: { type: ['string', 'null'], description: 'ISO 8601 date, or null to clear the due date.' } }, required: ['taskId'] } },
+  { name: 'create_document', description: 'Propose creating a document from structured blocks (headings, paragraphs, bullets and so on). Nothing is created until the user confirms in the app.', input_schema: { type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 200 }, blocks: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', properties: { type: { type: 'string', enum: [...blockTypes] }, text: { type: 'string', maxLength: 2000 } }, required: ['type', 'text'] } }, projectId: { type: 'string', pattern: uuidPattern } }, required: ['title', 'blocks'] } },
+  { name: 'create_event', description: 'Propose adding a calendar event. Nothing is scheduled until the user confirms in the app.', input_schema: { type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 200 }, startsAt: { type: 'string', description: 'ISO 8601 date-time.' }, endsAt: { type: 'string', description: 'ISO 8601 date-time after startsAt.' }, type: { type: 'string', enum: [...eventTypes] }, description: { type: 'string', maxLength: 2000 }, location: { type: 'string', maxLength: 250 } }, required: ['title', 'startsAt'] } },
+);
+
 export const allTools = [...readTools, ...writeTools];
+export const toolNames = allTools.map((tool) => tool.name);
 export const isWriteTool = (name: string) => writeTools.some((tool) => tool.name === name);
 
 type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -81,6 +93,38 @@ export function checkToolInput(name: string, input: Record<string, unknown>): Ch
       if (input.priority !== undefined && !['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(input.priority as string)) return fail('priority must be LOW, MEDIUM, HIGH or URGENT.');
       if (input.dueAt !== undefined && (typeof input.dueAt !== 'string' || Number.isNaN(new Date(input.dueAt).getTime()))) return fail('dueAt must be an ISO 8601 date.');
       return { ok: true, value: { title, ...(input.description ? { description: input.description } : {}), ...(projectId.value ? { projectId: projectId.value } : {}), ...(input.dueAt ? { dueAt: new Date(input.dueAt as string).toISOString() } : {}), ...(input.priority ? { priority: input.priority } : {}) } };
+    }
+    case 'update_task': {
+      const taskId = optionalId('taskId'); if (!taskId.ok) return taskId; if (!taskId.value) return fail('taskId is required.');
+      const value: Record<string, unknown> = { taskId: taskId.value };
+      if (input.status !== undefined) { if (!(taskStatuses as readonly string[]).includes(input.status as string)) return fail('status must be TODO, IN_PROGRESS, IN_REVIEW, COMPLETED or CANCELLED.'); value.status = input.status; }
+      if (input.priority !== undefined) { if (!['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(input.priority as string)) return fail('priority must be LOW, MEDIUM, HIGH or URGENT.'); value.priority = input.priority; }
+      if ('dueAt' in input) { if (input.dueAt === null) value.dueAt = null; else if (typeof input.dueAt === 'string' && !Number.isNaN(new Date(input.dueAt).getTime())) value.dueAt = new Date(input.dueAt).toISOString(); else return fail('dueAt must be an ISO 8601 date or null.'); }
+      return Object.keys(value).length > 1 ? { ok: true, value } : fail('Provide at least one of status, priority or dueAt.');
+    }
+    case 'create_document': {
+      const title = text('title', 1, 200); if (!title) return fail('title must be 1–200 characters.');
+      const projectId = optionalId('projectId'); if (!projectId.ok) return projectId;
+      if (!Array.isArray(input.blocks) || input.blocks.length < 1 || input.blocks.length > 100) return fail('blocks must contain 1–100 items.');
+      const blocks: Array<{ type: string; text: string }> = [];
+      let total = 0;
+      for (const block of input.blocks as Array<Record<string, unknown>>) {
+        if (!block || typeof block !== 'object' || !(blockTypes as readonly string[]).includes(block.type as string) || typeof block.text !== 'string' || block.text.length > 2000) return fail('Each block needs a valid type and text of 2000 characters or fewer.');
+        total += block.text.length; blocks.push({ type: block.type as string, text: block.text });
+      }
+      if (total > 60_000) return fail('The document is too long. Keep it under 60,000 characters.');
+      return { ok: true, value: { title, blocks, ...(projectId.value ? { projectId: projectId.value } : {}) } };
+    }
+    case 'create_event': {
+      const title = text('title', 1, 200); if (!title) return fail('title must be 1–200 characters.');
+      const start = typeof input.startsAt === 'string' ? new Date(input.startsAt) : null;
+      if (!start || Number.isNaN(start.getTime())) return fail('startsAt must be an ISO 8601 date-time.');
+      let end: Date | null = null;
+      if (input.endsAt !== undefined) { end = typeof input.endsAt === 'string' ? new Date(input.endsAt) : null; if (!end || Number.isNaN(end.getTime()) || end <= start) return fail('endsAt must be an ISO 8601 date-time after startsAt.'); }
+      if (input.type !== undefined && !(eventTypes as readonly string[]).includes(input.type as string)) return fail('type must be MEETING, FOCUS, PERSONAL, REMINDER or OTHER.');
+      if (input.description !== undefined && (typeof input.description !== 'string' || input.description.length > 2000)) return fail('description must be 2000 characters or fewer.');
+      if (input.location !== undefined && (typeof input.location !== 'string' || input.location.length > 250)) return fail('location must be 250 characters or fewer.');
+      return { ok: true, value: { title, startsAt: start.toISOString(), ...(end ? { endsAt: end.toISOString() } : {}), type: input.type ?? 'MEETING', ...(input.description ? { description: input.description } : {}), ...(input.location ? { location: input.location } : {}) } };
     }
     default: return fail(`Unknown tool “${name}”.`);
   }
@@ -170,3 +214,23 @@ export function documentText(content: string): string {
 
 /** Rough size used only when a request is cut off before the provider reports real usage. */
 export const estimateTokens = (text: string) => Math.ceil(text.length / 4);
+
+// ---- confirmed actions ---------------------------------------------------------------------------------------
+
+/** Turns proposed blocks into the editor's aven-doc-v1 format. */
+export function toDocumentContent(blocks: Array<{ type: string; text: string }>): string {
+  return JSON.stringify({ format: 'aven-doc-v1', blocks: blocks.map((block) => ({ id: randomUUID(), type: block.type, text: block.text, checked: false })) });
+}
+
+/** The words shown on a proposal card. Built from validated input, never from model prose. */
+export function describeAction(tool: string, input: Record<string, unknown>, taskTitle?: string): { summary: string; details: string[] } {
+  const day = (value: unknown) => (typeof value === 'string' ? value.slice(0, 10) : null);
+  const plain = (value: unknown) => String(value).toLocaleLowerCase().replace(/_/g, ' ');
+  switch (tool) {
+    case 'create_task': return { summary: `Create task “${input.title}”`, details: [input.priority && `${plain(input.priority)} priority`, input.dueAt && `due ${day(input.dueAt)}`].filter(Boolean) as string[] };
+    case 'update_task': return { summary: `Update “${taskTitle ?? 'task'}”`, details: [input.status !== undefined && `status → ${plain(input.status)}`, input.priority !== undefined && `priority → ${plain(input.priority)}`, 'dueAt' in input && (input.dueAt === null ? 'clear due date' : `due date → ${day(input.dueAt)}`)].filter(Boolean) as string[] };
+    case 'create_document': { const blocks = input.blocks as unknown[]; return { summary: `Create document “${input.title}”`, details: [`${blocks.length} ${blocks.length === 1 ? 'block' : 'blocks'}`] }; }
+    case 'create_event': return { summary: `Add event “${input.title}”`, details: [`${String(input.startsAt).slice(0, 16).replace('T', ' ')} UTC`, input.location && String(input.location)].filter(Boolean) as string[] };
+    default: return { summary: tool, details: [] };
+  }
+}
