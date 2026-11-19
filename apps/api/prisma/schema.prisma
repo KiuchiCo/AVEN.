@@ -119,20 +119,21 @@ model User {
   completedTaskChecklistItems TaskChecklistItem[] @relation("TaskChecklistCompleter")
   taskFollows                 TaskFollower[]
 
-  fileFolders         FileFolder[]         @relation("FileFolderCreator")
-  storedFiles         StoredFile[]         @relation("FileCreator")
-  fileVersions        FileVersion[]        @relation("FileVersionCreator")
-  fileAttachments     FileAttachment[]     @relation("FileAttachmentCreator")
-  aiConversations     AiConversation[]
-  aiUsage             AiUsage[]
-  aiAgents            AiAgent[]
-  workflows           Workflow[]
-  whiteboards         Whiteboard[]
-  channelsCreated     Channel[]            @relation("ChannelCreator")
-  channelMessages     ChannelMessage[]     @relation("ChannelMessageAuthor")
-  channelReads        ChannelRead[]        @relation("ChannelReader")
-  calendarConnections CalendarConnection[] @relation("CalendarConnector")
-  channelMemberships  ChannelMember[]      @relation("ChannelParticipant")
+  fileFolders           FileFolder[]         @relation("FileFolderCreator")
+  storedFiles           StoredFile[]         @relation("FileCreator")
+  fileVersions          FileVersion[]        @relation("FileVersionCreator")
+  fileAttachments       FileAttachment[]     @relation("FileAttachmentCreator")
+  aiConversations       AiConversation[]
+  aiUsage               AiUsage[]
+  aiAgents              AiAgent[]
+  workflows             Workflow[]
+  whiteboards           Whiteboard[]
+  channelsCreated       Channel[]            @relation("ChannelCreator")
+  channelMessages       ChannelMessage[]     @relation("ChannelMessageAuthor")
+  channelReads          ChannelRead[]        @relation("ChannelReader")
+  calendarConnections   CalendarConnection[] @relation("CalendarConnector")
+  documentSharesCreated DocumentShare[]      @relation("DocumentShareCreator")
+  channelMemberships    ChannelMember[]      @relation("ChannelParticipant")
 
   @@unique([identityIssuer, identitySubject])
   @@map("users")
@@ -183,6 +184,7 @@ model Workspace {
   subscription        Subscription?
   whiteboards         Whiteboard[]
   channels            Channel[]
+  documentShares      DocumentShare[]
   calendarConnections CalendarConnection[]
   billingInvoices     BillingInvoice[]
 
@@ -457,6 +459,7 @@ model Document {
   knowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionDocument")
 
   fileAttachments FileAttachment[]
+  shares          DocumentShare[]
 
   @@index([workspaceId, updatedAt])
   @@index([projectId])
@@ -1129,4 +1132,24 @@ model ExternalEventLink {
   @@index([connectionId, eventId])
   @@index([eventId])
   @@map("external_event_links")
+}
+
+/// A read-only link to one document, for people without an AVEN account. Only a hash of the link's secret is stored.
+model DocumentShare {
+  id           String    @id @default(uuid()) @db.Uuid
+  workspaceId  String    @db.Uuid
+  documentId   String    @db.Uuid
+  createdById  String    @db.Uuid
+  tokenHash    String    @unique @db.VarChar(64)
+  expiresAt    DateTime? @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+  viewCount    Int       @default(0)
+  lastViewedAt DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document     Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy    User      @relation("DocumentShareCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_shares")
 }

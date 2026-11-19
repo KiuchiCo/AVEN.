@@ -212,6 +212,14 @@ export class FilesService {
     return { ...item, truncated };
   }
 
+  /** For share links: an image file's bytes, with no sign-in. The caller has already proved the document uses this file. */
+  async publicImage(workspaceId: string, fileId: string) {
+    const file = await this.prisma.storedFile.findFirst({ where: { id: fileId, workspaceId, deletedAt: null, mimeType: { in: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] } }, select: { mimeType: true, storageKey: true } });
+    if (!file) throw new NotFoundException('Image not found.');
+    try { const stored = await this.storage.get(file.storageKey); return { stream: stored.stream, mimeType: file.mimeType, size: stored.size }; }
+    catch { throw new NotFoundException('Image not found.'); }
+  }
+
   async versions(identity: AuthenticatedIdentity, workspaceId: string, fileId: string) {
     await this.member(identity, workspaceId);
     const file = await this.prisma.storedFile.findFirst({ where: { id: fileId, workspaceId, deletedAt: null }, select: { id: true, version: true, sizeBytes: true, updatedAt: true, createdBy: { select: { displayName: true } } } });

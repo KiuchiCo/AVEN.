@@ -14,5 +14,6 @@ import { FILE_LIMITS, STORAGE } from './tokens.js';
     { provide: STORAGE, useFactory: () => new LocalStorageDriver(readApiEnvironment().storageDir) },
     { provide: FILE_LIMITS, useFactory: () => { const { maxUploadBytes, storageQuotaBytes } = readApiEnvironment(); return { maxUploadBytes, storageQuotaBytes }; } },
   ],
+  exports: [FilesService],
 })
 export class FilesModule {}
