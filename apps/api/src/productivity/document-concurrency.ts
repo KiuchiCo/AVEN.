@@ -13,3 +13,8 @@ export function parseBaseUpdatedAt(value: unknown): Date {
 export function documentConflict<T>(current: T) {
   return new ConflictException({ message: 'This document was changed by someone else while you were editing.', current });
 }
+
+/** Same protection for database records: the record changed since the editor loaded it. */
+export function recordConflict<T>(current: T) {
+  return new ConflictException({ message: 'This record was changed by someone else while you were editing.', current });
+}

@@ -33,6 +33,26 @@ export class DatabasesController {
     return this.databases.update(identity, workspaceId, databaseId, body);
   }
 
+  @Post(':databaseId/records/bulk-update')
+  bulkUpdateRecords(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Body() body: unknown,
+  ) {
+    return this.databases.bulkUpdateRecords(identity, workspaceId, databaseId, body);
+  }
+
+  @Post(':databaseId/records/bulk-delete')
+  bulkDeleteRecords(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Body() body: unknown,
+  ) {
+    return this.databases.bulkDeleteRecords(identity, workspaceId, databaseId, body);
+  }
+
   @Post(':databaseId/records')
   createRecord(
     @CurrentIdentity() identity: AuthenticatedIdentity,

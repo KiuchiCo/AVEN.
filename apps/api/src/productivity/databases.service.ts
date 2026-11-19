@@ -3,6 +3,8 @@ import { Prisma } from '../generated/prisma/client.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { computeRollup, parseBulkIds, rollupFunctions, type RollupFunction } from './database-records.js';
+import { parseBaseUpdatedAt, recordConflict } from './document-concurrency.js';
 
 @Injectable()
 export class DatabasesService {
@@ -18,9 +20,10 @@ export class DatabasesService {
         views: { orderBy: { createdAt: 'asc' } },
       },
     });
+    const rollupSource = await this.loadRollupSource(workspaceId, databases);
     return databases.map((database) => ({
       ...database,
-      records: database.records.map((record) => this.withRelationValues(record, database.properties)),
+      records: database.records.map((record) => this.withRelationValues(record, database.properties, rollupSource)),
     }));
   }
 
@@ -61,7 +64,7 @@ export class DatabasesService {
         where: { id: created.id }, include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } },
       });
     });
-    return this.withRelationValues(record, database.properties);
+    return this.withRelationValues(record, database.properties, await this.loadRollupSource(workspaceId, [{ properties: database.properties, records: [record] }]));
   }
 
   async importRecords(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
@@ -95,7 +98,7 @@ export class DatabasesService {
     await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const name = textField(body.name, 'Property name', 80);
-    const type = enumValue(body.type, ['text', 'number', 'checkbox', 'date', 'status', 'relation', 'formula'] as const);
+    const type = enumValue(body.type, ['text', 'number', 'checkbox', 'date', 'status', 'relation', 'formula', 'rollup'] as const);
     const database = await this.prisma.workspaceDatabase.findFirst({
       where: { id: databaseId, workspaceId },
       select: { id: true, properties: true },
@@ -114,7 +117,22 @@ export class DatabasesService {
       if (!relatedDatabase) throw new BadRequestException('Related database must belong to this workspace.');
     }
     const formula = type === 'formula' ? textField(body.formula, 'Formula', 500) : undefined;
-    const nextProperties = [...properties, { id, name, type, ...(relatedDatabaseId ? { relatedDatabaseId } : {}), ...(formula ? { formula } : {}) }];
+    let rollup: { rollupRelationId: string; rollupFunction: RollupFunction; rollupPropertyId?: string } | undefined;
+    if (type === 'rollup') {
+      const rollupRelationId = textField(body.rollupRelationId, 'Relation', 80);
+      const relation = properties.find((property) => property.id === rollupRelationId && property.type === 'relation');
+      if (!relation?.relatedDatabaseId) throw new BadRequestException('Choose a relation property in this database.');
+      const rollupFunction = enumValue(body.rollupFunction, rollupFunctions, 'Rollup function');
+      let rollupPropertyId: string | undefined;
+      if (rollupFunction !== 'count') {
+        rollupPropertyId = textField(body.rollupPropertyId, 'Rollup property', 80);
+        const related = await this.prisma.workspaceDatabase.findFirst({ where: { id: relation.relatedDatabaseId, workspaceId }, select: { properties: true } });
+        const target = related && propertyList(related.properties).find((property) => property.id === rollupPropertyId);
+        if (target?.type !== 'number') throw new BadRequestException('A rollup can only summarise a number property in the related database.');
+      }
+      rollup = { rollupRelationId, rollupFunction, ...(rollupPropertyId ? { rollupPropertyId } : {}) };
+    }
+    const nextProperties = [...properties, { id, name, type, ...(relatedDatabaseId ? { relatedDatabaseId } : {}), ...(formula ? { formula } : {}), ...(rollup ?? {}) }];
     if (type === 'formula') validateFormulaSet(nextProperties);
     return this.prisma.workspaceDatabase.update({
       where: { id: database.id },
@@ -178,23 +196,68 @@ export class DatabasesService {
       select: { id: true, properties: true },
     });
     if (!database) throw new NotFoundException('Database not found in this workspace.');
-    const values = recordValues(database.properties, objectInput(input).values);
+    const body = objectInput(input);
+    const baseUpdatedAt = parseBaseUpdatedAt(body.baseUpdatedAt);
+    const values = recordValues(database.properties, body.values);
     const { scalarValues, links } = await this.extractRelationLinks(workspaceId, database.properties, values);
     const relationPropertyIds = propertyList(database.properties).filter((property) => property.type === 'relation').map((property) => property.id);
-    const record = await this.prisma.$transaction(async (transaction) => {
+    const outcome = await this.prisma.$transaction(async (transaction) => {
       const result = await transaction.databaseRecord.updateMany({
-        where: { id: recordId, databaseId, workspaceId },
+        where: { id: recordId, databaseId, workspaceId, updatedAt: baseUpdatedAt },
         data: { values: scalarValues as Prisma.InputJsonValue },
       });
-      if (result.count !== 1) throw new NotFoundException('Record not found in this database.');
+      if (result.count !== 1) {
+        const current = await transaction.databaseRecord.findFirst({ where: { id: recordId, databaseId, workspaceId }, include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } } });
+        if (!current) throw new NotFoundException('Record not found in this database.');
+        return { record: current, conflict: true };
+      }
       if (relationPropertyIds.length) await transaction.databaseRecordLink.deleteMany({ where: { workspaceId, sourceRecordId: recordId, propertyId: { in: relationPropertyIds } } });
       if (links.length) await transaction.databaseRecordLink.createMany({ data: links.map((link) => ({ workspaceId, sourceRecordId: recordId, ...link })) });
-      return transaction.databaseRecord.findFirstOrThrow({
+      const updated = await transaction.databaseRecord.findFirstOrThrow({
         where: { id: recordId, databaseId, workspaceId },
         include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } },
       });
+      return { record: updated, conflict: false };
     });
-    return this.withRelationValues(record, database.properties);
+    const shaped = this.withRelationValues(outcome.record, database.properties, await this.loadRollupSource(workspaceId, [{ properties: database.properties, records: [outcome.record] }]));
+    if (outcome.conflict) throw recordConflict(shaped);
+    return shaped;
+  }
+
+  async bulkUpdateRecords(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId, true);
+    const body = objectInput(input);
+    const recordIds = parseBulkIds(body.recordIds);
+    const database = await this.prisma.workspaceDatabase.findFirst({ where: { id: databaseId, workspaceId }, select: { id: true, properties: true } });
+    if (!database) throw new NotFoundException('Database not found in this workspace.');
+    const properties = propertyList(database.properties);
+    const values = recordValues(database.properties, body.values);
+    if (!Object.keys(values).length) throw new BadRequestException('Choose at least one value to apply.');
+    if (Object.keys(values).some((propertyId) => properties.find((property) => property.id === propertyId)?.type === 'relation')) {
+      throw new BadRequestException('Relations must be edited one record at a time.');
+    }
+    if (properties.some((property) => property.id === 'name') && 'name' in values && (typeof values.name !== 'string' || !values.name.trim())) {
+      throw new BadRequestException('Record names cannot be empty.');
+    }
+    await this.prisma.$transaction(async (transaction) => {
+      const records = await transaction.databaseRecord.findMany({ where: { id: { in: recordIds }, databaseId, workspaceId }, select: { id: true, values: true } });
+      if (records.length !== recordIds.length) throw new NotFoundException('Some selected records no longer exist. Refresh and try again.');
+      for (const record of records) {
+        const current = record.values && typeof record.values === 'object' && !Array.isArray(record.values) ? record.values as Record<string, Prisma.JsonValue> : {};
+        await transaction.databaseRecord.update({ where: { id: record.id }, data: { values: { ...current, ...values } as Prisma.InputJsonValue } });
+      }
+    });
+    return { updated: recordIds.length };
+  }
+
+  async bulkDeleteRecords(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
+    await this.requireMembership(identity, workspaceId, true);
+    const recordIds = parseBulkIds(objectInput(input).recordIds);
+    await this.prisma.$transaction(async (transaction) => {
+      const result = await transaction.databaseRecord.deleteMany({ where: { id: { in: recordIds }, databaseId, workspaceId } });
+      if (result.count !== recordIds.length) throw new NotFoundException('Some selected records no longer exist. Refresh and try again.');
+    });
+    return { deleted: recordIds.length };
   }
 
   async deleteRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, recordId: string) {
@@ -243,7 +306,7 @@ export class DatabasesService {
     return { scalarValues, links };
   }
 
-  private withRelationValues<T extends { values: Prisma.JsonValue; outgoingLinks: Array<{ propertyId: string; targetRecordId: string }> }>(record: T, propertiesValue: unknown) {
+  private withRelationValues<T extends { values: Prisma.JsonValue; outgoingLinks: Array<{ propertyId: string; targetRecordId: string }> }>(record: T, propertiesValue: unknown, rollupSource: RollupSource = new Map()) {
     const { outgoingLinks, ...base } = record;
     const values = record.values && typeof record.values === 'object' && !Array.isArray(record.values)
       ? { ...record.values as Record<string, Prisma.JsonValue> }
@@ -251,6 +314,11 @@ export class DatabasesService {
     const properties = propertyList(propertiesValue);
     for (const property of properties.filter((item) => item.type === 'relation')) {
       values[property.id] = outgoingLinks.filter((link) => link.propertyId === property.id).map((link) => link.targetRecordId);
+    }
+    for (const property of properties.filter((item) => item.type === 'rollup' && item.rollupRelationId && item.rollupFunction)) {
+      const linkedIds = values[property.rollupRelationId!];
+      const linked = (Array.isArray(linkedIds) ? linkedIds : []).flatMap((id) => { const target = rollupSource.get(String(id)); return target ? [target] : []; });
+      values[property.id] = computeRollup(property.rollupFunction!, linked, property.rollupPropertyId);
     }
     const formulas = new Map(properties.filter((item) => item.type === 'formula').map((item) => [item.id, item]));
     const evaluateProperty = (id: string, stack = new Set<string>()): number | null => {
@@ -268,10 +336,25 @@ export class DatabasesService {
     return { ...base, values };
   }
 
+  /** One query for every linked record that a rollup needs, shared by all records being returned. */
+  private async loadRollupSource(workspaceId: string, entries: Array<{ properties: unknown; records: Array<{ outgoingLinks: Array<{ propertyId: string; targetRecordId: string }> }> }>): Promise<RollupSource> {
+    const ids = new Set<string>();
+    for (const { properties, records } of entries) {
+      const relationIds = new Set(propertyList(properties).filter((property) => property.type === 'rollup' && property.rollupRelationId).map((property) => property.rollupRelationId!));
+      if (!relationIds.size) continue;
+      for (const record of records) for (const link of record.outgoingLinks) if (relationIds.has(link.propertyId)) ids.add(link.targetRecordId);
+    }
+    if (!ids.size) return new Map();
+    const rows = await this.prisma.databaseRecord.findMany({ where: { id: { in: [...ids] }, workspaceId }, select: { id: true, values: true } });
+    return new Map(rows.map((row) => [row.id, row.values && typeof row.values === 'object' && !Array.isArray(row.values) ? row.values as Record<string, Prisma.JsonValue> : {}]));
+  }
+
   private requireMembership(identity: AuthenticatedIdentity, workspaceId: string, write = false) {
     return requireWorkspaceMember(this.prisma, identity, workspaceId, write);
   }
 }
+
+type RollupSource = Map<string, Record<string, Prisma.JsonValue>>;
 
 function objectInput(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A JSON object is required.');
@@ -298,14 +381,14 @@ function recordValues(propertiesValue: unknown, value: unknown): Record<string, 
   for (const [key, item] of Object.entries(values)) {
     const property = properties.find((candidate) => candidate.id === key);
     if (!property) throw new BadRequestException('Record values can only use properties defined in this database.');
-    if (property.type === 'formula') throw new BadRequestException(`${property.name} is calculated automatically and cannot be edited.`);
+    if (property.type === 'formula' || property.type === 'rollup') throw new BadRequestException(`${property.name} is calculated automatically and cannot be edited.`);
     if (item !== null && !matchesType(item, property.type)) throw new BadRequestException(`${property.name} has an invalid value.`);
     if (typeof item === 'string' && item.length > 2000) throw new BadRequestException('Text values must be 2,000 characters or fewer.');
   }
   return values as Record<string, string | number | boolean | null>;
 }
 
-type DatabaseProperty = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string };
+type DatabaseProperty = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string; rollupRelationId?: string; rollupPropertyId?: string; rollupFunction?: RollupFunction };
 
 function propertyList(value: unknown): DatabaseProperty[] {
   if (!Array.isArray(value)) throw new BadRequestException('This database has an invalid property definition.');
@@ -320,6 +403,9 @@ function propertyList(value: unknown): DatabaseProperty[] {
       type: entry.type,
       ...('relatedDatabaseId' in entry && typeof entry.relatedDatabaseId === 'string' ? { relatedDatabaseId: entry.relatedDatabaseId } : {}),
       ...('formula' in entry && typeof entry.formula === 'string' ? { formula: entry.formula } : {}),
+      ...('rollupRelationId' in entry && typeof entry.rollupRelationId === 'string' ? { rollupRelationId: entry.rollupRelationId } : {}),
+      ...('rollupPropertyId' in entry && typeof entry.rollupPropertyId === 'string' ? { rollupPropertyId: entry.rollupPropertyId } : {}),
+      ...('rollupFunction' in entry && typeof entry.rollupFunction === 'string' && (rollupFunctions as readonly string[]).includes(entry.rollupFunction) ? { rollupFunction: entry.rollupFunction as RollupFunction } : {}),
     };
   });
 }

@@ -4,7 +4,9 @@ import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from './workspace-shell';
 
-type Property = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string };
+type Property = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string; rollupRelationId?: string; rollupPropertyId?: string; rollupFunction?: string };
+const isComputed = (property: Property) => property.type === 'formula' || property.type === 'rollup';
+const rollupFunctionLabels = [['count', 'Count of records'], ['sum', 'Sum'], ['average', 'Average'], ['min', 'Minimum'], ['max', 'Maximum']] as const;
 type RecordValues = Record<string, string | number | boolean | null | string[]>;
 type DatabaseRecord = { id: string; values: RecordValues; updatedAt: string };
 type ViewLayout = 'TABLE' | 'BOARD' | 'GALLERY' | 'CALENDAR' | 'LIST' | 'TIMELINE' | 'CHART';
@@ -21,6 +23,7 @@ const propertyTypes = [
   { value: 'status', label: 'Status' },
   { value: 'relation', label: 'Relation' },
   { value: 'formula', label: 'Formula' },
+  { value: 'rollup', label: 'Rollup' },
 ];
 
 function parseCsv(text: string): string[][] {
@@ -80,6 +83,11 @@ export function DatabasesWorkspace() {
   const [selectedViewId, setSelectedViewId] = useState('');
   const [viewName, setViewName] = useState('');
   const [newPropertyType, setNewPropertyType] = useState('text');
+  const [rollupRelationId, setRollupRelationId] = useState('');
+  const [rollupFunction, setRollupFunction] = useState('count');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkPropertyId, setBulkPropertyId] = useState('');
+  const [bulkValue, setBulkValue] = useState('');
   const [showRelationMap, setShowRelationMap] = useState(false);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
@@ -95,7 +103,7 @@ export function DatabasesWorkspace() {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string } | null;
-      throw new Error(body?.message ?? 'AVEN could not complete that request.');
+      throw Object.assign(new Error(body?.message ?? 'AVEN could not complete that request.'), { status: response.status });
     }
     return response.json();
   }, [getToken]);
@@ -122,7 +130,12 @@ export function DatabasesWorkspace() {
   const dateProperties = selected?.properties.filter((property) => property.type === 'date') ?? [];
   const boardPropertyId = statusProperties.some((property) => property.id === groupByPropertyId) ? groupByPropertyId : statusProperties[0]?.id ?? '';
   const calendarPropertyId = dateProperties.some((property) => property.id === calendarDatePropertyId) ? calendarDatePropertyId : dateProperties[0]?.id ?? '';
-  const numericProperties = selected?.properties.filter((property) => property.type === 'number' || property.type === 'formula') ?? [];
+  const numericProperties = selected?.properties.filter((property) => property.type === 'number' || isComputed(property)) ?? [];
+  const rollupRelations = selected?.properties.filter((property) => property.type === 'relation') ?? [];
+  const rollupTargets = databases.find((database) => database.id === rollupRelations.find((relation) => relation.id === rollupRelationId)?.relatedDatabaseId)?.properties.filter((property) => property.type === 'number') ?? [];
+  const bulkProperties = selected?.properties.filter((property) => ['text', 'number', 'checkbox', 'date', 'status'].includes(property.type)) ?? [];
+  const bulkProperty = bulkProperties.find((property) => property.id === bulkPropertyId) ?? bulkProperties[0];
+  const activeSelection = selected ? selectedIds.filter((id) => selected.records.some((record) => record.id === id)) : [];
   const chartValuePropertyId = numericProperties.some((property) => property.id === chartPropertyId) ? chartPropertyId : '';
   const visibleRecords = selected ? selected.records
     .filter((record) => {
@@ -153,7 +166,12 @@ export function DatabasesWorkspace() {
   const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
   const calendarGridStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1 - monthStart.getDay());
   const calendarDays = Array.from({ length: 42 }, (_, index) => new Date(calendarGridStart.getFullYear(), calendarGridStart.getMonth(), calendarGridStart.getDate() + index));
+  function editableValues(values: RecordValues): RecordValues {
+    return Object.fromEntries(Object.entries(values).filter(([propertyId]) => { const property = selected?.properties.find((item) => item.id === propertyId); return property && !isComputed(property); }));
+  }
+
   function propertyValueLabel(property: Property, value: RecordValues[string]) {
+    if (property.type === 'rollup' && typeof value === 'number') return String(Number(value.toFixed(2)));
     if (property.type !== 'relation' || !Array.isArray(value)) return value == null ? '—' : String(value);
     const related = databases.find((database) => database.id === property.relatedDatabaseId);
     return value.map((recordId) => {
@@ -167,7 +185,7 @@ export function DatabasesWorkspace() {
     const properties = selected.properties.filter((property) => property.type !== 'relation');
     const lines = [properties.map((property) => csvCell(property.name)).join(',')];
     for (const record of visibleRecords) {
-      lines.push(properties.map((property) => csvCell(record.values[property.id] == null ? '' : String(record.values[property.id]), (property.type === 'number' || property.type === 'formula'))).join(','));
+      lines.push(properties.map((property) => csvCell(record.values[property.id] == null ? '' : String(record.values[property.id]), (property.type === 'number' || isComputed(property)))).join(','));
     }
     const file = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(file);
@@ -197,7 +215,7 @@ export function DatabasesWorkspace() {
         const property = selected.properties.find((item) => item.name.toLocaleLowerCase() === header.toLocaleLowerCase());
         if (!property) throw new Error(`“${header}” is not a property in this database.`);
         if (property.type === 'relation') throw new Error('Relation fields are not imported from CSV. Import those links after the records exist.');
-        if (property.type === 'formula') throw new Error('Formula columns are calculated automatically and cannot be imported.');
+        if (isComputed(property)) throw new Error('Formula and rollup columns are calculated automatically and cannot be imported.');
         return property;
       });
       if (dataRows.length > 500) throw new Error('Import at most 500 records at a time.');
@@ -274,7 +292,7 @@ export function DatabasesWorkspace() {
     try {
       const values = Object.fromEntries(selected.properties.map((property) => {
         const raw = form.get(property.id);
-        if (property.type === 'formula') return [property.id, undefined];
+        if (isComputed(property)) return [property.id, undefined];
         if (property.type === 'relation') return [property.id, form.getAll(property.id).filter((value): value is string => typeof value === 'string')];
         if (property.type === 'checkbox') return [property.id, raw === 'on'];
         if (property.type === 'number') return [property.id, raw === null || raw === '' ? null : Number(raw)];
@@ -298,7 +316,7 @@ export function DatabasesWorkspace() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/databases/${selected.id}/properties`, {
-        method: 'PATCH', body: JSON.stringify({ name: form.get('propertyName'), type: form.get('propertyType'), relatedDatabaseId: form.get('relatedDatabaseId'), formula: form.get('formula') }),
+        method: 'PATCH', body: JSON.stringify({ name: form.get('propertyName'), type: form.get('propertyType'), relatedDatabaseId: form.get('relatedDatabaseId'), formula: form.get('formula'), rollupRelationId: form.get('rollupRelationId'), rollupFunction: form.get('rollupFunction'), rollupPropertyId: form.get('rollupPropertyId') || undefined }),
       });
       formElement.reset();
       await reload();
@@ -361,7 +379,7 @@ export function DatabasesWorkspace() {
 
   function startEdit(record: DatabaseRecord) {
     setEditingId(record.id);
-    setDraft(Object.fromEntries(Object.entries(record.values).filter(([propertyId]) => selected?.properties.find((property) => property.id === propertyId)?.type !== 'formula')));
+    setDraft(editableValues(record.values));
   }
 
   async function saveRecord(event: FormEvent<HTMLFormElement>) {
@@ -370,11 +388,14 @@ export function DatabasesWorkspace() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/databases/${selected.id}/records/${editingId}`, {
-        method: 'PATCH', body: JSON.stringify({ values: draft }),
+        method: 'PATCH', body: JSON.stringify({ values: draft, baseUpdatedAt: selected.records.find((record) => record.id === editingId)?.updatedAt }),
       });
       setEditingId('');
       await reload();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the record.'); }
+    } catch (reason) {
+      if ((reason as { status?: number }).status === 409) { setEditingId(''); setError('Someone else changed this record while you were editing. The latest version has been loaded — review it and edit again.'); await reload(); }
+      else setError(reason instanceof Error ? reason.message : 'Could not update the record.');
+    }
     finally { setBusy(false); }
   }
 
@@ -403,6 +424,37 @@ export function DatabasesWorkspace() {
     finally { setBusy(false); }
   }
 
+  async function bulkApply(clear: boolean) {
+    if (!selected || !bulkProperty || !activeSelection.length) return;
+    let value: string | number | boolean | null = null;
+    if (!clear) {
+      if (bulkProperty.type === 'number') { value = Number(bulkValue); if (!Number.isFinite(value)) { setError('Enter a valid number.'); return; } }
+      else if (bulkProperty.type === 'checkbox') value = bulkValue === 'true';
+      else value = bulkValue;
+    } else if (bulkProperty.id === 'name') { setError('Record names cannot be cleared.'); return; }
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await request(`/workspaces/${workspace.id}/databases/${selected.id}/records/bulk-update`, { method: 'POST', body: JSON.stringify({ recordIds: activeSelection, values: { [bulkProperty.id]: value } }) });
+      setNotice(`Updated ${activeSelection.length} ${activeSelection.length === 1 ? 'record' : 'records'}.`);
+      setSelectedIds([]); setBulkValue('');
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the selected records.'); }
+    finally { setBusy(false); }
+  }
+
+  async function bulkDelete() {
+    if (!selected || !activeSelection.length) return;
+    if (!window.confirm(`Delete ${activeSelection.length} selected ${activeSelection.length === 1 ? 'record' : 'records'}? Links to them will also be removed. This cannot be undone.`)) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await request(`/workspaces/${workspace.id}/databases/${selected.id}/records/bulk-delete`, { method: 'POST', body: JSON.stringify({ recordIds: activeSelection }) });
+      setNotice(`Deleted ${activeSelection.length} ${activeSelection.length === 1 ? 'record' : 'records'}.`);
+      setSelectedIds([]);
+      await reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the selected records.'); }
+    finally { setBusy(false); }
+  }
+
   async function moveBoardRecord(recordId: string, nextStatus: string) {
     if (!selected || !boardPropertyId) return;
     const record = selected.records.find((item) => item.id === recordId);
@@ -410,10 +462,13 @@ export function DatabasesWorkspace() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/databases/${selected.id}/records/${record.id}`, {
-        method: 'PATCH', body: JSON.stringify({ values: { ...record.values, [boardPropertyId]: nextStatus === 'No status' ? null : nextStatus } }),
+        method: 'PATCH', body: JSON.stringify({ values: { ...editableValues(record.values), [boardPropertyId]: nextStatus === 'No status' ? null : nextStatus }, baseUpdatedAt: record.updatedAt }),
       });
       await reload();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not move this record.'); }
+    } catch (reason) {
+      if ((reason as { status?: number }).status === 409) { setError('Someone else changed this record. The latest version has been loaded — try the move again.'); await reload(); }
+      else setError(reason instanceof Error ? reason.message : 'Could not move this record.');
+    }
     finally { setBusy(false); }
   }
 
@@ -455,6 +510,11 @@ export function DatabasesWorkspace() {
               <label>Type<select name="propertyType" value={newPropertyType} onChange={(event) => setNewPropertyType(event.target.value)}>{propertyTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
               {newPropertyType === 'relation' && <label>Related database<select name="relatedDatabaseId" required defaultValue=""><option value="" disabled>Choose a database</option>{databases.filter((database) => database.id !== selected.id).map((database) => <option key={database.id} value={database.id}>{database.name}</option>)}</select></label>}
               {newPropertyType === 'formula' && <label className="database-formula-input">Formula<input name="formula" required maxLength={500} placeholder="[Quantity] * [Unit price]" /><small>Use [Property name], arithmetic, parentheses, or SUM / MIN / MAX / ROUND / ABS.</small></label>}
+              {newPropertyType === 'rollup' && (rollupRelations.length === 0 ? <p className="database-rollup-hint">Add a relation property first, then summarise the records it links to.</p> : <>
+                <label>Relation<select name="rollupRelationId" required value={rollupRelationId} onChange={(event) => setRollupRelationId(event.target.value)}><option value="" disabled>Choose a relation</option>{rollupRelations.map((relation) => <option key={relation.id} value={relation.id}>{relation.name}</option>)}</select></label>
+                <label>Summarise<select name="rollupFunction" value={rollupFunction} onChange={(event) => setRollupFunction(event.target.value)}>{rollupFunctionLabels.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                {rollupFunction !== 'count' && <label>Number property<select name="rollupPropertyId" required defaultValue=""><option value="" disabled>{rollupTargets.length ? 'Choose a property' : 'No number properties in that database'}</option>{rollupTargets.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}</select></label>}
+              </>)}
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add property'}</button>
             </form>
             <div className="database-view-controls" aria-label="Table view controls">
@@ -577,22 +637,35 @@ export function DatabasesWorkspace() {
                   </article>)}</div>
                 </section>;
               })}
-            </div> : <div className="database-table-scroll"><table className="database-table"><thead><tr>{selected.properties.map((property) => <th key={property.id}>{property.name}</th>)}<th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead>
+            </div> : <>
+              {activeSelection.length > 0 && <div className="database-bulk-bar" role="region" aria-label="Bulk actions">
+                <strong>{activeSelection.length} selected</strong>
+                <label>Set<select value={bulkProperty?.id ?? ''} onChange={(event) => { setBulkPropertyId(event.target.value); setBulkValue(''); }}>{bulkProperties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>
+                {bulkProperty?.type === 'status' ? <select aria-label="New value" value={bulkValue} onChange={(event) => setBulkValue(event.target.value)}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select>
+                  : bulkProperty?.type === 'checkbox' ? <select aria-label="New value" value={bulkValue} onChange={(event) => setBulkValue(event.target.value)}><option value="">Choose…</option><option value="true">Yes</option><option value="false">No</option></select>
+                  : <input aria-label="New value" type={bulkProperty?.type === 'number' ? 'number' : bulkProperty?.type === 'date' ? 'date' : 'text'} value={bulkValue} maxLength={bulkProperty?.type === 'text' ? 2000 : undefined} onChange={(event) => setBulkValue(event.target.value)} />}
+                <button type="button" disabled={busy || !bulkProperty || bulkValue === ''} onClick={() => void bulkApply(false)}>Apply</button>
+                <button type="button" disabled={busy || !bulkProperty} onClick={() => void bulkApply(true)}>Clear value</button>
+                <button type="button" className="database-bulk-delete" disabled={busy} onClick={() => void bulkDelete()}>Delete selected</button>
+                <button type="button" onClick={() => setSelectedIds([])}>Clear selection</button>
+              </div>}
+              <div className="database-table-scroll"><table className="database-table"><thead><tr><th><input type="checkbox" aria-label="Select all visible records" checked={visibleRecords.length > 0 && visibleRecords.every((record) => selectedIds.includes(record.id))} onChange={(event) => setSelectedIds(event.target.checked ? visibleRecords.map((record) => record.id) : [])} /></th>{selected.properties.map((property) => <th key={property.id}>{property.name}</th>)}<th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {visibleRecords.map((record) => <tr key={record.id}>
+                  <td className="database-select"><input type="checkbox" aria-label="Select record" checked={selectedIds.includes(record.id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, record.id] : current.filter((id) => id !== record.id))} /></td>
                   {editingId === record.id ? <>
-                    {selected.properties.map((property) => <td key={property.id}>{property.type === 'formula' ? <span className="database-formula-value">ƒ {propertyValueLabel(property, record.values[property.id])}</span> : property.type === 'relation' ? <select aria-label={property.name} multiple size={3} value={Array.isArray(draft[property.id]) ? draft[property.id] as string[] : []} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: Array.from(event.target.selectedOptions, (option) => option.value) }))}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select aria-label={property.name} value={String(draft[property.id] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value || null }))}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input aria-label={property.name} type="checkbox" checked={Boolean(draft[property.id])} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.checked }))} /> : <input aria-label={property.name} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} value={draft[property.id] == null ? '' : String(draft[property.id])} maxLength={property.type === 'text' ? 2000 : undefined} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value === '' ? null : property.type === 'number' ? Number(event.target.value) : event.target.value }))} />}</td>)}
+                    {selected.properties.map((property) => <td key={property.id}>{isComputed(property) ? <span className="database-formula-value">{property.type === 'rollup' ? 'Σ' : 'ƒ'} {propertyValueLabel(property, record.values[property.id])}</span> : property.type === 'relation' ? <select aria-label={property.name} multiple size={3} value={Array.isArray(draft[property.id]) ? draft[property.id] as string[] : []} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: Array.from(event.target.selectedOptions, (option) => option.value) }))}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select aria-label={property.name} value={String(draft[property.id] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value || null }))}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input aria-label={property.name} type="checkbox" checked={Boolean(draft[property.id])} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.checked }))} /> : <input aria-label={property.name} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} value={draft[property.id] == null ? '' : String(draft[property.id])} maxLength={property.type === 'text' ? 2000 : undefined} onChange={(event) => setDraft((current) => ({ ...current, [property.id]: event.target.value === '' ? null : property.type === 'number' ? Number(event.target.value) : event.target.value }))} />}</td>)}
                     <td>Editing</td><td><form className="database-row-actions" onSubmit={saveRecord}><button type="submit" disabled={busy}>Save</button><button type="button" onClick={() => setEditingId('')}>Cancel</button></form></td>
                   </> : <>
                     {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <span className="database-status">{String(record.values[property.id] ?? '—')}</span> : property.type === 'checkbox' ? (record.values[property.id] ? 'Yes' : 'No') : propertyValueLabel(property, record.values[property.id])}</td>)}
                     <td>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</td><td><div className="database-row-actions"><button className="database-row-edit" type="button" onClick={() => startEdit(record)}>Edit</button><button className="database-row-edit" type="button" onClick={() => void duplicateRecord(record)} disabled={busy}>Duplicate</button><button className="database-row-edit" type="button" onClick={() => void deleteRecord(record)} disabled={busy}>Delete</button></div></td>
                   </>}
                 </tr>)}
-                {!selected.records.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records yet. Add the first one below.</td></tr>}
-                {selected.records.length > 0 && !visibleRecords.length && <tr><td colSpan={selected.properties.length + 2} className="database-table-empty">No records match that search.</td></tr>}
-              </tbody></table></div>}
+                {!selected.records.length && <tr><td colSpan={selected.properties.length + 3} className="database-table-empty">No records yet. Add the first one below.</td></tr>}
+                {selected.records.length > 0 && !visibleRecords.length && <tr><td colSpan={selected.properties.length + 3} className="database-table-empty">No records match that search.</td></tr>}
+              </tbody></table></div></>}
             <form className="database-add-record" onSubmit={createRecord}>
-              {selected.properties.filter((property) => property.type !== 'formula').map((property) => <label key={property.id}>{property.name}{property.type === 'relation' ? <select name={property.id} multiple size={3}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? 'Website redesign' : undefined} required={property.id === 'name'} />}</label>)}
+              {selected.properties.filter((property) => !isComputed(property)).map((property) => <label key={property.id}>{property.name}{property.type === 'relation' ? <select name={property.id} multiple size={3}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">Choose status</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? 'Website redesign' : undefined} required={property.id === 'name'} />}</label>)}
               <button type="submit" disabled={busy}>{busy ? 'Adding…' : '＋ Add record'}</button>
             </form>
           </>}
