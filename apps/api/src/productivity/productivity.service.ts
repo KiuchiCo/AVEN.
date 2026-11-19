@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
+import { documentConflict, parseBaseUpdatedAt } from './document-concurrency.js';
 import { workspaceNotificationWhere } from './notification-filter.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -824,8 +825,13 @@ export class ProductivityService {
     }
     if ('silent' in body && typeof body.silent !== 'boolean') throw new BadRequestException('silent must be a boolean.');
     if (!Object.keys(data).length) throw new BadRequestException('Provide a title or content to update.');
-    const result = await this.prisma.document.updateMany({ where: { id: documentId, workspaceId }, data });
-    if (result.count !== 1) throw new NotFoundException('Document not found in this workspace.');
+    const baseUpdatedAt = parseBaseUpdatedAt(body.baseUpdatedAt);
+    const result = await this.prisma.document.updateMany({ where: { id: documentId, workspaceId, updatedAt: baseUpdatedAt }, data });
+    if (result.count !== 1) {
+      const current = await this.prisma.document.findFirst({ where: { id: documentId, workspaceId }, include: { project: { select: { id: true, name: true } } } });
+      if (!current) throw new NotFoundException('Document not found in this workspace.');
+      throw documentConflict(current);
+    }
     const document = await this.prisma.document.findFirstOrThrow({
       where: { id: documentId, workspaceId },
       include: { project: { select: { id: true, name: true } } },

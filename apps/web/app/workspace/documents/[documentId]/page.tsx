@@ -12,6 +12,7 @@ type Document = { id: string; title: string; content: string; updatedAt: string;
 type Version = { id: string; title: string; label: string | null; createdAt: string; createdBy: { displayName: string } };
 type Comment = { id: string; body: string; createdAt: string; resolvedAt: string | null; createdBy: { id: string; displayName: string } };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+class ConflictError extends Error { constructor(message: string, readonly current: Document) { super(message); } }
 const blockTypes: { type: BlockType; label: string }[] = [
   { type: 'PARAGRAPH', label: 'Paragraph' }, { type: 'HEADING_1', label: 'Heading 1' }, { type: 'HEADING_2', label: 'Heading 2' },
   { type: 'BULLET', label: 'Bulleted list' }, { type: 'NUMBERED', label: 'Numbered list' }, { type: 'TODO', label: 'To-do item' },
@@ -47,6 +48,7 @@ export default function DocumentEditorPage() {
   const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [conflict, setConflict] = useState<Document | null>(null);
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY'>('OUTLINE');
   const revision = useRef(0);
 
@@ -54,7 +56,11 @@ export default function DocumentEditorPage() {
     const token = await getToken();
     if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
     const response = await fetch(`${apiBase}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } });
-    if (!response.ok) { const body = await response.json().catch(() => null) as { message?: string } | null; throw new Error(body?.message ?? 'AVEN could not complete that request.'); }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string; current?: Document } | null;
+      if (response.status === 409 && body?.current) throw new ConflictError(body.message ?? 'This document was changed by someone else.', body.current);
+      throw new Error(body?.message ?? 'AVEN could not complete that request.');
+    }
     return response.json();
   }, [getToken]);
 
@@ -84,22 +90,46 @@ export default function DocumentEditorPage() {
     if (!document || saving) return false;
     if (!dirty) return true;
     const currentRevision = revision.current;
-    const payload = { title, content: encodeBlocks(blocks), silent: true };
+    const payload = { title, content: encodeBlocks(blocks), silent: true, baseUpdatedAt: document.updatedAt };
     setSaving(true); setError(''); setSuccess('');
     try {
       const updated = await request(`/workspaces/${workspace.id}/documents/${document.id}`, { method: 'PATCH', body: JSON.stringify(payload) }) as Document;
       setDocument(updated);
-      if (revision.current === currentRevision) setDirty(false);
-      return true;
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Autosave failed.'); return false; }
+      if (revision.current === currentRevision) {
+        setDirty(false);
+        return true;
+      }
+      return false;
+    } catch (reason) {
+      if (reason instanceof ConflictError) setConflict(reason.current);
+      else setError(reason instanceof Error ? reason.message : 'Autosave failed.');
+      return false;
+    }
     finally { setSaving(false); }
   }, [blocks, dirty, document, request, saving, title, workspace.id]);
 
   useEffect(() => {
-    if (!hydrated || !dirty || saving || error) return;
+    if (!hydrated || !dirty || saving || error || conflict) return;
     const timer = window.setTimeout(() => { void saveDocument(); }, 900);
     return () => window.clearTimeout(timer);
-  }, [dirty, error, hydrated, saveDocument, saving]);
+  }, [conflict, dirty, error, hydrated, saveDocument, saving]);
+
+  async function keepMyChanges() {
+    if (!conflict) return;
+    setSaving(true); setError('');
+    try {
+      const updated = await request(`/workspaces/${workspace.id}/documents/${conflict.id}`, { method: 'PATCH', body: JSON.stringify({ title, content: encodeBlocks(blocks), silent: true, baseUpdatedAt: conflict.updatedAt }) }) as Document;
+      setDocument(updated); setConflict(null); setDirty(false); setSuccess('Your changes were saved over the other version. It remains in version history only if someone saved it there.');
+    } catch (reason) {
+      if (reason instanceof ConflictError) setConflict(reason.current);
+      else setError(reason instanceof Error ? reason.message : 'Could not save your changes.');
+    } finally { setSaving(false); }
+  }
+
+  function useTheirVersion() {
+    if (!conflict || !window.confirm('Discard your unsaved changes and load the latest saved version?')) return;
+    setDocument(conflict); setTitle(conflict.title); setBlocks(parseBlocks(conflict.content)); revision.current += 1; setDirty(false); setConflict(null); setSuccess('Loaded the latest saved version.');
+  }
 
   function markChanged() { revision.current += 1; setDirty(true); setSuccess(''); }
   function changeTitle(value: string) { setTitle(value); markChanged(); }
@@ -125,7 +155,11 @@ export default function DocumentEditorPage() {
 
   async function restoreVersion(version: Version) {
     if (!window.confirm(`Restore “${version.label || version.title}”? AVEN will save the current document as a version first.`)) return;
-    try { const restored = await request(`/workspaces/${workspace.id}/documents/${documentId}/versions/${version.id}/restore`, { method: 'POST' }) as Document; setDocument(restored); setTitle(restored.title); setBlocks(parseBlocks(restored.content)); revision.current += 1; setDirty(false); setSuccess('Document version restored.'); await reloadCollaboration(); }
+    try {
+      if (dirty && !await saveDocument()) return;
+      const restored = await request(`/workspaces/${workspace.id}/documents/${documentId}/versions/${version.id}/restore`, { method: 'POST' }) as Document;
+      setDocument(restored); setTitle(restored.title); setBlocks(parseBlocks(restored.content)); revision.current += 1; setDirty(false); setSuccess('Document version restored.'); await reloadCollaboration();
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not restore this version.'); }
   }
 
@@ -155,6 +189,11 @@ export default function DocumentEditorPage() {
 
   return <div className="workspace-section-page document-studio">
     <div className="document-studio__crumb"><Link href="/workspace/documents">Documents</Link><span>›</span><span>{document?.project?.name ?? workspace.name}</span><span>›</span><strong>{document?.title ?? 'Document'}</strong><span className="document-studio__save-state">{saving ? 'Saving…' : dirty ? 'Unsaved changes' : success || 'All changes saved'}</span></div>
+    {conflict && <div className="productivity-error document-conflict" role="alertdialog" aria-labelledby="document-conflict-title">
+      <strong id="document-conflict-title">Someone else saved this document while you were editing.</strong>
+      <p>Autosave is paused so nothing is overwritten. Your unsaved changes are still on this page.</p>
+      <div><button type="button" disabled={saving} onClick={() => void keepMyChanges()}>Keep my changes</button><button type="button" disabled={saving} onClick={useTheirVersion}>Load their version</button></div>
+    </div>}
     {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>Retry save</button></p>}
     {loading ? <p className="productivity-message">Opening document…</p> : !document ? <div className="workspace-section-empty"><h2>Document unavailable</h2><p>This document could not be found in the current workspace.</p><Link href="/workspace/documents">Back to documents</Link></div> : <>
       <div className="document-studio__toolbar"><label>New block<select id="document-block-type" value={blockType} onChange={(event) => setBlockType(event.target.value as BlockType)}>{blockTypes.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}</select></label><button type="button" onClick={() => insertBlock()}>＋ Add block</button><span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>Save now</button><Link href="/workspace/documents">All documents</Link></div>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabels } from './task-labels';
+import { documentTemplates, encodeTemplate } from './documents/templates';
 
 type Project = { id: string; name: string };
 type Task = { id: string; title: string; status: string; labels: string[]; dueAt: string | null };
@@ -111,6 +112,7 @@ export function DocumentsWorkspace() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [templateHint, setTemplateHint] = useState('');
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -149,11 +151,12 @@ export function DocumentsWorkspace() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    const template = documentTemplates.find((item) => item.id === form.get('template'));
     setBusy(true); setError('');
     try {
       const created = await request(`/workspaces/${workspace.id}/documents`, {
         method: 'POST',
-        body: JSON.stringify({ title: form.get('title'), content: form.get('content'), projectId: form.get('projectId') || undefined }),
+        body: JSON.stringify({ title: form.get('title') || template?.title, content: template ? encodeTemplate(template, String(form.get('content') ?? '')) : form.get('content'), projectId: form.get('projectId') || undefined }),
       }) as DocumentRecord;
       formElement.reset();
       router.push(`/workspace/documents/${created.id}`);
@@ -180,7 +183,8 @@ export function DocumentsWorkspace() {
       <div className="connected-layout">
         <form className="productivity-form connected-compose" onSubmit={createDocument}>
           <h2>New document</h2>
-          <label>Title<input name="title" required maxLength={200} placeholder="Project brief" /></label>
+          <label>Start from<select name="template" defaultValue="" onChange={(event) => { const choice = documentTemplates.find((item) => item.id === event.target.value); if (choice) setTemplateHint(choice.description); else setTemplateHint(''); }}><option value="">Blank document</option>{documentTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>{templateHint && <small>{templateHint}</small>}</label>
+          <label>Title<input name="title" maxLength={200} placeholder="Defaults to the template name" required={!templateHint} /></label>
           <label>Project <span>(optional)</span><select name="projectId" defaultValue=""><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
           <label>Content<textarea name="content" maxLength={20000} rows={8} placeholder="Add a note, plan, or decision…" /></label>
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save document'}</button>

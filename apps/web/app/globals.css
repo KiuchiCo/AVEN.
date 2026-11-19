@@ -1916,3 +1916,6 @@ body {
 .home-insight--warm { border-left: 3px solid var(--aven-warning); padding-left: 10px; }
 .home-insight--calm { border-left: 3px solid var(--aven-success); padding-left: 10px; }
 @media (max-width: 760px) { .home-grid { grid-template-columns: 1fr; } }
+.document-conflict { display: grid; gap: 8px; }
+.document-conflict p { margin: 0; }
+.document-conflict > div { display: flex; flex-wrap: wrap; gap: 8px; }
