@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { WorkflowTriggersService } from '../workflows/workflow-triggers.service.js';
 
 const taskStatuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'CANCELLED'] as const;
 const taskPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
@@ -9,7 +10,7 @@ const automationActions = ['SET_TASK_PRIORITY', 'ADD_ACTIVITY_NOTE'] as const;
 
 @Injectable()
 export class AutomationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly triggers: WorkflowTriggersService) {}
 
   async list(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.membership(identity, workspaceId);
@@ -75,6 +76,7 @@ export class AutomationsService {
 
   async runForTaskStatusChange(workspaceId: string, taskId: string, fromStatus: string, toStatus: string, actorId: string) {
     if (fromStatus === toStatus) return;
+    await this.triggers.enqueueForTask(workspaceId, taskId, { type: 'task_status_changed', fromStatus, toStatus });
     const rules = await this.prisma.automationRule.findMany({
       where: { workspaceId, enabled: true, toStatus: toStatus as (typeof taskStatuses)[number], ...(fromStatus ? { OR: [{ fromStatus: null }, { fromStatus: fromStatus as (typeof taskStatuses)[number] }] } : {}) },
       orderBy: { createdAt: 'asc' },

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
+import { WorkflowsWorkspace } from './workflows-workspace';
 
 type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'COMPLETED' | 'CANCELLED';
 type Rule = { id: string; name: string; fromStatus: TaskStatus | null; toStatus: TaskStatus; action: 'SET_TASK_PRIORITY' | 'ADD_ACTIVITY_NOTE'; priority: string | null; activityMessage: string | null; enabled: boolean; createdAt: string; createdBy: { displayName: string }; _count: { runs: number } };
@@ -95,15 +96,17 @@ export function AutomationsWorkspace() {
   return <div className="workspace-section-page automations-page">
     <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
     <h1>Automations</h1>
-    <p className="workspace-section-page__description">Turn task status changes into consistent follow-up. Rules run immediately and leave a record in workspace activity.</p>
+    <p className="workspace-section-page__description">Build workflows that run on their own, or use simple rules for one quick reaction to a task status change.</p>
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {notice && <p className="automations-notice" role="status">{notice}</p>}
+
+    <WorkflowsWorkspace />
 
     <div className="automations-metrics"><article><strong>{data.rules.length}</strong><span>Rules</span></article><article><strong>{enabledCount}</strong><span>Enabled</span></article><article><strong>{successCount}</strong><span>Successful runs shown</span></article></div>
 
     <div className="automations-layout">
       <form className="productivity-form automation-create" onSubmit={createRule}>
-        <p className="workspace-eyebrow">NEW WORKFLOW</p><h2>Create an automation</h2>
+        <p className="workspace-eyebrow">SIMPLE RULES</p><h2>Create a simple rule</h2>
         <label>Rule name<input name="name" required maxLength={120} placeholder="Mark finished tasks as urgent" /></label>
         <label>When a task changes status<select name="toStatus" defaultValue="COMPLETED" required>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
         <label>Only when it moves from <span>(optional)</span><select name="fromStatus" defaultValue=""><option value="">Any status</option>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>

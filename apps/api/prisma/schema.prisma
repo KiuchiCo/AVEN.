@@ -122,6 +122,7 @@ model User {
   aiConversations AiConversation[]
   aiUsage AiUsage[]
   aiAgents AiAgent[]
+  workflows Workflow[]
   @@unique([identityIssuer, identitySubject])
   @@map("users")
 }
@@ -166,6 +167,8 @@ model Workspace {
   aiConversations AiConversation[]
   aiUsage AiUsage[]
   aiAgents AiAgent[]
+  workflows Workflow[]
+  workflowRuns WorkflowRun[]
   @@index([createdById])
   @@map("workspaces")
 }
@@ -829,4 +832,75 @@ model AiAgent {
 
   @@unique([workspaceId, name])
   @@map("ai_agents")
+}
+
+/// A multi-step automation. `trigger` and `steps` are validated JSON (see workflow-rules.ts); steps form a tree
+/// where a branch step holds `then` and `else` lists. It runs as its creator, with the creator's permissions.
+model Workflow {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @db.Uuid
+  createdById String        @db.Uuid
+  name        String        @db.VarChar(120)
+  description String        @default("") @db.VarChar(500)
+  enabled     Boolean       @default(false)
+  trigger     Json          @db.JsonB
+  steps       Json          @db.JsonB
+  /// Next time a scheduled workflow is due; null for other triggers.
+  nextRunAt   DateTime?     @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  runs        WorkflowRun[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, enabled])
+  @@index([enabled, nextRunAt])
+  @@map("workflows")
+}
+
+/// One execution. `cursor` holds the position in the step tree and the values produced so far, so a run can
+/// pause (delay, retry) and resume later, even after a restart. Status: QUEUED, RUNNING, WAITING, SUCCEEDED, FAILED.
+model WorkflowRun {
+  id          String            @id @default(uuid()) @db.Uuid
+  workflowId  String            @db.Uuid
+  workspaceId String            @db.Uuid
+  status      String            @default("QUEUED") @db.VarChar(12)
+  trigger     Json              @db.JsonB
+  cursor      Json              @default("{}") @db.JsonB
+  /// Failed attempts of the current step.
+  attempts    Int               @default(0)
+  /// Earliest time the run may continue.
+  runAt       DateTime          @default(now()) @db.Timestamptz(3)
+  lockedAt    DateTime?         @db.Timestamptz(3)
+  startedAt   DateTime?         @db.Timestamptz(3)
+  finishedAt  DateTime?         @db.Timestamptz(3)
+  error       String?           @db.VarChar(500)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  workflow    Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stepRuns    WorkflowStepRun[]
+
+  @@index([status, runAt])
+  @@index([workflowId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@map("workflow_runs")
+}
+
+/// What happened at each step of a run, including failed attempts that were retried.
+model WorkflowStepRun {
+  id         String      @id @default(uuid()) @db.Uuid
+  runId      String      @db.Uuid
+  stepId     String      @db.VarChar(40)
+  type       String      @db.VarChar(20)
+  /// SUCCEEDED, FAILED, RETRYING, or SKIPPED
+  status     String      @db.VarChar(12)
+  attempt    Int         @default(1)
+  summary    String      @default("") @db.VarChar(500)
+  startedAt  DateTime    @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime?   @db.Timestamptz(3)
+  run        WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, startedAt])
+  @@map("workflow_step_runs")
 }

@@ -14,7 +14,8 @@ export function workspaceNotificationWhere(workspaceId: string, userId: string, 
   if (preferences.notifyTaskUpdates) sources.push({ receipts: { some: { userId, isNotificationTarget: true } } });
   return {
     workspaceId,
-    actorId: { not: userId },
+    // Your own changes are not notifications, except workflow notices, which are always about you.
+    AND: [{ OR: [{ actorId: { not: userId } }, { entityType: 'WORKFLOW' }] }],
     OR: sources,
     NOT: { receipts: { some: { userId, dismissedAt: { not: null } } } },
   };

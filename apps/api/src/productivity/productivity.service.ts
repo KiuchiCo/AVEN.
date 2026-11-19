@@ -4,6 +4,7 @@ import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { documentConflict, eventConflict, parseBaseUpdatedAt } from './document-concurrency.js';
 import { parseIcs } from './ics.js';
 import { nextDueDate, parseRecurrence } from './task-rules.js';
+import { WorkflowTriggersService } from '../workflows/workflow-triggers.service.js';
 import { workspaceNotificationWhere } from './notification-filter.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -29,7 +30,7 @@ const databaseRecordSearchMaxScan = 3000;
 
 @Injectable()
 export class ProductivityService {
-  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService) {}
 
   async listProjects(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
@@ -648,6 +649,7 @@ export class ProductivityService {
       include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } },
     });
     await this.recordActivity(workspaceId, userId, 'TASK', task.id, `created task “${task.title}”`, Boolean(task.assigneeId), task.assigneeId ? [task.assigneeId] : []);
+    await this.triggers.enqueueForTask(workspaceId, task.id, { type: 'task_created' });
     return task;
   }
 

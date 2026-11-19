@@ -19,5 +19,6 @@ import { AI_SETTINGS, LLM_PROVIDER } from './tokens.js';
     { provide: LLM_PROVIDER, useFactory: () => { const { aiApiKey, aiModel, aiBaseUrl } = readApiEnvironment(); return aiApiKey ? new AnthropicProvider({ apiKey: aiApiKey, model: aiModel, baseUrl: aiBaseUrl }) : null; } },
     { provide: AI_SETTINGS, useFactory: () => { const { aiModel, aiMonthlyCredits, aiMaxOutputTokens } = readApiEnvironment(); return { model: aiModel, monthlyCredits: aiMonthlyCredits, maxOutputTokens: aiMaxOutputTokens }; } },
   ],
+  exports: [LLM_PROVIDER, AI_SETTINGS],
 })
 export class AiModule {}

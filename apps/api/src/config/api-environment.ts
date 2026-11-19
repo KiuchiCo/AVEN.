@@ -15,6 +15,7 @@ export type ApiEnvironment = {
   aiBaseUrl: string;
   aiMonthlyCredits: number;
   aiMaxOutputTokens: number;
+  workflowAllowPrivateWebhooks: boolean;
 };
 
 type EnvironmentSource = Record<string, string | undefined>;
@@ -73,9 +74,13 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   const aiMonthlyCredits = byteSetting('AI_MONTHLY_CREDITS', 2000, 100_000_000);
   const aiMaxOutputTokens = byteSetting('AI_MAX_OUTPUT_TOKENS', 2048, 32_000);
 
+  // For local development and tests only: lets webhooks reach localhost. Never enable in production.
+  const workflowAllowPrivateWebhooks = source.WORKFLOW_ALLOW_PRIVATE_WEBHOOKS === 'true';
+  if (workflowAllowPrivateWebhooks && source.NODE_ENV === 'production') errors.push('WORKFLOW_ALLOW_PRIVATE_WEBHOOKS cannot be enabled in production');
+
   const isProduction = source.NODE_ENV === 'production';
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks };
 }

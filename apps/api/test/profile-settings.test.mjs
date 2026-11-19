@@ -23,7 +23,7 @@ test('unknown fields, empty bodies and non-objects are rejected', () => {
 test('inbox shows both sources by default and stays scoped to the workspace and member', () => {
   const where = workspaceNotificationWhere('w1', 'u1', { notifyTeamActivity: true, notifyTaskUpdates: true });
   assert.equal(where.workspaceId, 'w1');
-  assert.deepEqual(where.actorId, { not: 'u1' });
+  assert.deepEqual(where.AND, [{ OR: [{ actorId: { not: 'u1' } }, { entityType: 'WORKFLOW' }] }]);
   assert.equal(where.OR.length, 2);
 });
 
@@ -52,4 +52,11 @@ test('dashboard widget visibility accepts known widgets and removes duplicates',
 
 test('dashboard widget visibility rejects unknown widgets and non-arrays', () => {
   for (const value of [['nope'], 'stats', null, [1], [{}]]) assert.throws(() => parseProfileUpdate({ dashboardHiddenWidgets: value }), BadRequestException);
+});
+
+test('your own changes are hidden from your Inbox, but workflow notices about you are not', () => {
+  const where = workspaceNotificationWhere('w1', 'u1', { notifyTeamActivity: true, notifyTaskUpdates: true });
+  const [{ OR: either }] = where.AND;
+  assert.ok(either.some((clause) => clause.actorId?.not === 'u1'));
+  assert.ok(either.some((clause) => clause.entityType === 'WORKFLOW'));
 });
