@@ -1,14 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
 
-export const profileSelect = { id: true, email: true, displayName: true, notifyTeamActivity: true, notifyTaskUpdates: true } as const;
+export const dashboardWidgets = ['stats', 'nextUp', 'projects', 'events', 'documents', 'activity', 'insights'] as const;
 
-export type ProfileUpdate = { displayName?: string; notifyTeamActivity?: boolean; notifyTaskUpdates?: boolean };
+export const profileSelect = { id: true, email: true, displayName: true, notifyTeamActivity: true, notifyTaskUpdates: true, dashboardHiddenWidgets: true } as const;
+
+export type ProfileUpdate = { displayName?: string; notifyTeamActivity?: boolean; notifyTaskUpdates?: boolean; dashboardHiddenWidgets?: string[] };
 
 /** Validates a profile PATCH body. Unknown fields are rejected so typos never silently do nothing. */
 export function parseProfileUpdate(input: unknown): ProfileUpdate {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A JSON object is required.');
   const body = input as Record<string, unknown>;
-  const allowed = ['displayName', 'notifyTeamActivity', 'notifyTaskUpdates'];
+  const allowed = ['displayName', 'notifyTeamActivity', 'notifyTaskUpdates', 'dashboardHiddenWidgets'];
   const unknown = Object.keys(body).find((key) => !allowed.includes(key));
   if (unknown) throw new BadRequestException(`Unknown setting “${unknown}”.`);
 
@@ -23,6 +25,11 @@ export function parseProfileUpdate(input: unknown): ProfileUpdate {
       if (typeof body[key] !== 'boolean') throw new BadRequestException(`${key} must be true or false.`);
       update[key] = body[key];
     }
+  }
+  if ('dashboardHiddenWidgets' in body) {
+    const value = body.dashboardHiddenWidgets;
+    if (!Array.isArray(value) || value.some((id) => !(dashboardWidgets as readonly string[]).includes(id as string))) throw new BadRequestException('dashboardHiddenWidgets must list known dashboard widgets.');
+    update.dashboardHiddenWidgets = [...new Set(value as string[])];
   }
   if (!Object.keys(update).length) throw new BadRequestException('Provide at least one setting to change.');
   return update;

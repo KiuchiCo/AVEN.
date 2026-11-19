@@ -259,32 +259,3 @@ export function InboxWorkspace() {
     </div>
   );
 }
-
-export function WorkspaceHighlights() {
-  const { tasks, projects, loading, error } = useWorkspaceProductivity();
-  const openTasks = tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
-  const activeProjects = projects.filter((project) => project.status !== 'COMPLETED' && project.status !== 'ARCHIVED');
-  const scheduledTasks = tasks.filter((task) => task.events.length > 0);
-  const now = new Date();
-  const weekEnd = new Date(now);
-  weekEnd.setDate(weekEnd.getDate() + 7);
-  const dueSoon = openTasks.filter((task) => task.dueAt && new Date(task.dueAt) >= now && new Date(task.dueAt) <= weekEnd);
-
-  return (
-    <section className="workspace-live-overview" aria-labelledby="live-overview-title">
-      <div className="workspace-section-heading"><div><p className="workspace-eyebrow">FROM YOUR WORKSPACE</p><h2 id="live-overview-title">Your work at a glance</h2></div><Link href="/workspace/tasks">All tasks <span aria-hidden="true">→</span></Link></div>
-      {error && <p className="productivity-error" role="alert">{error}</p>}
-      <div className="workspace-live-stats">
-        <div><span>Active projects</span><strong>{loading ? '—' : activeProjects.length}</strong></div>
-        <div><span>Open tasks</span><strong>{loading ? '—' : openTasks.length}</strong></div>
-        <div><span>Due this week</span><strong>{loading ? '—' : dueSoon.length}</strong></div>
-        <div><span>Tasks scheduled</span><strong>{loading ? '—' : scheduledTasks.length}</strong></div>
-      </div>
-      {!loading && openTasks.length === 0 && <p className="workspace-live-empty">Your open tasks will appear here after you add them to a project.</p>}
-      {!loading && openTasks.length > 0 && <div className="workspace-live-priorities"><h3>Next up</h3>{openTasks.slice().sort((a, b) => {
-        const rank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-        return (rank[a.priority] ?? 4) - (rank[b.priority] ?? 4);
-      }).slice(0, 3).map((task) => <div className="workspace-live-task" key={task.id}><span className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link>{task.project && <small>{task.project.name}</small>}</div>)}</div>}
-    </section>
-  );
-}

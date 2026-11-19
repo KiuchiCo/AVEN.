@@ -44,3 +44,12 @@ test('turning both off yields no sources, and dismissed items stay excluded', ()
   assert.deepEqual(where.OR, []);
   assert.ok(where.NOT.receipts.some.dismissedAt);
 });
+
+test('dashboard widget visibility accepts known widgets and removes duplicates', () => {
+  assert.deepEqual(parseProfileUpdate({ dashboardHiddenWidgets: ['events', 'events', 'stats'] }), { dashboardHiddenWidgets: ['events', 'stats'] });
+  assert.deepEqual(parseProfileUpdate({ dashboardHiddenWidgets: [] }), { dashboardHiddenWidgets: [] });
+});
+
+test('dashboard widget visibility rejects unknown widgets and non-arrays', () => {
+  for (const value of [['nope'], 'stats', null, [1], [{}]]) assert.throws(() => parseProfileUpdate({ dashboardHiddenWidgets: value }), BadRequestException);
+});

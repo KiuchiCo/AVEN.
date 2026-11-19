@@ -1877,3 +1877,42 @@ body {
 .project-template-readiness > footer button { border: 0; background: transparent; color: #746047; font: 600 8px Inter,sans-serif; cursor: pointer; }
 @media (max-width: 720px) { .project-template-preset-picker__filters,.project-template-preset-picker__select { grid-template-columns: 1fr; } .project-template-comparison__table th,.project-template-comparison__table td { min-width: 130px; padding: 7px; } }
 @media (max-width: 640px) { .project-template-toolbar { align-items: stretch; flex-direction: column; } .project-template-filters { align-items: stretch; } .project-template-preview { padding: 16px; } }
+
+/* Home dashboard */
+.home-dashboard { display: grid; gap: 18px; }
+.home-dashboard__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.home-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.home-actions a, .home-customise { padding: 9px 14px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); color: var(--aven-charcoal); font: 500 12px var(--aven-interface-font); text-decoration: none; cursor: pointer; }
+.home-actions a:hover, .home-customise:hover:not(:disabled) { border-color: var(--aven-bronze); color: var(--aven-umber); }
+.home-customise:disabled { opacity: .5; cursor: default; }
+.home-customise-panel { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0; padding: 14px 18px; border: 1px solid var(--aven-border); border-radius: 14px; background: var(--aven-paper); }
+.home-customise-panel legend { padding: 0 6px; color: var(--aven-muted); font-size: 11px; }
+.home-customise-panel label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.home-customise-panel input { accent-color: var(--aven-bronze); }
+.home-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.home-wide { grid-column: 1 / -1; }
+.home-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.home-stats a { display: grid; gap: 6px; padding: 16px 18px; border: 1px solid var(--aven-border); border-radius: 14px; background: var(--aven-paper); color: inherit; text-decoration: none; }
+.home-stats a:hover { border-color: var(--aven-bronze); }
+.home-stats span { color: var(--aven-muted); font-size: 12px; }
+.home-stats strong { color: var(--aven-charcoal); font: 500 30px var(--aven-display-font); }
+.home-card { padding: 20px 22px; border: 1px solid var(--aven-border); border-radius: 16px; background: var(--aven-paper); box-shadow: 0 8px 24px rgb(43 42 39 / 4%); }
+.home-card > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.home-card h2 { margin: 0; color: var(--aven-charcoal); font: 500 19px var(--aven-display-font); }
+.home-card > header a { color: var(--aven-umber); font-size: 12px; text-decoration: none; }
+.home-card ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.home-card li { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid #eee8df; }
+.home-card li:first-child { border-top: 0; }
+.home-card li > div { display: grid; min-width: 0; flex: 1; gap: 3px; font-size: 13px; }
+.home-card li a { color: var(--aven-charcoal); text-decoration: none; }
+.home-card li a:hover { color: var(--aven-umber); text-decoration: underline; }
+.home-card small { color: var(--aven-muted); font-size: 11px; line-height: 1.4; }
+.home-empty { margin: 0; color: var(--aven-muted); font-size: 13px; }
+.home-progress { display: grid; flex: 1; gap: 8px; }
+.home-progress > div { display: grid; gap: 3px; font-size: 13px; }
+.home-progress__bar { height: 6px; overflow: hidden; border-radius: 999px; background: var(--aven-sand); }
+.home-progress__bar > span { display: block; height: 100%; border-radius: inherit; background: var(--aven-bronze); }
+.home-insight--urgent { border-left: 3px solid var(--aven-error); padding-left: 10px; }
+.home-insight--warm { border-left: 3px solid var(--aven-warning); padding-left: 10px; }
+.home-insight--calm { border-left: 3px solid var(--aven-success); padding-left: 10px; }
+@media (max-width: 760px) { .home-grid { grid-template-columns: 1fr; } }
