@@ -78,6 +78,8 @@ Create three monthly prices in Stripe (A$9.99, A$19.99, A$29.99 per seat) and se
 
 - Every request is tied to a Clerk identity and checked against workspace membership on the server; guests are read-only everywhere. Other workspaces' data returns 404.
 - The API sends `nosniff`, `frame-ancestors 'none'` and related headers. The web app sends `nosniff`, `X-Frame-Options: DENY`, a referrer policy and a permissions policy. It does not yet send a Content-Security-Policy: Clerk loads scripts and frames from its own domains, so a correct policy needs testing against your Clerk instance.
+- `apps/api/test/integration/auth-coverage.test.mjs` walks every route the API registers. It checks that anonymous requests get 401 (except the three documented public routes), that a signed-in non-member gets 404 on every workspace route, and that a guest is refused on every route that changes something. A new route that forgets its access check fails this test.
+- A person can hold at most five live message connections open at once.
 - Outgoing webhooks from workflows refuse private and internal addresses (checked after DNS resolution, no redirects). `WORKFLOW_ALLOW_PRIVATE_WEBHOOKS` is refused in production.
 - Stripe webhooks are verified by signature with a five-minute replay window; each event is applied once.
 - Keep `.env` out of version control and rotate any key that has been pasted anywhere public.

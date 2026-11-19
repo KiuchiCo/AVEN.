@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
@@ -18,13 +18,15 @@ export class MessagingController {
   /** Server-sent events: new messages, edits, deletions and new channels for everyone in the workspace. */
   @Get('stream')
   async stream(@CurrentIdentity() who: Who, @workspace() ws: string, @Req() request: Request, @Res() response: Response) {
-    await this.messaging.openStream(who, ws);
+    const userId = await this.messaging.openStream(who, ws);
+    const release = this.events.acquire(userId);
+    if (!release) throw new HttpException('Too many live connections are open for your account. Close some tabs and try again.', 429);
     response.status(200).set({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     response.flushHeaders();
     response.write(': connected\n\n');
     const unsubscribe = this.events.subscribe(ws, (event) => { if (!response.writableEnded) response.write(`data: ${JSON.stringify(event)}\n\n`); });
     const heartbeat = setInterval(() => { if (!response.writableEnded) response.write(': keep-alive\n\n'); }, 25_000);
-    request.on('close', () => { clearInterval(heartbeat); unsubscribe(); });
+    request.on('close', () => { clearInterval(heartbeat); unsubscribe(); release(); });
   }
 
   @Get() list(@CurrentIdentity() who: Who, @workspace() ws: string) { return this.messaging.list(who, ws); }

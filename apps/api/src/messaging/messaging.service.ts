@@ -126,6 +126,6 @@ export class MessagingService {
 
   /** Called once when a live connection opens, so a non-member never gets a stream. */
   async openStream(identity: AuthenticatedIdentity, workspaceId: string) {
-    await requireWorkspaceMember(this.prisma, identity, workspaceId);
+    return requireWorkspaceMember(this.prisma, identity, workspaceId);
   }
 }

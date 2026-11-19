@@ -1,5 +1,5 @@
 import { createClerkClient } from '@clerk/backend';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import type { AuthenticatedIdentity } from './auth.types.js';
 import { parseProfileUpdate, profileSelect } from './profile.js';
@@ -137,7 +137,7 @@ export class AuthService {
   async renameWorkspace(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const user = await this.currentUser(identity);
     const membership = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: user.id } }, select: { role: true } });
-    if (!membership) throw new UnauthorizedException('You are not a member of this workspace.');
+    if (!membership) throw new NotFoundException('Workspace not found.');
     if (membership.role !== 'OWNER') throw new ForbiddenException('Only the workspace owner can change its name.');
     const name = textField(objectInput(input).name, 'Workspace name', 120);
     return this.prisma.$transaction(async (transaction) => {

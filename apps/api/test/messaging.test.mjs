@@ -29,3 +29,11 @@ test('mentions are read by id, de-duplicated, and malformed ones are ignored', (
   assert.deepEqual(extractMentionIds('@[Ana](not-an-id) @Ana @[](x) plain text'), []);
   assert.equal(extractMentionIds(Array.from({ length: 30 }, (_, i) => `@[U](${String(i).padStart(8, '0')}-1111-4111-8111-111111111111)`).join(' ')).length, 20);
 });
+
+test('one person can hold only a limited number of live connections, and releasing frees a slot', () => {
+  const events = new ChannelEvents();
+  const held = Array.from({ length: 5 }, () => events.acquire('u1'));
+  assert.ok(held.every(Boolean)); assert.equal(events.acquire('u1'), null); assert.ok(events.acquire('u2'), 'another person is unaffected');
+  held[0](); held[0](); // releasing twice must not free two slots
+  assert.ok(events.acquire('u1')); assert.equal(events.acquire('u1'), null);
+});
