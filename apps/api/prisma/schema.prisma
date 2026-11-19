@@ -115,6 +115,10 @@ model User {
   completedTaskChecklistItems TaskChecklistItem[] @relation("TaskChecklistCompleter")
   taskFollows TaskFollower[]
 
+  fileFolders FileFolder[] @relation("FileFolderCreator")
+  storedFiles StoredFile[] @relation("FileCreator")
+  fileVersions FileVersion[] @relation("FileVersionCreator")
+  fileAttachments FileAttachment[] @relation("FileAttachmentCreator")
   @@unique([identityIssuer, identitySubject])
   @@map("users")
 }
@@ -152,6 +156,10 @@ model Workspace {
   taskFollowers TaskFollower[]
   taskViews WorkspaceTaskView[]
 
+  fileFolders FileFolder[]
+  storedFiles StoredFile[]
+  fileVersions FileVersion[]
+  fileAttachments FileAttachment[]
   @@index([createdById])
   @@map("workspaces")
 }
@@ -212,6 +220,7 @@ model Project {
   calendarEvents CalendarEvent[]
   milestones  ProjectMilestone[]
 
+  fileAttachments FileAttachment[]
   @@index([workspaceId, status])
   @@index([workspaceId, dueAt])
   @@map("projects")
@@ -253,6 +262,7 @@ model Task {
   checklistItems TaskChecklistItem[]
   followers TaskFollower[]
 
+  fileAttachments FileAttachment[]
   @@index([workspaceId, status, dueAt])
   @@index([projectId, status])
   @@index([assigneeId, status])
@@ -414,6 +424,7 @@ model Document {
   knowledgeItems KnowledgeItem[] @relation("KnowledgeDocument")
   knowledgeVersions KnowledgeVersion[] @relation("KnowledgeVersionDocument")
 
+  fileAttachments FileAttachment[]
   @@index([workspaceId, updatedAt])
   @@index([projectId])
   @@map("documents")
@@ -644,4 +655,95 @@ model DatabaseView {
   @@unique([databaseId, name])
   @@index([workspaceId, databaseId, createdAt])
   @@map("database_views")
+}
+
+model FileFolder {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  parentId    String?      @db.Uuid
+  createdById String       @db.Uuid
+  name        String       @db.VarChar(255)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent      FileFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children    FileFolder[] @relation("FolderTree")
+  createdBy   User         @relation("FileFolderCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  files       StoredFile[]
+
+  @@index([workspaceId, parentId])
+  @@map("file_folders")
+}
+
+/// File contents live in object storage under storageKey; only metadata is in PostgreSQL.
+model StoredFile {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  folderId    String?      @db.Uuid
+  createdById String       @db.Uuid
+  name        String       @db.VarChar(255)
+  mimeType    String       @db.VarChar(127)
+  sizeBytes   Int
+  checksum    String       @db.VarChar(64)
+  storageKey  String       @unique @db.VarChar(255)
+  version     Int          @default(1)
+  deletedAt   DateTime?    @db.Timestamptz(3)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folder      FileFolder?  @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  createdBy   User         @relation("FileCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  versions    FileVersion[]
+  attachments FileAttachment[]
+
+  @@index([workspaceId, folderId, deletedAt])
+  @@index([workspaceId, deletedAt])
+  @@map("stored_files")
+}
+
+/// Earlier contents of a file that was replaced. The current contents are on StoredFile itself.
+model FileVersion {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  fileId      String     @db.Uuid
+  createdById String     @db.Uuid
+  version     Int
+  mimeType    String     @db.VarChar(127)
+  sizeBytes   Int
+  checksum    String     @db.VarChar(64)
+  storageKey  String     @unique @db.VarChar(255)
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  file        StoredFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdBy   User       @relation("FileVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([fileId, version])
+  @@index([workspaceId])
+  @@map("file_versions")
+}
+
+/// Links a file to exactly one task, document, or project (enforced by a CHECK constraint in the migration).
+model FileAttachment {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  fileId      String     @db.Uuid
+  taskId      String?    @db.Uuid
+  documentId  String?    @db.Uuid
+  projectId   String?    @db.Uuid
+  createdById String     @db.Uuid
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  file        StoredFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  task        Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  document    Document?  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User       @relation("FileAttachmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([fileId, taskId])
+  @@unique([fileId, documentId])
+  @@unique([fileId, projectId])
+  @@index([workspaceId, taskId])
+  @@index([workspaceId, documentId])
+  @@index([workspaceId, projectId])
+  @@map("file_attachments")
 }

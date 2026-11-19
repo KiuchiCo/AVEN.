@@ -2,12 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { extractWikiLinks, tagCounts } from './knowledge-links.js';
 
 @Injectable()
 export class KnowledgeService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(identity: AuthenticatedIdentity, workspaceId: string, input: { q?: string; archived?: string; projectId?: string; tag?: string; page?: string }) {
+  async list(identity: AuthenticatedIdentity, workspaceId: string, input: { q?: string; archived?: string; projectId?: string; documentId?: string; taskId?: string; tag?: string; page?: string }) {
     await this.requireMember(identity, workspaceId);
     const query = input.q?.trim();
     if (query && (query.length < 2 || query.length > 100)) throw new BadRequestException('Search must be between 2 and 100 characters.');
@@ -15,6 +16,8 @@ export class KnowledgeService {
     if (!Number.isInteger(page) || page < 1 || page > 10_000) throw new BadRequestException('Page must be a positive integer.');
     const projectId = input.projectId ? optionalUuid(input.projectId, 'Project') : null;
     if (projectId && !await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } })) throw new NotFoundException('Project not found in this workspace.');
+    const documentId = input.documentId ? optionalUuid(input.documentId, 'Document') : null;
+    const taskId = input.taskId ? optionalUuid(input.taskId, 'Task') : null;
     const tag = input.tag?.trim().toLocaleLowerCase();
     if (tag && tag.length > 40) throw new BadRequestException('Tag filters must be 40 characters or fewer.');
     const archived = input.archived === 'true';
@@ -22,6 +25,8 @@ export class KnowledgeService {
       workspaceId,
       archivedAt: archived ? { not: null } : null,
       ...(projectId ? { projectId } : {}),
+      ...(documentId ? { documentId } : {}),
+      ...(taskId ? { taskId } : {}),
       ...(tag ? { tags: { has: tag } } : {}),
       ...(query ? { OR: [{ title: { contains: query, mode: 'insensitive' as const } }, { content: { contains: query, mode: 'insensitive' as const } }, { tags: { has: query.toLocaleLowerCase() } }] } : {}),
     };
@@ -31,6 +36,31 @@ export class KnowledgeService {
     ]);
     const hasMore = items.length > 50;
     return { items: hasMore ? items.slice(0, 50) : items, total, page, hasMore };
+  }
+
+  async tags(identity: AuthenticatedIdentity, workspaceId: string) {
+    await this.requireMember(identity, workspaceId);
+    return tagCounts(await this.prisma.knowledgeItem.findMany({ where: { workspaceId, archivedAt: null }, select: { tags: true } }));
+  }
+
+  /** Items this one links to with [[Title]], titles that match nothing, and items that link back to it. */
+  async links(identity: AuthenticatedIdentity, workspaceId: string, itemId: string) {
+    await this.requireMember(identity, workspaceId);
+    const item = await this.prisma.knowledgeItem.findFirst({ where: { id: itemId, workspaceId }, select: { id: true, title: true, content: true } });
+    if (!item) throw new NotFoundException('Knowledge item not found in this workspace.');
+    const wanted = extractWikiLinks(item.content);
+    const [matches, backlinks] = await Promise.all([
+      wanted.length ? this.prisma.knowledgeItem.findMany({
+        where: { workspaceId, archivedAt: null, id: { not: item.id }, OR: wanted.map((title) => ({ title: { equals: title, mode: 'insensitive' as const } })) },
+        select: { id: true, title: true },
+      }) : Promise.resolve([]),
+      this.prisma.knowledgeItem.findMany({
+        where: { workspaceId, archivedAt: null, id: { not: item.id }, content: { contains: `[[${item.title}]]`, mode: 'insensitive' } },
+        orderBy: { updatedAt: 'desc' }, take: 50, select: { id: true, title: true, updatedAt: true },
+      }),
+    ]);
+    const found = new Set(matches.map((match) => match.title.toLocaleLowerCase()));
+    return { outgoing: matches, unresolved: wanted.filter((title) => !found.has(title.toLocaleLowerCase()) && title.toLocaleLowerCase() !== item.title.toLocaleLowerCase()), backlinks };
   }
 
   async create(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {

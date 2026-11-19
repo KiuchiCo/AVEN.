@@ -1965,3 +1965,62 @@ body {
 .calendar-import-summary p { margin: 0; color: var(--aven-muted); font-size: 12px; }
 .calendar-import-summary ul { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
 .calendar-import-summary button { justify-self: start; padding: 6px 12px; border: 1px solid var(--aven-border); border-radius: 8px; background: var(--aven-paper); font: 600 11px var(--aven-interface-font); cursor: pointer; }
+
+/* Files */
+.files-usage { display: grid; gap: 6px; margin: 14px 0; }
+.files-usage__bar { height: 6px; overflow: hidden; border-radius: 999px; background: var(--aven-sand); }
+.files-usage__bar > span { display: block; height: 100%; border-radius: inherit; background: var(--aven-bronze); }
+.files-usage small, .files-notice { color: var(--aven-muted); font-size: 12px; }
+.files-notice { margin: 8px 0; }
+.files-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 14px 0; }
+.files-toolbar button, .files-upload, .files-replace, .files-views button { padding: 8px 14px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); color: var(--aven-charcoal); font: 500 12px var(--aven-interface-font); cursor: pointer; }
+.files-toolbar button:hover, .files-upload:hover, .files-replace:hover { border-color: var(--aven-bronze); color: var(--aven-umber); }
+.files-upload { background: #292722; border-color: #292722; color: #fff; }
+.files-upload:hover { background: #3a372f; color: #fff; }
+.files-upload input, .files-replace input { display: none; }
+.files-views { display: inline-flex; gap: 6px; }
+.files-views button[aria-pressed="true"] { border-color: var(--aven-bronze); background: #fbf7f0; color: var(--aven-umber); }
+.files-search { flex: 1 1 220px; }
+.files-search input { width: 100%; padding: 9px 14px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); font: inherit; font-size: 13px; }
+.files-path { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--aven-muted); font-size: 12px; }
+.files-path button, .files-folder { padding: 0; border: 0; background: none; color: var(--aven-umber); font: inherit; cursor: pointer; }
+.files-path button:hover, .files-folder:hover { text-decoration: underline; }
+.files-folder { font-weight: 600; font-size: 13px; }
+.files-table-wrap { overflow-x: auto; border: 1px solid var(--aven-border); border-radius: 14px; background: var(--aven-paper); }
+.files-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.files-table th { padding: 10px 14px; border-bottom: 1px solid var(--aven-border); color: var(--aven-muted); font-size: 11px; font-weight: 600; text-align: left; }
+.files-table td { padding: 11px 14px; border-top: 1px solid #eee8df; vertical-align: middle; }
+.files-table tbody tr:first-child td { border-top: 0; }
+.files-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.files-actions button, .files-actions select, .files-replace { padding: 5px 10px; border: 1px solid var(--aven-border); border-radius: 8px; background: #fffdfa; color: var(--aven-charcoal); font: 500 11px var(--aven-interface-font); cursor: pointer; }
+.files-actions button:disabled { opacity: .5; cursor: default; }
+.files-versions td { background: #fbf7f0; font-size: 12px; }
+.files-versions ul { margin: 6px 0 0; padding-left: 18px; }
+.files-empty { padding: 28px 14px !important; color: var(--aven-muted); text-align: center; }
+.attachments-panel { display: grid; gap: 10px; }
+.attachments-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.attachments-panel h2 { margin: 0; color: var(--aven-charcoal); font: 500 17px var(--aven-display-font); }
+.attachments-panel__upload { padding: 7px 12px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); font: 500 12px var(--aven-interface-font); cursor: pointer; }
+.attachments-panel__upload input { display: none; }
+.attachments-panel__empty { margin: 0; color: var(--aven-muted); font-size: 12px; }
+.attachments-panel ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.attachments-panel li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid #eee8df; font-size: 13px; }
+.attachments-panel li:first-child { border-top: 0; }
+.attachments-panel li > div:first-child { display: grid; min-width: 0; gap: 2px; }
+.attachments-panel small { color: var(--aven-muted); font-size: 11px; }
+.attachments-panel__actions { display: flex; gap: 6px; }
+.attachments-panel button, .attachments-panel select { padding: 5px 10px; border: 1px solid var(--aven-border); border-radius: 8px; background: #fffdfa; font: 500 11px var(--aven-interface-font); cursor: pointer; }
+.attachments-panel form { display: flex; gap: 8px; }
+.attachments-panel form select { flex: 1; min-width: 0; }
+/* Knowledge tags and links */
+.knowledge-tag-directory { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0; font-size: 12px; }
+.knowledge-tag-directory > span { color: var(--aven-muted); font-weight: 600; }
+.knowledge-tag-directory button { padding: 4px 10px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); color: var(--aven-charcoal); font: 500 11px var(--aven-interface-font); cursor: pointer; }
+.knowledge-tag-directory button.is-active { border-color: var(--aven-bronze); background: #fbf7f0; color: var(--aven-umber); }
+.knowledge-tag-directory small { color: var(--aven-muted); }
+.knowledge-link-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 10px; padding: 12px 14px; border: 1px solid var(--aven-border); border-radius: 12px; background: #fbf7f0; font-size: 12px; }
+.knowledge-link-panel h3 { margin: 0 0 6px; font-size: 12px; color: var(--aven-umber); }
+.knowledge-link-panel p { margin: 0; color: var(--aven-muted); }
+.knowledge-link-panel ul { margin: 0; padding-left: 16px; }
+.knowledge-link-panel li button { padding: 0; border: 0; background: none; color: var(--aven-umber); font: inherit; cursor: pointer; text-decoration: underline; }
+.knowledge-link-panel .is-unresolved { color: var(--aven-muted); }

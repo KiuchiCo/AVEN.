@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../../workspace-shell';
 import { TaskLabels } from '../../task-labels';
+import { AttachmentsPanel } from '../../files/attachments-panel';
 import { parseTaskCsv, type TaskImportRow } from '../task-csv';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; budgetTotalCents: number | null; budgetSpentCents: number };
@@ -44,7 +45,7 @@ export default function ProjectWorkspacePage() {
   const [importFileName, setImportFileName] = useState('');
   const [importMode, setImportMode] = useState<'CREATE' | 'UPSERT'>('CREATE');
   const [showProjectEditor, setShowProjectEditor] = useState(false);
-  const [tab, setTab] = useState<'OVERVIEW' | 'TIMELINE' | 'DOCUMENTS' | 'ACTIVITY' | 'BUDGET'>('OVERVIEW');
+  const [tab, setTab] = useState<'OVERVIEW' | 'TIMELINE' | 'DOCUMENTS' | 'FILES' | 'ACTIVITY' | 'BUDGET'>('OVERVIEW');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -300,7 +301,7 @@ export default function ProjectWorkspacePage() {
   const tabs = [
     { key: 'OVERVIEW', label: 'Overview' }, { key: 'TIMELINE', label: 'Timeline' },
     { key: 'DOCUMENTS', label: `Documents${documents.length ? ` · ${documents.length}` : ''}` },
-    { key: 'ACTIVITY', label: 'Activity' }, { key: 'BUDGET', label: 'Budget' },
+    { key: 'FILES', label: 'Files' }, { key: 'ACTIVITY', label: 'Activity' }, { key: 'BUDGET', label: 'Budget' },
   ] as const;
 
   return (
@@ -356,6 +357,8 @@ export default function ProjectWorkspacePage() {
         {tab === 'DOCUMENTS' && <section className="project-hub__panel project-hub__full-panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">PROJECT LIBRARY</p><h2>Linked documents</h2></div><Link href="/workspace/documents">Manage documents →</Link></div>
           {documents.length === 0 ? <div className="task-list-empty"><h3>No project documents yet.</h3><p>When you create a document, link it to this project to keep it close to the work.</p><Link href="/workspace/documents">Create a document</Link></div> : <div className="project-hub__document-list">{documents.map((document) => <article key={document.id}><span>▤</span><div><strong>{document.title}</strong><small>Updated {formatDate(document.updatedAt)}</small></div><Link href={`/workspace/documents/${document.id}`}>Open editor →</Link></article>)}</div>}
         </section>}
+
+        {tab === 'FILES' && <section className="project-hub__panel project-hub__full-panel"><AttachmentsPanel target={{ projectId: project.id }} /></section>}
 
         {tab === 'ACTIVITY' && <section className="project-hub__panel project-hub__full-panel"><div className="project-hub__panel-heading"><div><p className="workspace-eyebrow">PROJECT HISTORY</p><h2>Recent activity</h2></div><Link href="/workspace/activity">Workspace activity →</Link></div>
           {activity.length === 0 ? <p className="productivity-message">Project changes will appear here as the team works.</p> : <ol className="project-hub__activity">{activity.map((item) => <li key={item.id}><span>{item.entityType === 'TASK' ? '✓' : item.entityType === 'DOCUMENT' ? '▤' : item.entityType === 'CALENDAR' ? '▦' : '◇'}</span><div><p><strong>{item.actor.displayName}</strong> {item.message}</p><small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.createdAt))}</small></div></li>)}</ol>}

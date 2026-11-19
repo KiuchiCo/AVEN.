@@ -9,3 +9,5 @@ apps/api/src/generated/
 !.env.example
 .DS_Store
 graphify-out/
+.storage/
+apps/api/.storage/

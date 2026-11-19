@@ -7,6 +7,7 @@ import { useWorkspaceSession } from '../workspace-shell';
 
 type LinkedRecord = { id: string; name?: string; title?: string };
 type KnowledgeItem = { id: string; title: string; content: string; sourceUrl: string | null; tags: string[]; isPinned: boolean; archivedAt: string | null; updatedAt: string; createdBy: { displayName: string }; project: LinkedRecord | null; document: LinkedRecord | null; task: LinkedRecord | null; _count: { versions: number } };
+type KnowledgeLinks = { outgoing: { id: string; title: string }[]; unresolved: string[]; backlinks: { id: string; title: string }[] };
 type KnowledgeVersion = { id: string; title: string; content: string; sourceUrl: string | null; tags: string[]; createdAt: string; createdBy: { displayName: string }; project: LinkedRecord | null; document: LinkedRecord | null; task: LinkedRecord | null };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -19,6 +20,9 @@ export function KnowledgeHub() {
   const [tasks, setTasks] = useState<LinkedRecord[]>([]);
   const [versions, setVersions] = useState<Record<string, KnowledgeVersion[]>>({});
   const [historyId, setHistoryId] = useState<string | null>(null);
+  const [tagDirectory, setTagDirectory] = useState<{ tag: string; count: number }[]>([]);
+  const [linksId, setLinksId] = useState<string | null>(null);
+  const [linkData, setLinkData] = useState<Record<string, KnowledgeLinks>>({});
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
@@ -116,6 +120,19 @@ export function KnowledgeHub() {
     finally { setBusy(false); }
   }
 
+  useEffect(() => {
+    let live = true;
+    void request(`/workspaces/${workspace.id}/knowledge/tags`).then((rows) => { if (live) setTagDirectory(rows as { tag: string; count: number }[]); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [request, workspace.id, items]);
+
+  async function toggleLinks(item: KnowledgeItem) {
+    if (linksId === item.id) { setLinksId(null); return; }
+    setLinksId(item.id);
+    try { const data = await request(`/workspaces/${workspace.id}/knowledge/${item.id}/links`) as KnowledgeLinks; setLinkData((value) => ({ ...value, [item.id]: data })); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load links.'); }
+  }
+
   async function toggleHistory(item: KnowledgeItem) {
     if (historyId === item.id) { setHistoryId(null); return; }
     setHistoryId(item.id);
@@ -144,11 +161,12 @@ export function KnowledgeHub() {
     {!showArchived && <form className="knowledge-compose" key={editing?.id ?? 'new-knowledge'} onSubmit={save}>
       <div className="knowledge-compose__heading"><div><p className="workspace-eyebrow">{editing ? 'UPDATE REFERENCE' : 'BUILD YOUR SHARED LIBRARY'}</p><h2>{editing ? 'Edit Knowledge item' : 'Add to Knowledge'}</h2></div>{editing && <button type="button" onClick={() => setEditing(null)}>Cancel</button>}</div>
       <label>Title<input name="title" defaultValue={editing?.title ?? ''} required maxLength={200} placeholder="A useful reference or team decision" /></label>
-      <label>Notes<textarea name="content" defaultValue={editing?.content ?? ''} required maxLength={20000} rows={5} placeholder="Capture the information your team will want to find later…" /></label>
+      <label>Notes<textarea name="content" defaultValue={editing?.content ?? ''} required maxLength={20000} rows={5} placeholder="Capture the information your team will want to find later. Write [[Another title]] to link to another item." /></label>
       <div className="knowledge-compose__row"><label>Source URL <span>(optional)</span><input name="sourceUrl" type="url" defaultValue={editing?.sourceUrl ?? ''} placeholder="https://…" /></label><label>Tags <span>(comma-separated)</span><input name="tags" defaultValue={editing?.tags.join(', ') ?? ''} placeholder="product, research, decisions" /></label></div>
       <div className="knowledge-compose__row knowledge-compose__links"><label>Project <span>(optional)</span><select name="projectId" defaultValue={editing?.project?.id ?? ''}><option value="">No linked project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label>Document <span>(optional)</span><select name="documentId" defaultValue={editing?.document?.id ?? ''}><option value="">No linked document</option>{documents.map((document) => <option key={document.id} value={document.id}>{document.title}</option>)}</select></label><label>Task <span>(optional)</span><select name="taskId" defaultValue={editing?.task?.id ?? ''}><option value="">No linked task</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label></div>
       <button type="submit" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Save reference'}</button>
     </form>}
+    {tagDirectory.length > 0 && <nav className="knowledge-tag-directory" aria-label="Tags"><span>Tags</span>{tagFilter && <button type="button" onClick={() => setTagFilter('')}>Clear filter ✕</button>}{tagDirectory.slice(0, 30).map(({ tag, count }) => <button type="button" key={tag} aria-pressed={tagFilter === tag} className={tagFilter === tag ? 'is-active' : ''} onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}>#{tag} <small>{count}</small></button>)}</nav>}
     <section className="knowledge-list" aria-label={showArchived ? 'Archived Knowledge items' : 'Knowledge items'}>
       {loading ? <p className="productivity-message">Loading Knowledge…</p> : items.length === 0 ? <div className="knowledge-empty"><span aria-hidden="true">◇</span><h2>{search || projectFilter || tagFilter ? 'No matching references' : showArchived ? 'Your archive is empty' : 'Start a shared reference library'}</h2><p>{search || projectFilter || tagFilter ? 'Adjust your search or filters and try again.' : showArchived ? 'Archived Knowledge items will be available here.' : 'Save decisions, research notes, and links here so the whole workspace can find them.'}</p></div> : <div className="knowledge-grid">{items.map((item) => <article className="knowledge-card" key={item.id}>
         <div className="knowledge-card__meta"><span>{item.isPinned ? '★ PINNED' : 'REFERENCE'}</span><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(item.updatedAt))}</time></div>
@@ -156,8 +174,12 @@ export function KnowledgeHub() {
         {item.sourceUrl && <a className="knowledge-card__source" href={item.sourceUrl} target="_blank" rel="noreferrer">Open source ↗</a>}
         {(item.project || item.document || item.task) && <div className="knowledge-links" aria-label="Linked workspace records">{item.project && <Link href={`/workspace/projects/${item.project.id}`}>Project · {item.project.name}</Link>}{item.document && <Link href={`/workspace/documents/${item.document.id}`}>Document · {item.document.title}</Link>}{item.task && <Link href={`/workspace/tasks/${item.task.id}`}>Task · {item.task.title}</Link>}</div>}
         {item.tags.length > 0 && <div className="knowledge-tags">{item.tags.map((tag) => <button type="button" key={tag} onClick={() => setSearch(tag)}>#{tag}</button>)}</div>}
-        <footer><small>Added by {item.createdBy.displayName} · {item._count.versions} saved {item._count.versions === 1 ? 'version' : 'versions'}</small><div><button type="button" disabled={busy} onClick={() => void toggleHistory(item)}>History</button>{!showArchived && <button type="button" disabled={busy} onClick={() => void updateItem(item, { isPinned: !item.isPinned })}>{item.isPinned ? 'Unpin' : 'Pin'}</button>}<button type="button" disabled={busy} onClick={() => showArchived ? void archiveItem(item) : setEditing(item)}>{showArchived ? 'Restore' : 'Edit'}</button>{!showArchived && <button type="button" disabled={busy} onClick={() => void archiveItem(item)}>Archive</button>}</div></footer>
+        <footer><small>Added by {item.createdBy.displayName} · {item._count.versions} saved {item._count.versions === 1 ? 'version' : 'versions'}</small><div><button type="button" disabled={busy} onClick={() => void toggleHistory(item)}>History</button><button type="button" disabled={busy} onClick={() => void toggleLinks(item)}>Links</button>{!showArchived && <button type="button" disabled={busy} onClick={() => void updateItem(item, { isPinned: !item.isPinned })}>{item.isPinned ? 'Unpin' : 'Pin'}</button>}<button type="button" disabled={busy} onClick={() => showArchived ? void archiveItem(item) : setEditing(item)}>{showArchived ? 'Restore' : 'Edit'}</button>{!showArchived && <button type="button" disabled={busy} onClick={() => void archiveItem(item)}>Archive</button>}</div></footer>
         {historyId === item.id && <section className="knowledge-history" aria-label={`Version history for ${item.title}`}><h3>Earlier versions</h3>{!versions[item.id] ? <p>Loading history…</p> : versions[item.id].length === 0 ? <p>No earlier versions have been saved yet. Editing this item will create the first snapshot.</p> : versions[item.id].map((version) => <article key={version.id}><div><strong>{version.title}</strong><small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(version.createdAt))} · {version.createdBy.displayName}</small><p>{version.content}</p></div><button type="button" disabled={busy} onClick={() => void restoreVersion(item, version)}>Restore</button></article>)}</section>}
+        {linksId === item.id && <section className="knowledge-link-panel" aria-label={`Links for ${item.title}`}>{!linkData[item.id] ? <p>Loading links…</p> : <>
+          <div><h3>Links to</h3>{linkData[item.id].outgoing.length === 0 && linkData[item.id].unresolved.length === 0 ? <p>This item doesn’t link anywhere. Write [[Another title]] in the notes to link it.</p> : <ul>{linkData[item.id].outgoing.map((link) => <li key={link.id}><button type="button" onClick={() => { setSearch(link.title); setLinksId(null); }}>{link.title}</button></li>)}{linkData[item.id].unresolved.map((title) => <li key={title} className="is-unresolved">{title} <small>no item with this title</small></li>)}</ul>}</div>
+          <div><h3>Linked from</h3>{linkData[item.id].backlinks.length === 0 ? <p>Nothing links here yet.</p> : <ul>{linkData[item.id].backlinks.map((link) => <li key={link.id}><button type="button" onClick={() => { setSearch(link.title); setLinksId(null); }}>{link.title}</button></li>)}</ul>}</div>
+        </>}</section>}
       </article>)}</div>}
       {!loading && hasMore && <button type="button" className="knowledge-load-more" disabled={loadingMore} onClick={() => void reload(Math.ceil(items.length / 50) + 1, true)}>{loadingMore ? 'Loading…' : 'Load more references'}</button>}
     </section>

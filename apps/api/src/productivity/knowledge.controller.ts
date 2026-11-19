@@ -10,8 +10,18 @@ export class KnowledgeController {
   constructor(private readonly knowledge: KnowledgeService) {}
 
   @Get()
-  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Query('q') query?: string, @Query('archived') archived?: string, @Query('projectId') projectId?: string, @Query('tag') tag?: string, @Query('page') page?: string) {
-    return this.knowledge.list(identity, workspaceId, { q: query, archived, projectId, tag, page });
+  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Query('q') query?: string, @Query('archived') archived?: string, @Query('projectId') projectId?: string, @Query('documentId') documentId?: string, @Query('taskId') taskId?: string, @Query('tag') tag?: string, @Query('page') page?: string) {
+    return this.knowledge.list(identity, workspaceId, { q: query, archived, projectId, documentId, taskId, tag, page });
+  }
+
+  @Get('tags')
+  tags(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
+    return this.knowledge.tags(identity, workspaceId);
+  }
+
+  @Get(':itemId/links')
+  links(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('itemId', new ParseUUIDPipe()) itemId: string) {
+    return this.knowledge.links(identity, workspaceId, itemId);
   }
 
   @Post()

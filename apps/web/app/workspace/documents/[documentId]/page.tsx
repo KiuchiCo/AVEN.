@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../../workspace-shell';
+import { AttachmentsPanel } from '../../files/attachments-panel';
 
 type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER';
 type Block = { id: string; type: BlockType; text: string; checked?: boolean };
@@ -49,7 +50,7 @@ export default function DocumentEditorPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [conflict, setConflict] = useState<Document | null>(null);
-  const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY'>('OUTLINE');
+  const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES'>('OUTLINE');
   const revision = useRef(0);
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
@@ -207,7 +208,8 @@ export default function DocumentEditorPage() {
             <div className="document-block__actions">{block.type === 'TODO' && block.text.trim() && <button type="button" disabled={creatingTask === block.id} onClick={() => void createTaskFromBlock(block)}>{creatingTask === block.id ? 'Creating…' : 'Create task'}</button>}<button className="document-block__insert" type="button" onClick={() => insertBlock(block.id)}>＋ Add below</button></div>
           </section>)}</div>
         </main>
-        <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label="Document tools">{(['OUTLINE', 'COMMENTS', 'HISTORY'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? 'Outline' : tab === 'COMMENTS' ? `Comments ${comments.filter((item) => !item.resolvedAt).length || ''}` : 'History'}</button>)}</nav>
+        <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label="Document tools">{(['OUTLINE', 'COMMENTS', 'HISTORY', 'FILES'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? 'Outline' : tab === 'COMMENTS' ? `Comments ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? 'Files' : 'History'}</button>)}</nav>
+          {activePanel === 'FILES' && <section className="document-studio__panel"><AttachmentsPanel target={{ documentId: document.id }} /></section>}
           {activePanel === 'OUTLINE' && <section className="document-studio__panel"><h2>On this page</h2>{outline.length === 0 ? <p>Add a heading block to create an outline.</p> : <nav>{outline.map((block) => <a className={block.type === 'HEADING_2' ? 'is-nested' : ''} key={block.id} href={`#block-${block.id}`}>{block.text}</a>)}</nav>}</section>}
           {activePanel === 'COMMENTS' && <section className="document-studio__panel"><h2>Comments</h2><form className="document-studio__comment-form" onSubmit={addComment}><textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={2000} required placeholder="Add a comment to this document…" /><button type="submit">Post comment</button></form><div className="document-studio__comments">{comments.length === 0 ? <p>Document feedback and decisions will appear here.</p> : comments.map((comment) => <article className={comment.resolvedAt ? 'is-resolved' : ''} key={comment.id}><div><strong>{comment.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</time></div><p>{comment.body}</p><button type="button" onClick={() => void toggleComment(comment)}>{comment.resolvedAt ? 'Reopen' : 'Resolve'}</button></article>)}</div></section>}
           {activePanel === 'HISTORY' && <section className="document-studio__panel"><h2>Version history</h2><form className="document-studio__version-form" onSubmit={saveVersion}><input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} maxLength={120} placeholder="Optional version note" /><button type="submit">Save version</button></form><div className="document-studio__versions">{versions.length === 0 ? <p>No saved versions yet. Create a version before a major edit.</p> : versions.map((version) => <article key={version.id}><strong>{version.label || version.title}</strong><small>{version.createdBy.displayName} · {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(version.createdAt))}</small><button type="button" onClick={() => void restoreVersion(version)}>Restore</button></article>)}</div></section>}
