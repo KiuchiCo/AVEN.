@@ -4055,3 +4055,14 @@ body {
 @media (max-width: 1000px) { .chat--thread { grid-template-columns: 1fr; } .chat-side { border-left: 0; padding-left: 0; } }
 .chat-side .chat-compose { flex-direction: column; align-items: stretch; }
 .chat-side .chat-compose button { align-self: end; }
+
+.board-card { display: grid; align-content: center; gap: 2px; width: 100%; height: 100%; padding: 8px 12px; box-sizing: border-box; overflow: hidden; color: #2b2a27; font: 14px/1.3 var(--aven-interface-font); }
+.board-card small { color: #77766e; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.board-card strong { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.board-open { color: var(--aven-umber); font-size: 12px; text-decoration: none; }
+.board-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--aven-border); border-radius: 12px; background: var(--aven-paper); }
+.board-picker input { padding: 6px 10px; border: 1px solid var(--aven-border); border-radius: 8px; background: var(--aven-paper); color: var(--aven-charcoal); font: 13px var(--aven-interface-font); }
+.board-picker ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.board-picker button { padding: 5px 11px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); color: var(--aven-charcoal); font: 500 12px var(--aven-interface-font); cursor: pointer; }
+.board-picker button[aria-pressed='true'] { border-color: var(--aven-bronze); background: var(--aven-sand); }
+.whiteboard-new select { padding: 10px 12px; border: 1px solid var(--aven-border); border-radius: 10px; background: var(--aven-paper); color: var(--aven-charcoal); font: inherit; }

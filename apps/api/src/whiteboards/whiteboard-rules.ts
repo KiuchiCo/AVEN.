@@ -1,14 +1,20 @@
 import { BadRequestException } from '@nestjs/common';
 
-export const elementTypes = ['sticky', 'rect', 'ellipse', 'text', 'arrow', 'pen'] as const;
+export const elementTypes = ['sticky', 'rect', 'ellipse', 'text', 'arrow', 'pen', 'card'] as const;
+export const entityTypes = ['TASK', 'DOCUMENT', 'PROJECT'] as const;
 export const colors = ['ivory', 'sand', 'bronze', 'charcoal', 'green', 'blue', 'red', 'amber'] as const;
 export const limits = { elements: 1000, text: 2000, points: 2000, coordinate: 100_000, size: 100_000, bytes: 1_000_000, name: 120 } as const;
 
 export type Element = {
   id: string; type: (typeof elementTypes)[number]; x: number; y: number; w: number; h: number;
   color: (typeof colors)[number]; text?: string; points?: [number, number][];
+  /** Arrows can be attached to shapes at either end, and follow them when they move. */
+  from?: string; to?: string;
+  /** A card points at a task, document or project in this workspace. `text` holds its title. */
+  entity?: { type: (typeof entityTypes)[number]; id: string };
 };
 
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const bad = (message: string): never => { throw new BadRequestException(message); };
 const num = (value: unknown, label: string, max: number): number => {
   if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > max) return bad(`${label} must be a number within the board.`);
@@ -32,6 +38,18 @@ export function parseElements(value: unknown): Element[] {
       if (typeof item.text !== 'string' || item.text.length > limits.text) return bad(`Text can be up to ${limits.text} characters.`);
       element.text = item.text;
     }
+    if (element.type === 'arrow') {
+      for (const end of ['from', 'to'] as const) {
+        if (item[end] === undefined || item[end] === null) continue;
+        if (typeof item[end] !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(item[end] as string) || item[end] === element.id) return bad(`Element ${index + 1} has an invalid connection.`);
+        element[end] = item[end] as string;
+      }
+    }
+    if (element.type === 'card') {
+      const entity = item.entity as { type?: unknown; id?: unknown } | undefined;
+      if (!entity || !entityTypes.includes(entity.type as never) || typeof entity.id !== 'string' || !uuid.test(entity.id)) return bad(`Element ${index + 1} must point at a task, document or project.`);
+      element.entity = { type: entity.type as (typeof entityTypes)[number], id: entity.id.toLowerCase() };
+    }
     if (element.type === 'pen') {
       const points = item.points;
       if (!Array.isArray(points) || points.length < 1 || points.length > limits.points) return bad(`A pen stroke needs 1 to ${limits.points} points.`);
@@ -39,6 +57,8 @@ export function parseElements(value: unknown): Element[] {
     }
     return element;
   });
+  const shapes = new Set(out.filter((element) => !['arrow', 'pen'].includes(element.type)).map((element) => element.id));
+  for (const element of out) for (const end of [element.from, element.to]) if (end && !shapes.has(end)) return bad('An arrow is attached to a shape that is not on the board.');
   if (Buffer.byteLength(JSON.stringify(out)) > limits.bytes) bad('This whiteboard is too large to save. Remove some drawings.');
   return out;
 }

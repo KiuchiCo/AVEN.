@@ -48,4 +48,18 @@ describe('whiteboards', { skip }, () => {
     assert.equal((await t.call('wes', 'GET', `${ws()}/${made.id}`)).status, 404);
     assert.ok(await t.prisma.workspaceActivity.findFirst({ where: { workspaceId: W.id, entityId: made.id, message: { contains: 'deleted whiteboard' } } }));
   });
+
+  test('cards can link only to things in this workspace; a board can start from template elements', async () => {
+    const task = (await t.call('wes', 'POST', `/workspaces/${W.id}/tasks`, { title: 'Linked task' })).body;
+    const foreign = (await t.call('out', 'POST', `/workspaces/${O.id}/tasks`, { title: 'Not yours' })).body;
+    const card = (entity) => ({ id: 'c1', type: 'card', x: 0, y: 0, w: 200, h: 80, color: 'ivory', text: 'Linked', entity });
+    const made = await t.call('wes', 'POST', ws(), { name: 'From template', elements: [note('n1'), { id: 'ar1', type: 'arrow', x: 0, y: 0, w: 5, h: 5, color: 'bronze', from: 'n1' }, card({ type: 'TASK', id: task.id })] });
+    assert.equal(made.status, 201, JSON.stringify(made.body)); assert.equal(made.body.content.elements.length, 3);
+    const bad = await t.call('wes', 'POST', ws(), { name: 'Probe', elements: [card({ type: 'TASK', id: foreign.id })] });
+    assert.equal(bad.status, 400, 'a task from another workspace cannot be linked'); assert.match(bad.body.message, /not found in this workspace/);
+    const update = await t.call('wes', 'PATCH', `${ws()}/${made.body.id}`, { elements: [card({ type: 'PROJECT', id: foreign.id })], baseUpdatedAt: made.body.updatedAt });
+    assert.equal(update.status, 400);
+    assert.equal((await t.call('wes', 'POST', ws(), { name: 'Bad arrow', elements: [{ id: 'ar1', type: 'arrow', x: 0, y: 0, w: 5, h: 5, color: 'bronze', to: 'ghost' }] })).status, 400);
+  });
 });
+

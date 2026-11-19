@@ -4,7 +4,7 @@ import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { parseBaseUpdatedAt } from '../productivity/document-concurrency.js';
-import { parseElements, parseName } from './whiteboard-rules.js';
+import { parseElements, parseName, type Element } from './whiteboard-rules.js';
 
 const summary = { id: true, name: true, updatedAt: true, createdAt: true, createdBy: { select: { displayName: true } } } as const;
 const detail = { ...summary, content: true } as const;
@@ -26,11 +26,26 @@ export class WhiteboardsService {
     return board;
   }
 
+  /** Cards may only point at things in this workspace, so a board can't be used to probe other workspaces. */
+  private async assertEntities(workspaceId: string, elements: Element[]) {
+    const wanted = (type: 'TASK' | 'DOCUMENT' | 'PROJECT') => [...new Set(elements.filter((element) => element.entity?.type === type).map((element) => element.entity!.id))];
+    const [tasks, documents, projects] = [wanted('TASK'), wanted('DOCUMENT'), wanted('PROJECT')];
+    const [taskCount, documentCount, projectCount] = await Promise.all([
+      tasks.length ? this.prisma.task.count({ where: { workspaceId, id: { in: tasks } } }) : 0,
+      documents.length ? this.prisma.document.count({ where: { workspaceId, id: { in: documents } } }) : 0,
+      projects.length ? this.prisma.project.count({ where: { workspaceId, id: { in: projects } } }) : 0,
+    ]);
+    if (taskCount !== tasks.length || documentCount !== documents.length || projectCount !== projects.length) throw new BadRequestException('A linked task, document or project was not found in this workspace.');
+  }
+
   async create(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
-    const name = parseName(body(input).name);
+    const fields = body(input);
+    const name = parseName(fields.name);
+    const elements = fields.elements === undefined ? [] : parseElements(fields.elements);
+    await this.assertEntities(workspaceId, elements);
     return this.prisma.$transaction(async (transaction) => {
-      const board = await transaction.whiteboard.create({ data: { workspaceId, createdById: userId, name, content: { elements: [] } }, select: detail });
+      const board = await transaction.whiteboard.create({ data: { workspaceId, createdById: userId, name, content: { elements } as unknown as Prisma.InputJsonValue }, select: detail });
       await transaction.workspaceActivity.create({ data: { workspaceId, actorId: userId, entityType: 'WHITEBOARD', entityId: board.id, message: `created whiteboard “${name}”` } });
       return board;
     });
@@ -42,7 +57,7 @@ export class WhiteboardsService {
     const fields = body(input);
     const data: Prisma.WhiteboardUpdateManyMutationInput = {};
     if (fields.name !== undefined) data.name = parseName(fields.name);
-    if (fields.elements !== undefined) data.content = { elements: parseElements(fields.elements) } as unknown as Prisma.InputJsonValue;
+    if (fields.elements !== undefined) { const elements = parseElements(fields.elements); await this.assertEntities(workspaceId, elements); data.content = { elements } as unknown as Prisma.InputJsonValue; }
     if (!Object.keys(data).length) throw new BadRequestException('Provide a name or elements to save.');
     const where: Prisma.WhiteboardWhereInput = { id, workspaceId, ...(fields.elements !== undefined ? { updatedAt: parseBaseUpdatedAt(fields.baseUpdatedAt) } : {}) };
     const result = await this.prisma.whiteboard.updateMany({ where, data });
