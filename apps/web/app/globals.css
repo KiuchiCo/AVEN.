@@ -3045,13 +3045,14 @@ body {
 .inbox-task { padding: 15px 2px; }
 .inbox-task__overdue { color: var(--h-a44735) !important; font-weight: 650; }
 .calendar-form-hint { margin: 0; color: var(--h-8a8176); font-size: 10px; line-height: 1.5; }
-.aven-calendar { display: grid; gap: 13px; min-width: 0; }
-.aven-calendar__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.aven-calendar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 13px; min-width: 0; }
+.aven-calendar > * { min-width: 0; }
+.aven-calendar__toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .aven-calendar__toolbar .workspace-eyebrow { margin-bottom: 5px; }
 .aven-calendar__toolbar h2 { margin: 0; color: var(--h-28251f); font-family: var(--aven-display-font); font-size: 23px; font-weight: 500; }
-.aven-calendar__controls { display: flex; align-items: center; gap: 5px; }
+.aven-calendar__controls { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .aven-calendar__controls button { min-width: 34px; height: 34px; padding: 0 9px; border: 1px solid var(--h-e3dbd0); border-radius: 8px; background: var(--h-fffdfa); color: var(--h-6c5842); cursor: pointer; font: inherit; font-size: 13px; }
-.aven-calendar__controls button:not(:first-child) { font-size: 20px; }
+.aven-calendar__controls button:nth-child(2), .aven-calendar__controls button:nth-child(3) { font-size: 20px; }
 .aven-calendar__view-switch { display: flex; width: fit-content; gap: 3px; padding: 3px; border: 1px solid var(--h-e7e1d9); border-radius: 9px; background: var(--h-f5f1eb); }
 .aven-calendar__view-switch button { padding: 7px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--h-6c655c); cursor: pointer; font: inherit; font-size: 11px; }
 .aven-calendar__view-switch button.is-active { background: var(--h-ffffff); color: var(--h-42382d); box-shadow: 0 1px 4px rgb(48 38 29 / 10%); }
@@ -4075,3 +4076,9 @@ body {
 .settings-security { max-width: 1000px; }
 .workspace-settings-toggles .workspace-settings-save { justify-self: start; }
 .workspace-settings-toggles select { max-width: 420px; padding: 9px 11px; border: 1px solid var(--aven-border); border-radius: 10px; background: var(--aven-paper); color: var(--aven-charcoal); font: inherit; }
+
+@media (max-width: 720px) {
+  .aven-calendar__weekdays, .aven-calendar__grid { min-width: 0; }
+  .aven-calendar__weekdays { font-size: 9px; }
+  .aven-calendar__day { min-height: 58px; padding: 3px; gap: 3px; overflow: hidden; }
+}
