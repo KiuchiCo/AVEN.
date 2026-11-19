@@ -4066,3 +4066,10 @@ body {
 .board-picker button { padding: 5px 11px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper); color: var(--aven-charcoal); font: 500 12px var(--aven-interface-font); cursor: pointer; }
 .board-picker button[aria-pressed='true'] { border-color: var(--aven-bronze); background: var(--aven-sand); }
 .whiteboard-new select { padding: 10px 12px; border: 1px solid var(--aven-border); border-radius: 10px; background: var(--aven-paper); color: var(--aven-charcoal); font: inherit; }
+
+.settings-tabs { display: flex; gap: 6px; max-width: 1000px; margin: 0 auto; padding: 0 0 12px; }
+.settings-tabs a { padding: 7px 14px; border: 1px solid var(--aven-border); border-radius: 999px; color: var(--aven-charcoal); font: 500 13px var(--aven-interface-font); text-decoration: none; }
+.settings-tabs a[aria-current='page'] { border-color: var(--aven-bronze); background: var(--aven-sand); }
+.settings-clerk-root { width: 100%; color-scheme: light; color: #2b2a27; }
+.settings-clerk-card { width: 100%; max-width: 100%; box-shadow: none; border: 1px solid var(--aven-border); }
+.settings-security { max-width: 1000px; }
