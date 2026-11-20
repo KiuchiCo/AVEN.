@@ -94,6 +94,8 @@ model User {
   emailNotifications          Boolean             @default(false)
   /// IANA name such as Australia/Sydney. Null means "use the device's own time zone".
   timeZone                    String?             @db.VarChar(64)
+  /// Interface language (see auth/profile.ts). Null means English.
+  language                    String?             @db.VarChar(8)
   emailEnabledAt              DateTime?           @db.Timestamptz(3)
   identityIssuer              String?             @db.VarChar(512)
   identitySubject             String?             @db.VarChar(255)

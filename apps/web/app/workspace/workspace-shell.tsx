@@ -6,6 +6,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { WorkspaceSession } from './layout';
 import { timeZoneCookie, timeZoneCookieValue } from '../time-zone-script';
+import type { Key } from '../i18n/en';
+import { LanguageProvider, translate, useT } from '../i18n';
 import { FavouritesProvider, useFavourites } from './favourites';
 import { navigationGroups, workspaceNavigation } from './workspace-navigation';
 import { WorkspaceSwitcher } from './workspace-switcher';
@@ -27,8 +29,9 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
   const { getToken } = useAuth();
   const [unread, setUnread] = useState(0);
   const [planName, setPlanName] = useState('');
+  const t = (key: Key, values?: Record<string, string | number>) => translate(session.user.language, key, values);
   const activeItem = workspaceNavigation.find((item) => item.href === pathname);
-  const pageTitle = pathname === '/workspace/search' ? 'Search' : activeItem?.label ?? 'Workspace';
+  const pageTitle = pathname === '/workspace/search' ? t('shell.pageSearch') : activeItem ? t(activeItem.key) : t('shell.pageWorkspace');
 
   // A time zone chosen on another device is applied here too: remember it in the cookie the page reads on load, then reload once.
   useEffect(() => {
@@ -68,32 +71,33 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
 
   return (
     <WorkspaceContext.Provider value={session}>
+      <LanguageProvider language={session.user.language}>
       <FavouritesProvider workspaceId={session.workspace.id}>
       <div className="workspace-app">
         {mobileOpen && (
           <button
             className="workspace-sidebar-scrim"
             onClick={() => setMobileOpen(false)}
-            aria-label="Close navigation"
+            aria-label={t('shell.closeNav')}
           />
         )}
         <aside id="workspace-navigation" className={`workspace-sidebar${mobileOpen ? ' workspace-sidebar--open' : ''}`}>
           <div className="workspace-sidebar__brand">
             <Link className="auth-brand__wordmark" href="/workspace" aria-label="AVEN home">AVEN<span>.</span></Link>
-            <p>Your entire world, organised.</p>
+            <p>{t('shell.tagline')}</p>
           </div>
 
           <WorkspaceSwitcher session={session} />
 
           <nav className="workspace-nav" aria-label="Workspace navigation">
             {navigationGroups.map((group, index) => <div className="workspace-nav__group" key={group.label ?? 'main'}>
-              {group.label && <p className="workspace-nav__label">{group.label}</p>}
+              {group.key && <p className="workspace-nav__label">{t(group.key)}</p>}
               {group.hrefs.map((href) => {
                 const item = workspaceNavigation.find((entry) => entry.href === href); if (!item) return null;
                 const active = href === '/workspace' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
                 return <Link key={href} className={`workspace-nav__item${active ? ' workspace-nav__item--active' : ''}`} href={href} aria-current={active ? 'page' : undefined} onClick={() => setMobileOpen(false)}>
-                  <NavIcon name={item.icon} /><span>{item.label}</span>
-                  {href === '/workspace/inbox' && unread > 0 && <b className="workspace-nav__badge" aria-label={`${unread} unread`}>{unread > 99 ? '99+' : unread}</b>}
+                  <NavIcon name={item.icon} /><span>{t(item.key)}</span>
+                  {href === '/workspace/inbox' && unread > 0 && <b className="workspace-nav__badge" aria-label={t('shell.unread', { n: unread })}>{unread > 99 ? '99+' : unread}</b>}
                 </Link>;
               })}
               {index === 0 && <span className="workspace-nav__rule" aria-hidden="true" />}
@@ -106,9 +110,9 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
               <UserButton />
               <div className="workspace-profile__text">
                 <strong>{session.user.displayName}</strong>
-                <span>{planName ? `${planName} Plan` : session.workspace.role?.toLowerCase() ?? 'member'}</span>
+                <span>{planName ? t('shell.plan', { name: planName }) : session.workspace.role?.toLowerCase() ?? 'member'}</span>
               </div>
-              <Link className="workspace-profile__settings" href="/workspace/settings" aria-label="Settings"><NavIcon name="settings" /></Link>
+              <Link className="workspace-profile__settings" href="/workspace/settings" aria-label={t('shell.settings')}><NavIcon name="settings" /></Link>
             </div>
           </div>
         </aside>
@@ -116,19 +120,19 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
         <div className="workspace-main">
           <header className="workspace-topbar">
             <div className="workspace-topbar__leading">
-              <button className="workspace-menu-toggle" onClick={() => setMobileOpen((open) => !open)} aria-expanded={mobileOpen} aria-controls="workspace-navigation" aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}><NavIcon name="menu" /></button>
+              <button className="workspace-menu-toggle" onClick={() => setMobileOpen((open) => !open)} aria-expanded={mobileOpen} aria-controls="workspace-navigation" aria-label={mobileOpen ? t('shell.closeNav') : t('shell.openNav')}><NavIcon name="menu" /></button>
               <div className="workspace-history" role="group" aria-label="History">
-                <button type="button" onClick={() => router.back()} aria-label="Back"><NavIcon name="back" /></button>
-                <button type="button" onClick={() => window.history.forward()} aria-label="Forward"><NavIcon name="forward" /></button>
+                <button type="button" onClick={() => router.back()} aria-label={t('shell.back')}><NavIcon name="back" /></button>
+                <button type="button" onClick={() => window.history.forward()} aria-label={t('shell.forward')}><NavIcon name="forward" /></button>
               </div>
               {pathname !== '/workspace' && <p className="workspace-breadcrumb"><strong>{pageTitle}</strong></p>}
             </div>
             <div className="workspace-topbar__actions">
-              <Link className="workspace-topbar__search" href="/workspace/search" aria-label="Search your workspace">
+              <Link className="workspace-topbar__search" href="/workspace/search" aria-label={t('shell.searchLabel')}>
                 <NavIcon name="search" />
-                <span>Search or ask AVEN…</span><kbd>⌘K</kbd>
+                <span>{t('shell.searchPlaceholder')}</span><kbd>⌘K</kbd>
               </Link>
-              <Link className="workspace-bell" href="/workspace/inbox" aria-label={unread > 0 ? `Inbox, ${unread} unread` : 'Inbox'}><NavIcon name="bell" />{unread > 0 && <i aria-hidden="true" />}</Link>
+              <Link className="workspace-bell" href="/workspace/inbox" aria-label={unread > 0 ? `${t('nav.inbox')}, ${t('shell.unread', { n: unread })}` : t('nav.inbox')}><NavIcon name="bell" />{unread > 0 && <i aria-hidden="true" />}</Link>
               {session.workspace.role !== 'GUEST' && <>
               <button
                 className="workspace-create-button"
@@ -136,15 +140,15 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
                 aria-expanded={createOpen}
                 aria-controls="workspace-create-menu"
               >
-                <span aria-hidden="true">＋</span> Create <span className="workspace-create-button__chevron" aria-hidden="true">⌄</span>
+                <span aria-hidden="true">＋</span> {t('shell.create')} <span className="workspace-create-button__chevron" aria-hidden="true">⌄</span>
               </button>
               {createOpen && (
                 <div id="workspace-create-menu" className="workspace-create-menu">
-                  <p>Start with a section</p>
-                  <Link href="/workspace/projects" onClick={() => setCreateOpen(false)}><NavIcon name="projects" /> Projects</Link>
-                  <Link href="/workspace/tasks" onClick={() => setCreateOpen(false)}><NavIcon name="tasks" /> Tasks</Link>
-                  <Link href="/workspace/documents" onClick={() => setCreateOpen(false)}><NavIcon name="documents" /> Documents</Link>
-                  <Link href="/workspace/databases" onClick={() => setCreateOpen(false)}><NavIcon name="databases" /> Databases</Link>
+                  <p>{t('shell.createHint')}</p>
+                  <Link href="/workspace/projects" onClick={() => setCreateOpen(false)}><NavIcon name="projects" /> {t('nav.projects')}</Link>
+                  <Link href="/workspace/tasks" onClick={() => setCreateOpen(false)}><NavIcon name="tasks" /> {t('shell.createTasks')}</Link>
+                  <Link href="/workspace/documents" onClick={() => setCreateOpen(false)}><NavIcon name="documents" /> {t('nav.documents')}</Link>
+                  <Link href="/workspace/databases" onClick={() => setCreateOpen(false)}><NavIcon name="databases" /> {t('nav.databases')}</Link>
                   <small>More creation options will be added as each section is built.</small>
                 </div>
               )}
@@ -159,16 +163,18 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
         </div>
       </div>
       </FavouritesProvider>
+      </LanguageProvider>
     </WorkspaceContext.Provider>
   );
 }
 
 /** Pinned pages, newest last. Hidden until something is pinned, so there is never an empty, do-nothing section. */
 function FavouritesNav({ onNavigate }: { onNavigate: () => void }) {
+  const t = useT();
   const favourites = useFavourites();
   const pathname = usePathname();
   if (!favourites || favourites.items.length === 0) return null;
-  return <div className="workspace-nav__group workspace-nav__favourites"><p className="workspace-nav__label">Favourites</p>{favourites.items.map((item) => <Link key={item.id} className={`workspace-nav__item${pathname === item.href ? ' workspace-nav__item--active' : ''}`} href={item.href} onClick={onNavigate}><NavIcon name="folder" /><span>{item.title}</span></Link>)}</div>;
+  return <div className="workspace-nav__group workspace-nav__favourites"><p className="workspace-nav__label">{t('group.favourites')}</p>{favourites.items.map((item) => <Link key={item.id} className={`workspace-nav__item${pathname === item.href ? ' workspace-nav__item--active' : ''}`} href={item.href} onClick={onNavigate}><NavIcon name="folder" /><span>{item.title}</span></Link>)}</div>;
 }
 
 type IconName = 'folder' | 'settings' | 'bell' | 'back' | 'forward' | 'home' | 'inbox' | 'tasks' | 'labels' | 'projects' | 'documents' | 'files' | 'whiteboards' | 'messages' | 'analytics' | 'knowledge' | 'calendar' | 'databases' | 'intelligence' | 'automations' | 'activity' | 'people' | 'menu' | 'search';

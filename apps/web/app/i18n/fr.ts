@@ -1,0 +1,26 @@
+import type { Dictionary } from './en';
+
+export const fr: Dictionary = {
+  'nav.home': 'Accueil', 'nav.inbox': 'Boîte de réception', 'nav.calendar': 'Calendrier', 'nav.tasks': 'Mes tâches', 'nav.labels': 'Étiquettes de tâches', 'nav.projects': 'Projets', 'nav.documents': 'Documents',
+  'nav.messages': 'Messages', 'nav.whiteboards': 'Tableaux blancs', 'nav.files': 'Fichiers', 'nav.knowledge': 'Connaissances', 'nav.databases': 'Bases de données', 'nav.intelligence': 'Intelligence',
+  'nav.automations': 'Automatisations', 'nav.analytics': 'Analyses', 'nav.activity': 'Activité', 'nav.people': 'Personnes',
+  'group.workspace': 'Espace de travail', 'group.favourites': 'Favoris',
+  'shell.tagline': 'Tout votre monde, organisé.', 'shell.settings': 'Réglages', 'shell.closeNav': 'Fermer la navigation', 'shell.openNav': 'Ouvrir la navigation', 'shell.back': 'Retour', 'shell.forward': 'Avancer',
+  'shell.searchLabel': 'Rechercher dans votre espace de travail', 'shell.searchPlaceholder': 'Rechercher ou demander à AVEN…', 'shell.create': 'Créer', 'shell.createHint': 'Commencez par une section', 'shell.createTasks': 'Tâches',
+  'shell.plan': 'Forfait {name}', 'shell.pageSearch': 'Recherche', 'shell.pageWorkspace': 'Espace de travail', 'shell.unread': '{n} non lus',
+  'home.aria': 'Tableau de bord de l’espace de travail', 'home.welcomeBack': 'Bon retour, {name}.', 'home.greetMorning': 'Bonjour, {name}.', 'home.greetAfternoon': 'Bon après-midi, {name}.', 'home.greetEvening': 'Bonsoir, {name}.',
+  'home.sub': 'Votre journée en un coup d’œil.', 'home.customise': 'Personnaliser', 'home.done': 'Terminé', 'home.showOn': 'Afficher sur votre tableau de bord', 'home.loading': 'Chargement de votre espace de travail…',
+  'widget.stats': 'Résumé', 'widget.nextUp': 'Tâches prioritaires', 'widget.events': 'Aujourd’hui', 'widget.insights': 'Synthèse IA', 'widget.projects': 'Avancement des projets', 'widget.documents': 'Récents', 'widget.activity': 'Activité récente',
+  'home.tile.tasks': 'Tâches', 'home.tile.meetings': 'Réunions', 'home.tile.deadlines': 'Échéances', 'home.tile.projects': 'Projets',
+  'home.cap.open': 'Ouvertes', 'home.cap.openOverdue': 'Ouvertes · {n} en retard', 'home.cap.today': 'Aujourd’hui', 'home.cap.thisWeek': 'Cette semaine', 'home.cap.active': 'Actifs',
+  'home.priorityTasks': 'Tâches prioritaires', 'home.seeAll': 'Tout voir', 'home.noTasks': 'Rien ne vous est assigné. Les tâches qui vous seront assignées apparaîtront ici.',
+  'home.today': 'Aujourd’hui', 'home.openCalendar': 'Ouvrir le calendrier', 'home.noEvents': 'Rien de prévu. Votre journée est libre.', 'home.nothingToday': 'Rien aujourd’hui. À venir :',
+  'home.briefing': 'Votre synthèse IA', 'home.noInsights': 'Rien ne demande votre attention pour le moment.', 'home.viewBriefing': 'Voir la synthèse', 'home.showInsights': 'Voir les analyses',
+  'home.projectProgress': 'Avancement des projets', 'home.noProjects': 'Aucun projet actif pour l’instant.',
+  'home.recent': 'Récents', 'home.recentItems': 'Éléments récents', 'home.tab.all': 'Tout', 'home.tab.documents': 'Documents', 'home.tab.projects': 'Projets', 'home.viewAll': 'Tout voir', 'home.noRecent': 'Les documents que vous rédigez et les projets que vous lancez apparaîtront ici.',
+  'home.recentActivity': 'Activité récente', 'home.noActivity': 'Les modifications de cet espace de travail apparaîtront ici.',
+  'ai.aria': 'AVEN Intelligence', 'ai.title': 'AVEN Intelligence', 'ai.heading': 'Votre espace de travail intelligent.', 'ai.blurb': 'Planifiez, créez, analysez et avancez dans tout votre espace de travail.',
+  'ai.daily': 'Synthèse quotidienne', 'ai.dailySub': 'Un résumé de votre journée', 'ai.find': 'Trouvez tout', 'ai.findSub': 'Recherchez dans tout le contenu de votre espace', 'ai.action': 'Passez à l’action', 'ai.actionSub': 'Créez, mettez à jour et organisez avec l’IA',
+  'ai.deep': 'Travail de fond', 'ai.deepSub': 'Obtenez de l’aide pour vous concentrer sur une tâche ou un projet', 'ai.ask': 'Demandez n’importe quoi à AVEN', 'ai.askPlaceholder': 'Demandez n’importe quoi à AVEN…', 'ai.chipDay': 'Résume ma journée', 'ai.chipWeek': 'Planifie ma semaine', 'ai.chipProject': 'Point sur le projet',
+  'settings.language.title': 'Langue', 'settings.language.hint': 'Change les menus et l’écran d’accueil. Les autres écrans restent en anglais pour l’instant. Les dates suivent votre appareil.', 'settings.language.saved': 'Langue enregistrée.',
+};

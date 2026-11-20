@@ -4,6 +4,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { BillingCard } from './billing-card';
+import { LanguageCard } from './language-card';
 import { PermissionsCard } from './permissions-card';
 import { PushCard } from './push-card';
 import { ThemeCard } from './theme-card';
@@ -102,6 +103,7 @@ export default function WorkspaceSettingsPage() {
     <header><p className="workspace-page-eyebrow">SETTINGS</p><h1>Settings</h1><p>Manage your profile, notifications and this workspace.</p></header>
     <AccountSettings />
     <ThemeCard />
+    <LanguageCard />
     <TimeZoneCard />
     <PushCard />
     <BillingCard />

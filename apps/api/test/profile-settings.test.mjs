@@ -67,3 +67,12 @@ test('time zone must be a real IANA zone, or null to follow the device', () => {
   assert.equal(parseProfileUpdate({ timeZone: null }).timeZone, null);
   for (const bad of ['Mars/Olympus', '', 'x'.repeat(65), 5, undefined]) assert.throws(() => parseProfileUpdate({ timeZone: bad }), /time zone|Provide at least one/);
 });
+
+test('language must be a supported one or null', async () => {
+  const { parseProfileUpdate, languages } = await import('../dist/auth/profile.js');
+  assert.deepEqual([...languages], ['en', 'es', 'fr', 'de']);
+  assert.equal(parseProfileUpdate({ language: 'es' }).language, 'es');
+  assert.equal(parseProfileUpdate({ language: null }).language, null);
+  assert.throws(() => parseProfileUpdate({ language: 'xx' }), /supported language/);
+  assert.throws(() => parseProfileUpdate({ language: 5 }), /supported language/);
+});

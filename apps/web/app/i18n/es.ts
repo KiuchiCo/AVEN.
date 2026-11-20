@@ -1,0 +1,26 @@
+import type { Dictionary } from './en';
+
+export const es: Dictionary = {
+  'nav.home': 'Inicio', 'nav.inbox': 'Bandeja de entrada', 'nav.calendar': 'Calendario', 'nav.tasks': 'Mis tareas', 'nav.labels': 'Etiquetas de tareas', 'nav.projects': 'Proyectos', 'nav.documents': 'Documentos',
+  'nav.messages': 'Mensajes', 'nav.whiteboards': 'Pizarras', 'nav.files': 'Archivos', 'nav.knowledge': 'Conocimiento', 'nav.databases': 'Bases de datos', 'nav.intelligence': 'Inteligencia',
+  'nav.automations': 'Automatizaciones', 'nav.analytics': 'Analítica', 'nav.activity': 'Actividad', 'nav.people': 'Personas',
+  'group.workspace': 'Espacio de trabajo', 'group.favourites': 'Favoritos',
+  'shell.tagline': 'Todo tu mundo, organizado.', 'shell.settings': 'Ajustes', 'shell.closeNav': 'Cerrar navegación', 'shell.openNav': 'Abrir navegación', 'shell.back': 'Atrás', 'shell.forward': 'Adelante',
+  'shell.searchLabel': 'Buscar en tu espacio de trabajo', 'shell.searchPlaceholder': 'Busca o pregunta a AVEN…', 'shell.create': 'Crear', 'shell.createHint': 'Empieza con una sección', 'shell.createTasks': 'Tareas',
+  'shell.plan': 'Plan {name}', 'shell.pageSearch': 'Buscar', 'shell.pageWorkspace': 'Espacio de trabajo', 'shell.unread': '{n} sin leer',
+  'home.aria': 'Panel del espacio de trabajo', 'home.welcomeBack': 'Te damos la bienvenida, {name}.', 'home.greetMorning': 'Buenos días, {name}.', 'home.greetAfternoon': 'Buenas tardes, {name}.', 'home.greetEvening': 'Buenas noches, {name}.',
+  'home.sub': 'Tu día de un vistazo.', 'home.customise': 'Personalizar', 'home.done': 'Listo', 'home.showOn': 'Mostrar en tu panel', 'home.loading': 'Cargando tu espacio de trabajo…',
+  'widget.stats': 'Resumen', 'widget.nextUp': 'Tareas prioritarias', 'widget.events': 'Hoy', 'widget.insights': 'Resumen de IA', 'widget.projects': 'Progreso de proyectos', 'widget.documents': 'Reciente', 'widget.activity': 'Actividad reciente',
+  'home.tile.tasks': 'Tareas', 'home.tile.meetings': 'Reuniones', 'home.tile.deadlines': 'Fechas límite', 'home.tile.projects': 'Proyectos',
+  'home.cap.open': 'Abiertas', 'home.cap.openOverdue': 'Abiertas · {n} vencidas', 'home.cap.today': 'Hoy', 'home.cap.thisWeek': 'Esta semana', 'home.cap.active': 'Activos',
+  'home.priorityTasks': 'Tareas prioritarias', 'home.seeAll': 'Ver todo', 'home.noTasks': 'No tienes nada asignado. Las tareas que te asignen aparecerán aquí.',
+  'home.today': 'Hoy', 'home.openCalendar': 'Abrir el calendario', 'home.noEvents': 'Nada programado. Tu día está libre.', 'home.nothingToday': 'Nada hoy. Próximamente:',
+  'home.briefing': 'Tu resumen de IA', 'home.noInsights': 'Nada requiere tu atención ahora mismo.', 'home.viewBriefing': 'Ver resumen', 'home.showInsights': 'Ver análisis',
+  'home.projectProgress': 'Progreso de proyectos', 'home.noProjects': 'Aún no hay proyectos activos.',
+  'home.recent': 'Reciente', 'home.recentItems': 'Elementos recientes', 'home.tab.all': 'Todo', 'home.tab.documents': 'Documentos', 'home.tab.projects': 'Proyectos', 'home.viewAll': 'Ver todo', 'home.noRecent': 'Los documentos que escribas y los proyectos que empieces aparecerán aquí.',
+  'home.recentActivity': 'Actividad reciente', 'home.noActivity': 'Los cambios de este espacio de trabajo aparecerán aquí.',
+  'ai.aria': 'AVEN Intelligence', 'ai.title': 'AVEN Intelligence', 'ai.heading': 'Tu espacio de trabajo inteligente.', 'ai.blurb': 'Planifica, crea, analiza y haz las cosas en todo tu espacio de trabajo.',
+  'ai.daily': 'Resumen diario', 'ai.dailySub': 'Un resumen de tu día', 'ai.find': 'Encuentra cualquier cosa', 'ai.findSub': 'Busca en todo el contenido de tu espacio', 'ai.action': 'Pasa a la acción', 'ai.actionSub': 'Crea, actualiza y organiza con IA',
+  'ai.deep': 'Trabajo profundo', 'ai.deepSub': 'Recibe ayuda para concentrarte en cualquier tarea o proyecto', 'ai.ask': 'Pregunta lo que quieras a AVEN', 'ai.askPlaceholder': 'Pregunta lo que quieras a AVEN…', 'ai.chipDay': 'Resume mi día', 'ai.chipWeek': 'Planifica mi semana', 'ai.chipProject': 'Novedades del proyecto',
+  'settings.language.title': 'Idioma', 'settings.language.hint': 'Cambia los menús y la pantalla de inicio. Las demás pantallas siguen en inglés por ahora. Las fechas siguen tu dispositivo.', 'settings.language.saved': 'Idioma guardado.',
+};
