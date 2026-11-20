@@ -78,19 +78,36 @@ describe('live text sessions', { skip }, () => {
     assert.equal((await t.call('liv', 'GET', `${path()}/text/${P}`)).body.text, 'hello big world!', 'nothing refused changed the text');
   });
 
+  test('a retired edit source is refused from then on, and fencing is for members who can edit', async () => {
+    const fence = (who, body, blockId = P) => t.call(who, 'POST', `${path()}/text/${blockId}/fence`, body);
+    const rev = (await t.call('liv', 'GET', `${path()}/text/${P}`)).body;
+    assert.equal((await fence('liv', { clientId: 'tab-old' })).status, 204);
+    const late = await t.call('liv', 'POST', `${path()}/text/${P}/ops`, { revision: rev.revision, operation: [rev.text.length, '?'], clientId: 'tab-old' });
+    assert.equal(late.status, 409); assert.equal(late.body.resync, true);
+    const other = await t.call('liv', 'POST', `${path()}/text/${P}/ops`, { revision: rev.revision, operation: [rev.text.length, '?'], clientId: 'tab-new' });
+    assert.equal(other.status, 201, 'a different source is unaffected');
+    assert.equal((await t.call('liv', 'GET', `${path()}/text/${P}`)).body.text, `${rev.text}?`, 'the late edit changed nothing');
+    assert.equal((await fence('liv', { clientId: 'x' }, 'no-such-block')).status, 204, 'nothing live to fence is not an error');
+    assert.equal((await fence('liv', {})).status, 400); assert.equal((await fence('liv', { clientId: '<b>' })).status, 400);
+    assert.equal((await fence('gia', { clientId: 'tab-g' })).status, 403, 'guests cannot edit');
+    assert.equal((await fence('out', { clientId: 'tab-o' })).status, 404);
+    assert.equal((await t.call(null, 'POST', `${path()}/text/${P}/fence`, { clientId: 'a' })).status, 401);
+  });
+
   test('the session is released when the last person leaves, and a restored version resets it', async () => {
-    await t.call('liv', 'POST', `${path()}/text/${P}/ops`, { revision: (await t.call('liv', 'GET', `${path()}/text/${P}`)).body.revision, operation: [16, ' Bye'] });
+    const before = (await t.call('liv', 'GET', `${path()}/text/${P}`)).body; const expectedText = `${before.text} Bye`;
+    await t.call('liv', 'POST', `${path()}/text/${P}/ops`, { revision: before.revision, operation: [before.text.length, ' Bye'] });
     maxFeed.close(); livFeed.close();
     for (let i = 0; i < 80; i += 1) { if ((await t.call('liv', 'GET', `${path()}/text/${P}`)).body.revision === 0) break; await new Promise((r) => setTimeout(r, 50)); }
     const reopened = (await t.call('liv', 'GET', `${path()}/text/${P}`)).body;
-    assert.deepEqual(reopened, { text: 'hello big world! Bye', revision: 0 }, 'saved on close, and a new session starts again at revision 0');
+    assert.deepEqual(reopened, { text: expectedText, revision: 0 }, 'saved on close, and a new session starts again at revision 0');
     // restore an earlier version
     const version = (await t.call('liv', 'POST', `${path()}/versions`, { label: 'now' })).body;
     await t.call('liv', 'PATCH', path(), { content: content([{ id: P, type: 'PARAGRAPH', text: 'different' }]), silent: true, baseUpdatedAt: (await t.call('liv', 'GET', path())).body.updatedAt });
     const restored = await t.call('liv', 'POST', `${path()}/versions/${version.id}/restore`, {});
     assert.equal(restored.status, 201, JSON.stringify(restored.body));
     const afterRestore = (await t.call('liv', 'GET', `${path()}/text/${P}`)).body;
-    assert.equal(afterRestore.text, 'hello big world! Bye'); assert.equal(afterRestore.revision, 0);
+    assert.equal(afterRestore.text, expectedText); assert.equal(afterRestore.revision, 0);
     const stale = await t.call('liv', 'POST', `${path()}/text/${P}/ops`, { revision: 3, operation: [afterRestore.text.length] });
     assert.equal(stale.status, 409, 'a client that was editing before the restore is told to reload');
   });

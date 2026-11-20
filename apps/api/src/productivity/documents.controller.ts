@@ -55,6 +55,19 @@ export class DocumentsController {
     return this.textSessions.receive(identity, workspaceId, documentId, blockId, body);
   }
 
+  /** Retires an edit source so nothing more is accepted from it; used before a client re-reads a block after losing track of its last edit. */
+  @Post(':documentId/text/:blockId/fence')
+  @HttpCode(204)
+  async fenceEdits(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Param('blockId') blockId: string,
+    @Body() body: unknown,
+  ) {
+    await this.textSessions.fence(identity, workspaceId, documentId, blockId, body);
+  }
+
   /** Says which block the caller's cursor is in (or null when it left), for the "someone is editing here" markers. */
   @Post(':documentId/focus')
   @HttpCode(204)

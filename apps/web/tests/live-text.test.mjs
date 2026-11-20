@@ -6,14 +6,17 @@ import { LiveTextEngine } from '../app/workspace/documents/[documentId]/live-tex
 function mulberry(seed) { return () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
 /** A server with messages that travel one at a time, in order, so tests can interleave typing, sending and receiving. */
-function world(blocks, count, seed, retryMs = 5, patienceMs = 8000) {
+function world(blocks, count, seed, retryMs = 5, patienceMs = 8000, jitter = 0) {
   const random = mulberry(seed); const rand = (n) => Math.floor(random() * n);
+  const pause = () => (jitter ? new Promise((resolve) => setTimeout(resolve, rand(jitter + 1))) : Promise.resolve());
+  const retired = new Set(); // edit sources the server no longer accepts
   const docs = new Map(Object.entries(blocks).map(([id, text]) => [id, new SyncDocument(text)]));
   const peers = Array.from({ length: count }, (_, index) => {
     const peer = { index, screens: new Map(Object.entries(blocks)), outbox: [], inbox: [], resets: [], offline: false, remote: [] };
     peer.engine = new LiveTextEngine(`tab${index}`, {
-      get: async (id) => { if (peer.offline) throw new Error('offline'); const doc = docs.get(id); if (!doc) throw { status: 409 }; return { text: doc.text, revision: doc.revision }; },
-      post: async (id, body) => { if (peer.offline) throw new Error('offline'); peer.outbox.push({ id, body }); },
+      get: async (id) => { if (jitter) await pause(); if (peer.offline) throw new Error('offline'); const doc = docs.get(id); if (!doc) throw { status: 409 }; return { text: doc.text, revision: doc.revision }; },
+      post: async (id, body) => { if (jitter) await pause(); if (peer.offline) throw new Error('offline'); peer.outbox.push({ id, body }); },
+      fence: async (id, clientId) => { if (jitter) await pause(); if (peer.offline) throw new Error('offline'); retired.add(clientId); },
     }, {
       readText: (id) => peer.screens.get(id),
       writeText: (id, text, operation) => { peer.screens.set(id, text); if (operation) peer.remote.push(operation); },
@@ -23,6 +26,7 @@ function world(blocks, count, seed, retryMs = 5, patienceMs = 8000) {
   });
   const accept = (peer) => {
     const { id, body } = peer.outbox.shift();
+    if (retired.has(body.clientId)) return; // the server refuses edits from a retired source
     let accepted; try { accepted = docs.get(id).receive(body.revision, body.operation); } catch { return; }
     for (const other of peers) other.inbox.push({ blockId: id, revision: accepted.revision, operation: accepted.operation, clientId: body.clientId });
   };
@@ -141,4 +145,41 @@ test('typed text is never stranded: if the confirmation is lost, the block is re
   await w.settle();
   assert.equal(w.docs.get('a').text, 'abcd'); assert.equal(typist.screens.get('a'), 'abcd'); assert.equal(other.screens.get('a'), 'abcd', 'and the edit was not applied twice');
   typist.engine.stop(); other.engine.stop();
+});
+
+test('unsent edits restored from an earlier visit are merged into the current text, not replaced by it', async () => {
+  const w = world({ a: 'alpha beta gamma' }, 2, 11);
+  const [other, returning] = w.peers;
+  await other.engine.join('a');
+  other.screens.set('a', 'alpha beta gamma delta'); other.engine.edit('a', 'alpha beta gamma delta'); w.accept(other);
+  while (other.inbox.length) w.deliver(other);
+  // The returning tab shows its draft, written when the text was still "alpha beta gamma".
+  returning.screens.set('a', 'ALPHA beta gamma');
+  await returning.engine.join('a', { base: 'alpha beta gamma', mine: 'ALPHA beta gamma' });
+  await w.settle();
+  assert.equal(w.docs.get('a').text, 'ALPHA beta gamma delta');
+  for (const peer of w.peers) assert.equal(peer.screens.get('a'), 'ALPHA beta gamma delta');
+  assert.deepEqual(returning.resets, []);
+  // Without the base it cannot tell the draft's edit from the other person's, so a plain join takes the server's text.
+  const w2 = world({ a: 'alpha beta gamma delta' }, 1, 12);
+  w2.peers[0].screens.set('a', 'ALPHA beta gamma');
+  await w2.peers[0].engine.join('a');
+  assert.equal(w2.peers[0].screens.get('a'), 'alpha beta gamma delta');
+});
+
+test('an edit that is slow to arrive is never applied twice when the block is re-read meanwhile (random check with delays)', async () => {
+  for (let round = 0; round < 120; round += 1) {
+    const w = world({ a: 'alpha beta gamma delta epsilon zeta' }, 2, 7000 + round, 3, 8000, 8);
+    for (const peer of w.peers) await peer.engine.join('a');
+    const [online, away] = w.peers; away.offline = true;
+    online.screens.set('a', online.screens.get('a').replace('alpha', 'ALPHA')); online.engine.edit('a', online.screens.get('a'));
+    away.screens.set('a', away.screens.get('a').replace('zeta', 'ZETA')); away.engine.edit('a', away.screens.get('a'));
+    while (online.outbox.length) w.accept(online);
+    away.outbox.length = 0;
+    for (const peer of w.peers) while (peer.inbox.length) w.deliver(peer);
+    away.offline = false; away.engine.resyncAll();
+    await w.settle();
+    for (const peer of w.peers) assert.equal(peer.screens.get('a'), 'ALPHA beta gamma delta epsilon ZETA', `round ${round}`);
+    for (const peer of w.peers) peer.engine.stop();
+  }
 });

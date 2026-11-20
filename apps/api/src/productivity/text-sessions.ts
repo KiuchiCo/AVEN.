@@ -6,8 +6,8 @@ import { PrismaService } from '../database/prisma.service.js';
 import { DocumentEvents } from './document-events.js';
 import { textBlockIds, textOfBlock, withBlockTexts } from './text-blocks.js';
 
-type Session = { doc: SyncDocument; dirty: boolean };
-const maxParts = 1000, maxInsertedCharacters = 50_000, keepRevisions = 300, saveAfterMs = 800;
+type Session = { doc: SyncDocument; dirty: boolean; /** Edit sources that were retired (see `fence`); nothing more is accepted from them. */ retired: Set<string> };
+const maxRetired = 2000, maxParts = 1000, maxInsertedCharacters = 50_000, keepRevisions = 300, saveAfterMs = 800;
 const blockIdPattern = /^[\w-]{1,64}$/;
 
 /**
@@ -43,6 +43,7 @@ export class TextSessions implements OnModuleDestroy {
     const operation = this.operation(input.operation);
     const id = this.blockId(blockId);
     const session = await this.session(workspaceId, documentId, id);
+    if (clientId && session.retired.has(clientId)) throw new ConflictException({ message: 'That editing session was closed; reload the text and continue.', resync: true });
     let result: { operation: Operation; revision: number };
     try { result = session.doc.receive(input.revision, operation); }
     catch (error) { throw new ConflictException({ message: error instanceof Error ? error.message : 'The edit could not be applied.', resync: true }); }
@@ -52,6 +53,20 @@ export class TextSessions implements OnModuleDestroy {
     this.events.publish(documentId, { type: 'text', blockId: id, revision: result.revision, operation: result.operation, by: { id: userId, name }, clientId });
     this.scheduleSave(documentId);
     return result;
+  }
+
+  /**
+   * Retires an edit source: from now on the server accepts nothing more from it. A client that lost track of whether its last edit
+   * arrived calls this before it re-reads the text, so the text it reads is final and it can safely send its edit again if needed.
+   */
+  async fence(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, blockId: string, body: unknown) {
+    await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
+    const clientId = (body as { clientId?: unknown } | null)?.clientId;
+    if (typeof clientId !== 'string' || !/^[\w-]{1,64}$/.test(clientId)) throw new BadRequestException('clientId must be a short identifier.');
+    const session = this.sessions.get(documentId)?.get(this.blockId(blockId));
+    if (!session) return; // no live text for this block any more, so nothing of theirs can be applied late
+    session.retired.add(clientId);
+    if (session.retired.size > maxRetired) session.retired.delete(session.retired.values().next().value as string);
   }
 
   /** Puts the live text into a document that is about to be saved the normal way, and forgets sessions for blocks that are gone. */
@@ -98,7 +113,7 @@ export class TextSessions implements OnModuleDestroy {
     this.sessions.set(documentId, open);
     const raced = open.get(blockId); // another request may have opened it while this one was reading
     if (raced) return raced;
-    const created = { doc: new SyncDocument(text), dirty: false };
+    const created = { doc: new SyncDocument(text), dirty: false, retired: new Set<string>() };
     open.set(blockId, created);
     return created;
   }

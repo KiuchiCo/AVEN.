@@ -149,6 +149,7 @@ export default function DocumentEditorPage() {
     const engine = new LiveTextEngine(crypto.randomUUID(), {
       get: (blockId) => latest.current.request(`/workspaces/${workspace.id}/documents/${documentId}/text/${blockId}`) as Promise<{ text: string; revision: number }>,
       post: async (blockId, body) => { await latest.current.request(`/workspaces/${workspace.id}/documents/${documentId}/text/${blockId}/ops`, { method: 'POST', body: JSON.stringify(body) }); },
+      fence: async (blockId, clientId) => { await latest.current.request(`/workspaces/${workspace.id}/documents/${documentId}/text/${blockId}/fence`, { method: 'POST', body: JSON.stringify({ clientId }) }); },
     }, {
       readText: (blockId) => live.current.blocks.find((block) => block.id === blockId)?.text,
       writeText: (blockId, text, operation) => {
@@ -224,6 +225,7 @@ export default function DocumentEditorPage() {
       if (cancelled) return;
       const latestBlocks = parseBlocks(savedDocument.content);
       let start = { title: savedDocument.title, blocks: latestBlocks }, restored = false, clash = false;
+      const unseen: { id: string; base: string; mine: string }[] = []; // restored text the server has not seen
       // Edits that were never saved (connection lost, tab closed) are brought back onto whatever is saved now.
       try {
         const key = draftKey(user.id, workspace.id, documentId);
@@ -231,15 +233,26 @@ export default function DocumentEditorPage() {
         if (draft) {
           const result = reconcileDraft({ title: draft.title, blocks: parseBlocks(draft.content), base: { updatedAt: draft.base.updatedAt, title: draft.base.title, blocks: parseBlocks(draft.base.content) } }, { updatedAt: savedDocument.updatedAt, title: savedDocument.title, blocks: latestBlocks });
           if (!result.conflict && result.title === savedDocument.title && JSON.stringify(result.blocks) === JSON.stringify(latestBlocks)) removeDraft(window.localStorage, key);
-          else { start = result; restored = true; clash = result.conflict; }
+          else {
+            start = result; restored = true; clash = result.conflict;
+            const draftBase = parseBlocks(draft.base.content);
+            for (const block of result.blocks) {
+              const saved = latestBlocks.find((candidate) => candidate.id === block.id);
+              if (saved && saved.text !== block.text && block.type !== 'DIVIDER' && block.type !== 'TABLE' && block.type !== 'IMAGE') unseen.push({ id: block.id, base: draftBase.find((candidate) => candidate.id === block.id)?.text ?? saved.text, mine: block.text });
+            }
+          }
         }
       } catch { /* A draft that can't be read is left alone. */ }
       setDocument(savedDocument); setTitle(start.title); setBlocks(start.blocks); setVersions(history); setComments(threads); setHydrated(true);
-      if (restored) { revision.current += 1; setDirty(true); setSuccess(t('ed.draftRestored')); if (clash) setConflict(savedDocument); }
+      if (restored) {
+        revision.current += 1; setDirty(true); setSuccess(t('ed.draftRestored')); if (clash) setConflict(savedDocument);
+        // Text others may be editing live right now must go in as live edits, or the live text would replace it on the next save.
+        if (!readOnlyRole(workspace.role)) for (const block of unseen) void liveEngine.current?.join(block.id, { base: block.base, mine: block.mine });
+      }
     }).catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not open document.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [documentId, request, t, user.id, workspace.id]);
+  }, [documentId, request, t, user.id, workspace.id, workspace.role]);
 
   const saveDocument = useCallback(async (): Promise<boolean> => {
     if (!document || saving) return false;

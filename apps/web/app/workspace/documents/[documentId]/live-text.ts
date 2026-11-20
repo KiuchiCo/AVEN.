@@ -7,6 +7,8 @@ export type LiveTransport = {
   get(blockId: string): Promise<{ text: string; revision: number }>;
   /** Sends one edit. The server's answer arrives as an event on the stream, in order with everyone else's edits. */
   post(blockId: string, body: { revision: number; operation: Operation; clientId: string }): Promise<void>;
+  /** Tells the server that edits with this id must no longer be accepted. Once it succeeds, whatever the server had accepted is all it ever will. */
+  fence(blockId: string, clientId: string): Promise<void>;
 };
 export type LiveHooks = {
   /** The text currently shown for a block, if it is shown. */
@@ -50,16 +52,20 @@ export class LiveTextEngine {
   has(blockId: string) { return this.entries.has(blockId); }
   screen(blockId: string) { return this.entries.get(blockId)?.screen; }
 
-  /** Starts live editing of a block (call when it gets focus). Safe to call repeatedly. */
-  async join(blockId: string) {
+  /**
+   * Starts live editing of a block (call when it gets focus). Safe to call repeatedly. When the text on screen has edits the server
+   * has never seen (a draft restored from an earlier visit), pass what the server's text was when they were started (`base`) and the
+   * edited text (`mine`), so they are merged into the current text instead of being replaced by it.
+   */
+  async join(blockId: string, known?: { base: string; mine: string }) {
     if (this.stopped || this.entries.has(blockId) || this.joining.has(blockId) || this.unusable.has(blockId)) return;
     const queued: TextEvent[] = []; this.joining.set(blockId, queued);
-    const before = this.hooks.readText(blockId) ?? '';
+    const before = known?.base ?? this.hooks.readText(blockId) ?? '';
     let served: { text: string; revision: number };
     try { served = await this.transport.get(blockId); }
     catch (error) { this.joining.delete(blockId); if (typeof error === 'object' && error && 'status' in error && ((error as { status: number }).status === 409 || (error as { status: number }).status === 404)) this.unusable.add(blockId); return; }
     if (this.stopped) return;
-    const now = this.hooks.readText(blockId) ?? before; // may have been typed in meanwhile, the old way
+    const now = this.hooks.readText(blockId) ?? known?.mine ?? before; // may have been typed in meanwhile, the old way
     const text = before === served.text ? now : before === now ? served.text : mergeText(before, now, served.text) ?? served.text;
     this.start(blockId, served, text);
     this.joining.delete(blockId);
@@ -139,6 +145,9 @@ export class LiveTextEngine {
   private async resync(blockId: string) {
     const old = this.entries.get(blockId);
     if (!old || this.stopped) return;
+    // An edit already sent may still be on its way to the server. Stop the server accepting it before looking at the text, so what is
+    // fetched is final: it either contains that edit or never will, and the merge below can tell which.
+    if (!old.client.settled) { try { await this.transport.fence(blockId, old.token); } catch { this.later(blockId); return; } }
     let served: { text: string; revision: number };
     try { served = await this.transport.get(blockId); } catch { this.later(blockId); return; }
     const current = this.entries.get(blockId);
