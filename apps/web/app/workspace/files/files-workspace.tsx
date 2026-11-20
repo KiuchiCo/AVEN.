@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '../../i18n';
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { formatBytes, type FileListing, type FileRecord, type FileUsage, type FileVersionRecord } from './types';
@@ -12,6 +13,7 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle
 const previewable = /^(image\/(png|jpeg|gif|webp)|application\/pdf|text\/plain)$/;
 
 export function FilesWorkspace() {
+  const t = useT();
   const { workspace } = useWorkspaceSession();
   const { call, upload, download, preview, role } = useFilesApi();
   const canEdit = role !== 'GUEST';
@@ -58,12 +60,12 @@ export function FilesWorkspace() {
     await run(async () => {
       let done = 0;
       for (const file of files) {
-        if (usage && file.size > usage.maxFileBytes) throw new Error(`“${file.name}” is larger than the ${formatBytes(usage.maxFileBytes)} limit.`);
-        setNotice(`Uploading ${done + 1} of ${files.length}…`);
+        if (usage && file.size > usage.maxFileBytes) throw new Error(t('file.tooBig', { name: file.name, max: formatBytes(usage.maxFileBytes) }));
+        setNotice(t('file.uploading', { i: done + 1, n: files.length }));
         await upload(file, { folderId });
         done += 1;
       }
-      return `Uploaded ${done} ${done === 1 ? 'file' : 'files'}.`;
+      return done === 1 ? t('file.uploadedOne') : t('file.uploadedMany', { n: done });
     });
   }
 
@@ -71,8 +73,8 @@ export function FilesWorkspace() {
   const inFolderView = view === 'files' && debounced.length < 2;
   const quota = usage?.quotaBytes ? Math.min(100, Math.round((usage.usedBytes / usage.quotaBytes) * 100)) : 0;
   const moveTargets = [
-    ...(folderId ? [{ id: '', name: 'All files (top level)' }] : []),
-    ...(listing && listing.path.length > 1 ? [{ id: listing.path[listing.path.length - 2].id, name: `Up to ${listing.path[listing.path.length - 2].name}` }] : []),
+    ...(folderId ? [{ id: '', name: t('file.topLevel') }] : []),
+    ...(listing && listing.path.length > 1 ? [{ id: listing.path[listing.path.length - 2].id, name: t('file.upTo', { name: listing.path[listing.path.length - 2].name }) }] : []),
     ...(listing?.folders ?? []).map((folder) => ({ id: folder.id, name: folder.name })),
   ];
 
@@ -83,57 +85,57 @@ export function FilesWorkspace() {
   }
 
   return <div className="workspace-section-page files-page">
-    <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
-    <h1>Files</h1>
-    <p className="workspace-section-page__description">Keep documents, images and references together. Files can be attached to tasks, documents and projects.</p>
+    <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
+    <h1>{t('nav.files')}</h1>
+    <p className="workspace-section-page__description">{t('file.desc')}</p>
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {notice && <p className="files-notice" role="status">{notice}</p>}
 
-    {usage && <div className="files-usage" aria-label="Storage used"><div className="files-usage__bar" role="img" aria-label={`${quota}% of storage used`}><span style={{ width: `${quota}%` }} /></div><small>{usage.quotaBytes === null ? `${formatBytes(usage.usedBytes)} used` : `${formatBytes(usage.usedBytes)} of ${formatBytes(usage.quotaBytes)} used`} · files can be up to {formatBytes(usage.maxFileBytes)}</small></div>}
+    {usage && <div className="files-usage" aria-label={t('file.storageAria')}><div className="files-usage__bar" role="img" aria-label={t('file.quotaAria', { n: quota })}><span style={{ width: `${quota}%` }} /></div><small>{usage.quotaBytes === null ? t('file.used', { used: formatBytes(usage.usedBytes) }) : t('file.usedOf', { used: formatBytes(usage.usedBytes), total: formatBytes(usage.quotaBytes) })}{t('file.maxSize', { max: formatBytes(usage.maxFileBytes) })}</small></div>}
 
     <div className="files-toolbar">
-      <div className="files-views" role="group" aria-label="View"><button type="button" aria-pressed={view === 'files'} onClick={() => { setView('files'); setVersions(null); }}>Files</button><button type="button" aria-pressed={view === 'bin'} onClick={() => { setView('bin'); setVersions(null); }}>Recycle bin</button></div>
-      {view === 'files' && <label className="files-search"><span className="visually-hidden">Search files</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search files and folders…" /></label>}
+      <div className="files-views" role="group" aria-label={t('file.viewAria')}><button type="button" aria-pressed={view === 'files'} onClick={() => { setView('files'); setVersions(null); }}>{t('file.files')}</button><button type="button" aria-pressed={view === 'bin'} onClick={() => { setView('bin'); setVersions(null); }}>{t('file.bin')}</button></div>
+      {view === 'files' && <label className="files-search"><span className="visually-hidden">{t('file.searchLabel')}</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('file.searchPh')} /></label>}
       {canEdit && view === 'files' && inFolderView && <>
-        <label className="files-upload">Upload files<input type="file" multiple disabled={busy} onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; if (selected.length) void uploadFiles(selected); }} /></label>
-        <button type="button" disabled={busy} onClick={() => { const name = ask('Folder name'); if (name) void run(async () => { await call('/folders', { method: 'POST', body: { name, parentId: folderId } }); }); }}>New folder</button>
+        <label className="files-upload">{t('file.upload')}<input type="file" multiple disabled={busy} onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; if (selected.length) void uploadFiles(selected); }} /></label>
+        <button type="button" disabled={busy} onClick={() => { const name = ask(t('file.folderName')); if (name) void run(async () => { await call('/folders', { method: 'POST', body: { name, parentId: folderId } }); }); }}>{t('file.newFolder')}</button>
       </>}
     </div>
 
-    {inFolderView && <nav className="files-path" aria-label="Folder path"><button type="button" onClick={() => setFolderId(null)}>All files</button>{listing?.path.map((part) => <span key={part.id}>›<button type="button" onClick={() => setFolderId(part.id)}>{part.name}</button></span>)}</nav>}
+    {inFolderView && <nav className="files-path" aria-label={t('file.pathAria')}><button type="button" onClick={() => setFolderId(null)}>{t('file.allFiles')}</button>{listing?.path.map((part) => <span key={part.id}>›<button type="button" onClick={() => setFolderId(part.id)}>{part.name}</button></span>)}</nav>}
 
-    {!listing ? <p className="productivity-message">Loading files…</p> : <div className="files-table-wrap"><table className="files-table">
-      <thead><tr><th>Name</th><th>Size</th><th>{view === 'bin' ? 'Deleted' : 'Modified'}</th><th>By</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+    {!listing ? <p className="productivity-message">{t('file.loading')}</p> : <div className="files-table-wrap"><table className="files-table">
+      <thead><tr><th>{t('file.colName')}</th><th>{t('file.colSize')}</th><th>{view === 'bin' ? t('file.colDeleted') : t('file.colModified')}</th><th>{t('file.colBy')}</th><th><span className="visually-hidden">{t('file.colActions')}</span></th></tr></thead>
       <tbody>
         {listing.folders.map((folder) => <tr key={folder.id}>
           <td><button type="button" className="files-folder" onClick={() => { setFolderId(folder.id); setSearch(''); }}>▸ {folder.name}</button></td><td>—</td><td>{when.format(new Date(folder.createdAt))}</td><td>—</td>
           <td className="files-actions">{canEdit && inFolderView && <>
-            <button type="button" disabled={busy} onClick={() => { const name = ask('Rename folder', folder.name); if (name && name !== folder.name) void run(async () => { await call(`/folders/${folder.id}`, { method: 'PATCH', body: { name } }); }); }}>Rename</button>
-            <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Delete the folder “${folder.name}”? It must be empty.`)) void run(async () => { await call(`/folders/${folder.id}`, { method: 'DELETE' }); }); }}>Delete</button>
+            <button type="button" disabled={busy} onClick={() => { const name = ask(t('file.renameFolder'), folder.name); if (name && name !== folder.name) void run(async () => { await call(`/folders/${folder.id}`, { method: 'PATCH', body: { name } }); }); }}>{t('file.rename')}</button>
+            <button type="button" disabled={busy} onClick={() => { if (window.confirm(t('file.deleteFolderConfirm', { name: folder.name }))) void run(async () => { await call(`/folders/${folder.id}`, { method: 'DELETE' }); }); }}>{t('file.delete')}</button>
           </>}</td>
         </tr>)}
         {listing.files.map((file) => <Fragment key={file.id}>
           <tr>
             <td><strong>{file.name}</strong>{file.version > 1 && <span className="task-badge">v{file.version}</span>}</td><td>{formatBytes(file.sizeBytes)}</td><td>{when.format(new Date(file.deletedAt ?? file.updatedAt))}</td><td>{file.createdBy.displayName}</td>
             <td className="files-actions">{view === 'bin' ? (canEdit && <>
-              <button type="button" disabled={busy} onClick={() => void run(async () => { await call(`/${file.id}/restore`, { method: 'POST' }); return `Restored “${file.name}”.`; })}>Restore</button>
-              <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Permanently delete “${file.name}” and all its versions? This cannot be undone.`)) void run(async () => { await call(`/${file.id}/permanent`, { method: 'DELETE' }); return 'Deleted permanently.'; }); }}>Delete forever</button>
+              <button type="button" disabled={busy} onClick={() => void run(async () => { await call(`/${file.id}/restore`, { method: 'POST' }); return t('file.restored', { name: file.name }); })}>{t('file.restore')}</button>
+              <button type="button" disabled={busy} onClick={() => { if (window.confirm(t('file.deleteForeverConfirm', { name: file.name }))) void run(async () => { await call(`/${file.id}/permanent`, { method: 'DELETE' }); return t('file.deletedForever'); }); }}>{t('file.deleteForever')}</button>
             </>) : <>
-              {previewable.test(file.mimeType) && <button type="button" onClick={() => void run(() => preview(file))}>Preview</button>}
-              <button type="button" onClick={() => void run(() => download(file))}>Download</button>
-              <button type="button" onClick={() => void toggleVersions(file)}>Versions</button>
+              {previewable.test(file.mimeType) && <button type="button" onClick={() => void run(() => preview(file))}>{t('file.preview')}</button>}
+              <button type="button" onClick={() => void run(() => download(file))}>{t('file.download')}</button>
+              <button type="button" onClick={() => void toggleVersions(file)}>{t('file.versions')}</button>
               {canEdit && <>
-                {readableAsText(file) && <button type="button" disabled={busy} title="Save this file’s text as a Knowledge entry" onClick={() => void run(async () => { const entry = await call<{ truncated: boolean }>(`/${file.id}/knowledge`, { method: 'POST', body: {} }); return entry.truncated ? `Added “${file.name}” to Knowledge. It was long, so only the first 20,000 characters were kept.` : `Added “${file.name}” to Knowledge.`; })}>Add to Knowledge</button>}
-                <label className="files-replace">New version<input type="file" disabled={busy} onChange={(event) => { const next = event.target.files?.[0]; event.target.value = ''; if (next) void run(async () => { await upload(next, { replaceFileId: file.id }); return `Saved a new version of “${file.name}”.`; }); }} /></label>
-                <button type="button" disabled={busy} onClick={() => { const name = ask('Rename file', file.name); if (name && name !== file.name) void run(async () => { await call(`/${file.id}`, { method: 'PATCH', body: { name } }); }); }}>Rename</button>
-                {moveTargets.length > 0 && inFolderView && <select aria-label={`Move ${file.name}`} defaultValue="" disabled={busy} onChange={(event) => { const target = event.target.value; event.target.value = ''; if (target !== '') void run(async () => { await call(`/${file.id}`, { method: 'PATCH', body: { folderId: target === 'root' ? null : target } }); return 'Moved.'; }); }}><option value="" disabled>Move to…</option>{moveTargets.map((target) => <option key={target.id || 'root'} value={target.id || 'root'}>{target.name}</option>)}</select>}
-                <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Move “${file.name}” to the recycle bin?`)) void run(async () => { await call(`/${file.id}`, { method: 'DELETE' }); return 'Moved to the recycle bin.'; }); }}>Delete</button>
+                {readableAsText(file) && <button type="button" disabled={busy} title={t('file.toKnowledgeTitle')} onClick={() => void run(async () => { const entry = await call<{ truncated: boolean }>(`/${file.id}/knowledge`, { method: 'POST', body: {} }); return entry.truncated ? t('file.addedKnowledgeLong', { name: file.name }) : t('file.addedKnowledge', { name: file.name }); })}>{t('file.toKnowledge')}</button>}
+                <label className="files-replace">{t('file.newVersion')}<input type="file" disabled={busy} onChange={(event) => { const next = event.target.files?.[0]; event.target.value = ''; if (next) void run(async () => { await upload(next, { replaceFileId: file.id }); return t('file.savedVersion', { name: file.name }); }); }} /></label>
+                <button type="button" disabled={busy} onClick={() => { const name = ask(t('file.renameFile'), file.name); if (name && name !== file.name) void run(async () => { await call(`/${file.id}`, { method: 'PATCH', body: { name } }); }); }}>{t('file.rename')}</button>
+                {moveTargets.length > 0 && inFolderView && <select aria-label={t('file.moveAria', { name: file.name })} defaultValue="" disabled={busy} onChange={(event) => { const target = event.target.value; event.target.value = ''; if (target !== '') void run(async () => { await call(`/${file.id}`, { method: 'PATCH', body: { folderId: target === 'root' ? null : target } }); return t('file.moved'); }); }}><option value="" disabled>{t('file.moveTo')}</option>{moveTargets.map((target) => <option key={target.id || 'root'} value={target.id || 'root'}>{target.name}</option>)}</select>}
+                <button type="button" disabled={busy} onClick={() => { if (window.confirm(t('file.binConfirm', { name: file.name }))) void run(async () => { await call(`/${file.id}`, { method: 'DELETE' }); return t('file.toBin'); }); }}>{t('file.delete')}</button>
               </>}
             </>}</td>
           </tr>
-          {versions?.fileId === file.id && <tr className="files-versions"><td colSpan={5}><strong>Versions</strong><ul>{versions.rows.map((row) => <li key={row.version}>v{row.version}{row.current ? ' (current)' : ''} · {formatBytes(row.sizeBytes)} · {when.format(new Date(row.createdAt))} · {row.createdBy.displayName} <button type="button" onClick={() => void run(() => download(file, row.version))}>Download</button></li>)}</ul></td></tr>}
+          {versions?.fileId === file.id && <tr className="files-versions"><td colSpan={5}><strong>{t('file.versions')}</strong><ul>{versions.rows.map((row) => <li key={row.version}>v{row.version}{row.current ? t('file.current') : ''} · {formatBytes(row.sizeBytes)} · {when.format(new Date(row.createdAt))} · {row.createdBy.displayName} <button type="button" onClick={() => void run(() => download(file, row.version))}>{t('file.download')}</button></li>)}</ul></td></tr>}
         </Fragment>)}
-        {listing.folders.length === 0 && listing.files.length === 0 && <tr><td colSpan={5} className="files-empty">{view === 'bin' ? 'The recycle bin is empty. Deleted files stay here until you delete them forever.' : debounced.length >= 2 ? 'Nothing matches that search.' : 'No files yet. Upload a file or create a folder to begin.'}</td></tr>}
+        {listing.folders.length === 0 && listing.files.length === 0 && <tr><td colSpan={5} className="files-empty">{view === 'bin' ? t('file.emptyBin') : debounced.length >= 2 ? t('file.noMatch') : t('file.empty')}</td></tr>}
       </tbody>
     </table></div>}
   </div>;

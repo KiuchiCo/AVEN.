@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { formatBytes, type AttachmentRecord, type AttachmentTarget, type FileListing } from './types';
+import { useT } from '../../i18n';
 import { useFilesApi } from './use-files-api';
 
 /** Files attached to one task, document, or project: download, detach, upload-and-attach, or attach an existing file. */
 export function AttachmentsPanel({ target }: { target: AttachmentTarget }) {
+  const t = useT();
   const { call, upload, download, preview, role } = useFilesApi();
   const query = Object.entries(target).map(([key, value]) => `${key}=${value}`).join('&');
   const [items, setItems] = useState<AttachmentRecord[] | null>(null);
@@ -30,24 +32,24 @@ export function AttachmentsPanel({ target }: { target: AttachmentTarget }) {
   }
 
   const attachedIds = new Set((items ?? []).map((item) => item.file.id));
-  return <section className="attachments-panel" aria-label="Attachments">
-    <div className="attachments-panel__heading"><h2>Files</h2>{canEdit && <label className="attachments-panel__upload">Upload &amp; attach<input type="file" multiple disabled={busy} onChange={(event) => {
+  return <section className="attachments-panel" aria-label={t('att.aria')}>
+    <div className="attachments-panel__heading"><h2>{t('file.files')}</h2>{canEdit && <label className="attachments-panel__upload">{t('att.uploadAttach')}<input type="file" multiple disabled={busy} onChange={(event) => {
       const selected = [...(event.target.files ?? [])]; event.target.value = '';
       void run(async () => { for (const file of selected) { const saved = await upload(file); await call('/attachments', { method: 'POST', body: { fileId: saved.id, ...target } }); } });
     }} /></label>}</div>
     {error && <p className="productivity-error" role="alert">{error}</p>}
-    {items === null ? <p className="attachments-panel__empty">Loading files…</p> : items.length === 0 ? <p className="attachments-panel__empty">No files attached yet.</p> : <ul>{items.map(({ id, file }) => <li key={id}>
+    {items === null ? <p className="attachments-panel__empty">{t('file.loading')}</p> : items.length === 0 ? <p className="attachments-panel__empty">{t('att.none')}</p> : <ul>{items.map(({ id, file }) => <li key={id}>
       <div><strong>{file.name}</strong><small>{formatBytes(file.sizeBytes)} · v{file.version} · {file.createdBy.displayName}</small></div>
       <div className="attachments-panel__actions">
-        {/^(image\/(png|jpeg|gif|webp)|application\/pdf|text\/plain)$/.test(file.mimeType) && <button type="button" onClick={() => void run(() => preview(file))}>Preview</button>}
-        <button type="button" onClick={() => void run(() => download(file))}>Download</button>
-        {canEdit && <button type="button" disabled={busy} onClick={() => void run(() => call(`/attachments/${id}`, { method: 'DELETE' }))}>Detach</button>}
+        {/^(image\/(png|jpeg|gif|webp)|application\/pdf|text\/plain)$/.test(file.mimeType) && <button type="button" onClick={() => void run(() => preview(file))}>{t('file.preview')}</button>}
+        <button type="button" onClick={() => void run(() => download(file))}>{t('file.download')}</button>
+        {canEdit && <button type="button" disabled={busy} onClick={() => void run(() => call(`/attachments/${id}`, { method: 'DELETE' }))}>{t('att.detach')}</button>}
       </div>
     </li>)}</ul>}
     {canEdit && library.some((file) => !attachedIds.has(file.id)) && <form onSubmit={(event) => {
       event.preventDefault();
       const fileId = String(new FormData(event.currentTarget).get('fileId') ?? '');
       if (fileId) void run(() => call('/attachments', { method: 'POST', body: { fileId, ...target } }));
-    }}><select name="fileId" aria-label="Attach an existing file" defaultValue=""><option value="" disabled>Attach an existing file…</option>{library.filter((file) => !attachedIds.has(file.id)).map((file) => <option key={file.id} value={file.id}>{file.name}</option>)}</select><button type="submit" disabled={busy}>Attach</button></form>}
+    }}><select name="fileId" aria-label={t('att.attachExisting')} defaultValue=""><option value="" disabled>{t('att.attachExistingPh')}</option>{library.filter((file) => !attachedIds.has(file.id)).map((file) => <option key={file.id} value={file.id}>{file.name}</option>)}</select><button type="submit" disabled={busy}>{t('att.attach')}</button></form>}
   </section>;
 }
