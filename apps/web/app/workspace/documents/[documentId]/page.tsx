@@ -64,6 +64,7 @@ export default function DocumentEditorPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [versionLabel, setVersionLabel] = useState('');
   const [commentDraft, setCommentDraft] = useState('');
+  const [exporting, setExporting] = useState<'pdf' | 'docx' | null>(null);
   const [commentTarget, setCommentTarget] = useState<{ blockId: string; quote: string } | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: string; text: string } | null>(null);
   const [moving, setMoving] = useState<{ block: Block; docs: DocSummary[] | null } | null>(null);
@@ -534,6 +535,29 @@ export default function DocumentEditorPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this comment.'); }
   }
 
+  /**
+   * Downloads the saved document as PDF or Word. Everything typed so far is saved first (and live text sent), so the file is never older than the screen;
+   * the file itself is made on the server from the saved document, with this person's own permissions.
+   */
+  async function exportAs(format: 'pdf' | 'docx') {
+    setExporting(format); setError(''); setSuccess('');
+    try {
+      for (let wait = 0; wait < 40 && (live.current.saving || liveEngine.current?.unsettled); wait += 1) await new Promise((resolve) => window.setTimeout(resolve, 250));
+      if (live.current.dirty && !(await saveDocument()) && live.current.dirty) throw new Error(t('ed.exportUnsaved'));
+      const token = await getToken();
+      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/export?format=${format}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      if (!response.ok) { const body = await response.json().catch(() => null) as { message?: string } | null; throw new Error(body?.message ?? t('ed.exportFailed')); }
+      const disposition = response.headers.get('content-disposition') ?? '';
+      const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+      const name = encoded ? decodeURIComponent(encoded) : `AVEN - ${title || 'Untitled'}.${format}`;
+      const url = URL.createObjectURL(await response.blob());
+      const link = window.document.createElement('a'); link.href = url; link.download = name; window.document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setSuccess(t('ed.exported', { name }));
+    } catch (reason) { setError(reason instanceof OfflineError || reason instanceof TypeError ? t('ed.exportOffline') : reason instanceof Error ? reason.message : t('ed.exportFailed')); }
+    finally { setExporting(null); }
+  }
+
   async function createTaskFromBlock(block: Block) {
     if (!block.text.trim()) return;
     const rawLabels = window.prompt(t('ed.labelsPrompt'));
@@ -560,7 +584,7 @@ export default function DocumentEditorPage() {
     {offline && dirty && !local && <p className="productivity-error" role="status">{t('ed.offlineKept')}</p>}
     {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>{t('ed.retry')}</button></p>}
     {loading ? <p className="productivity-message">{t('ed.opening')}</p> : !document ? <div className="workspace-section-empty"><h2>{t('ed.unavailable')}</h2><p>{t('ed.unavailableBody')}</p><Link href="/workspace/documents">{t('ed.back')}</Link></div> : <>
-      <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={entryId} onChange={(event) => setEntryId(event.target.value)}>{(['basic', 'media', 'database', 'advanced'] as const).map((category) => <optgroup key={category} label={t(`blk.cat.${category}` as Key)}>{blockCatalog.filter((entry) => entry.category === category).map((entry) => <option key={entry.id} value={entry.id}>{t(`blk.${entry.id}` as Key)}</option>)}</optgroup>)}</select></label><button type="button" onClick={() => addEntry(blockCatalog.find((item) => item.id === entryId))}>{t('ed.addBlock')}</button><button type="button" onClick={() => setBrowserOpen(true)}><BlockIcon id="database-gallery" size={16} />{t('blk.browse')}</button>{aiReady && <button type="button" onClick={() => editorApi.current?.askAi()}>{t('ed.ai')} · {t('ed.ai.askDoc')}</button>}<span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
+      <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={entryId} onChange={(event) => setEntryId(event.target.value)}>{(['basic', 'media', 'database', 'advanced'] as const).map((category) => <optgroup key={category} label={t(`blk.cat.${category}` as Key)}>{blockCatalog.filter((entry) => entry.category === category).map((entry) => <option key={entry.id} value={entry.id}>{t(`blk.${entry.id}` as Key)}</option>)}</optgroup>)}</select></label><button type="button" onClick={() => addEntry(blockCatalog.find((item) => item.id === entryId))}>{t('ed.addBlock')}</button><button type="button" onClick={() => setBrowserOpen(true)}><BlockIcon id="database-gallery" size={16} />{t('blk.browse')}</button>{aiReady && <button type="button" onClick={() => editorApi.current?.askAi()}>{t('ed.ai')} · {t('ed.ai.askDoc')}</button>}<span className="document-studio__toolbar-spacer" />{!local && <button type="button" aria-pressed={activePanel === 'SHARE'} onClick={() => { setActivePanel('SHARE'); window.requestAnimationFrame(() => window.document.querySelector('.document-studio__sidebar')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); }}>{t('sh.title')}</button>}{!local && <details className="rd-menu document-export"><summary role="button" aria-haspopup="menu" aria-busy={exporting !== null}>{exporting ? t('ed.exporting') : t('ed.export')}</summary><div className="rd-menu__list" role="menu"><button type="button" role="menuitem" disabled={exporting !== null} onClick={(event) => { (event.currentTarget.closest('details') as HTMLDetailsElement).open = false; void exportAs('pdf'); }}>{t('ed.exportPdf')}</button><button type="button" role="menuitem" disabled={exporting !== null} onClick={(event) => { (event.currentTarget.closest('details') as HTMLDetailsElement).open = false; void exportAs('docx'); }}>{t('ed.exportWord')}</button></div></details>}<button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
       {browserOpen && !readOnlyRole(workspace.role) && <BlockBrowser onClose={() => setBrowserOpen(false)} onPick={(entry) => { addEntry(entry); setBrowserOpen(false); setSuccess(t('ed.addBlockFromBrowser', { name: t(`blk.${entry.id}` as Key) })); }} />}
       {moving && <div className="document-browser" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMoving(null); }} onKeyDown={(event) => { if (event.key === 'Escape') setMoving(null); }}>
         <div className="document-browser__panel document-move" role="dialog" aria-modal="true" aria-label={t('ed.moveTitle')}>

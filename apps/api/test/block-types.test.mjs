@@ -6,13 +6,15 @@ import { isTextBlock } from '../dist/productivity/text-blocks.js';
 
 const doc = (blocks) => JSON.stringify({ format: 'aven-doc-v1', blocks });
 
-test('a shared document includes small headings and toggles, and drops blocks that only make sense inside the workspace', () => {
+test('a shared document includes small headings and toggles, shows private links as restricted, and drops workspace controls', () => {
   const shared = publicBlocks(doc([
     { id: 'a', type: 'HEADING_3', text: 'Small' }, { id: 'b', type: 'TOGGLE', text: 'More', body: 'Hidden detail', level: 2 },
     { id: 'c', type: 'DATABASE', databaseId: 'x', view: 'TABLE' }, { id: 'd', type: 'BUTTON', text: 'Go', body: 'task' }, { id: 'e', type: 'PAGE_LINK', docId: 'y' },
   ]), (f) => `/img/${f}`);
-  assert.deepEqual(shared.map((block) => block.type), ['HEADING_3', 'TOGGLE']);
-  assert.equal(shared[1].body, 'Hidden detail'); assert.equal(shared[1].level, 2);
+  // older toggle text becomes a block inside the toggle; the private database and page show only that they are restricted; the button is a control, not content
+  assert.deepEqual(shared.map((block) => block.type), ['HEADING_3', 'TOGGLE', 'PARAGRAPH', 'RESTRICTED', 'RESTRICTED']);
+  assert.equal(shared[1].level, 2); assert.equal(shared[2].text, 'Hidden detail'); assert.equal(shared[2].indent, 1);
+  assert.equal(JSON.stringify(shared).includes('"x"') || JSON.stringify(shared).includes('"y"'), false, 'no ids of private records reach a reader');
 });
 
 test('toggle content is searchable, and workspace-only blocks are never live text sessions', () => {

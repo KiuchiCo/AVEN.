@@ -928,3 +928,30 @@ button:hover > .block-icon, button.is-active > .block-icon, button[aria-selected
 /* Half-width blocks stack whenever the page itself is narrow (a phone, or a tablet with the side panel open), not only when the window is. */
 .document-studio__paper { container-type: inline-size; }
 @container (max-width: 600px) { .aven-doc .aven-block[data-span="half"] { display: flex; width: 100%; margin-right: 0; } }
+/* Sharing and export */
+.share-panel h2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.share-panel__badge { padding: 3px 10px; border: 1px solid rgb(164 135 102 / 45%); border-radius: 999px; background: var(--m-active); color: var(--m-ink); font: 600 11px var(--aven-interface-font); letter-spacing: .04em; text-transform: uppercase; }
+.share-panel__switch, .share-panel__check { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0; cursor: pointer; }
+.share-panel__switch input, .share-panel__check input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--m-focus); flex: none; }
+.share-panel__switch span, .share-panel__check span { display: grid; gap: 2px; } .share-panel small { color: var(--m-muted); font-size: 12px; line-height: 1.45; }
+.share-panel__note { margin: 8px 0; color: var(--m-muted); font-size: 12.5px; } .share-panel__fineprint { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--m-border); color: var(--m-muted); font-size: 12px; line-height: 1.5; }
+.share-panel__facts { display: grid; gap: 4px; margin: 10px 0; font-size: 12.5px; } .share-panel__facts div { display: flex; gap: 8px; justify-content: space-between; } .share-panel__facts dt { color: var(--m-muted); } .share-panel__facts dd { margin: 0; text-align: right; }
+.share-panel__options { border: 0; margin: 0; padding: 0; min-width: 0; } .share-panel__row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 10px 0; font-size: 13px; }
+.share-panel__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; } .share-panel__actions .is-danger { color: #9a3b2f; }
+.share-panel button, .share-panel select { min-height: 32px; }
+.document-export { position: relative; } .document-export summary { display: inline-flex; align-items: center; min-height: var(--ds-control-h); padding: 0 14px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-card); cursor: pointer; font: 600 13px var(--aven-interface-font); list-style: none; color: var(--m-ink); }
+.document-export summary::-webkit-details-marker { display: none; } .document-export summary:hover { background: var(--m-chip); }
+.document-export .rd-menu__list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 220px; display: grid; padding: 6px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-card-solid); box-shadow: var(--m-shadow); }
+.document-export .rd-menu__list button { min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--ds-radius-sm); background: transparent; text-align: left; cursor: pointer; font: 14px var(--aven-interface-font); color: var(--m-ink); } .document-export .rd-menu__list button:hover:not(:disabled) { background: var(--m-chip); } .document-export .rd-menu__list button:disabled { opacity: .5; cursor: default; }
+@media print { .document-studio__toolbar, .document-studio__sidebar, .document-studio__crumb, .aven-handle, .aven-popover, .aven-find-bar { display: none !important; } }
+/* The page a shared link opens */
+.shared-doc__block { min-width: 0; }
+.shared-doc__actions { display: flex; flex-wrap: wrap; gap: 8px; margin: -8px 0 24px; }
+.shared-doc__action { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border: 1px solid var(--aven-border); border-radius: 999px; background: var(--aven-paper, #fff); color: var(--aven-charcoal); font: 600 13px var(--aven-interface-font, inherit); text-decoration: none; cursor: pointer; }
+.shared-doc__action:hover { background: var(--aven-sand); }
+.shared-doc__restricted { color: var(--aven-muted); font-size: 14px; padding: 10px 14px; border: 1px dashed var(--aven-border); border-radius: 10px; }
+.shared-doc__tab { margin: 18px 0 4px; font: 600 15px var(--aven-interface-font, inherit); color: var(--aven-umber, var(--aven-charcoal)); text-transform: none; }
+.shared-doc__meeting h3 { margin-top: 24px; }
+.shared-doc__toc { display: grid; gap: 4px; margin: 14px 0; padding: 12px 14px; border-radius: 12px; background: var(--aven-sand); font-size: 14px; } .shared-doc__toc a { color: inherit; }
+.shared-doc__item > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+@media print { .shared-doc__actions, .shared-doc > header { display: none !important; } .shared-doc { max-width: none; padding: 0; } .shared-doc--noprint > * { display: none !important; } .shared-doc--noprint::before { content: 'Printing is turned off for this link.'; display: block; padding: 40px; font: 16px sans-serif; } }

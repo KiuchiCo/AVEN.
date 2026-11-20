@@ -1,0 +1,5 @@
+ALTER TABLE "document_shares"
+  ADD COLUMN "accessLevel" VARCHAR(16) NOT NULL DEFAULT 'VIEW',
+  ADD COLUMN "allowDownload" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN "allowPrint" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN "includeEmbeds" BOOLEAN NOT NULL DEFAULT false;

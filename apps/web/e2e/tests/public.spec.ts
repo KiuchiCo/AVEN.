@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const apiPort = process.env.E2E_API_PORT ?? '4100';
 const apiBase = `http://127.0.0.1:${apiPort}/api/v1`;
-const token = (name: 'ACTIVE' | 'REVOKED' | 'EXPIRED') => process.env[`E2E_TOKEN_${name}`]!;
+const token = (name: 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'DOWNLOAD') => process.env[`E2E_TOKEN_${name}`]!;
 const unavailable = 'This link is no longer available';
 
 test.describe('a shared document link', () => {
@@ -56,12 +56,34 @@ test.describe('a shared document link', () => {
   });
 });
 
+test.describe('what a link allows', () => {
+  test('private links show as restricted, and there is nothing to download unless the owner allowed it', async ({ page }) => {
+    await page.goto(`/shared/${token('ACTIVE')}`);
+    await expect(page.getByText('A database that is not shared with you')).toBeVisible();
+    await expect(page.getByText('A linked page that is not shared with you')).toBeVisible();
+    await expect(page.getByRole('link', { name: /Download/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Print' })).toBeVisible();
+  });
+
+  test('when downloads are allowed the buttons give real PDF and Word files; otherwise the server refuses', async ({ page, request }) => {
+    await page.goto(`/shared/${token('DOWNLOAD')}`);
+    await expect(page.getByRole('link', { name: 'Download PDF' })).toBeVisible(); await expect(page.getByRole('link', { name: 'Download Word' })).toBeVisible();
+    const pdfUrl = await page.getByRole('link', { name: 'Download PDF' }).getAttribute('href');
+    const pdf = await request.get(pdfUrl!); expect(pdf.status()).toBe(200); expect(pdf.headers()['content-type']).toBe('application/pdf');
+    expect(pdf.headers()['content-disposition']).toContain('AVEN - Launch plan.pdf'); expect((await pdf.body()).subarray(0, 5).toString()).toBe('%PDF-');
+    const word = await request.get(`${apiBase}/shared/documents/${token('DOWNLOAD')}/export?format=docx`); expect(word.status()).toBe(200); expect((await word.body()).subarray(0, 2).toString()).toBe('PK');
+    expect((await request.get(`${apiBase}/shared/documents/${token('ACTIVE')}/export?format=pdf`)).status()).toBe(403);
+    expect((await request.get(`${apiBase}/shared/documents/${token('REVOKED')}/export?format=pdf`)).status()).toBe(404);
+  });
+});
+
 test.describe('the public API behind it', () => {
   test('returns only what a reader needs, and counts the view', async ({ request }) => {
     const response = await request.get(`${apiBase}/shared/documents/${token('ACTIVE')}`);
     expect(response.status()).toBe(200);
     const body = await response.json();
-    expect(Object.keys(body).sort()).toEqual(['blocks', 'title', 'updatedAt']);
+    expect(Object.keys(body).sort()).toEqual(['allowDownload', 'allowPrint', 'blocks', 'title', 'updatedAt']);
+    expect(body.allowDownload).toBe(false);
     expect(body.title).toBe('Launch plan'); expect(body.blocks.length).toBeGreaterThan(5);
     expect(JSON.stringify(body)).not.toMatch(/workspaceId|documentId|createdBy|tokenHash/);
   });

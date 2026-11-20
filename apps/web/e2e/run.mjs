@@ -37,16 +37,18 @@ try {
     { id: 'c', type: 'BULLET', text: 'First bullet' }, { id: 'd', type: 'NUMBERED', text: 'Step one' }, { id: 'e', type: 'NUMBERED', text: 'Step two' },
     { id: 'f', type: 'TODO', text: 'Ship it', checked: true }, { id: 'g', type: 'TABLE', text: '', rows: [['Owner', 'Due', 'A very long cell value that should never push the page wider than a phone screen can show on its own'], ['Ana', 'Friday', 'ok']] },
     { id: 'h', type: 'PARAGRAPH', text: '<img src=x onerror="window.__pwned=1"> <script>window.__pwned=1</script>' },
+    { id: 'i', type: 'DATABASE', databaseId: randomUUID(), view: 'TABLE' }, { id: 'j', type: 'PAGE_LINK', docId: randomUUID() },
   ];
   await db.query(`INSERT INTO users (id, email, "displayName", "updatedAt") VALUES ($1, $2, 'E2E Owner', now())`, [ids.user, `e2e-${randomBytes(3).toString('hex')}@example.test`]);
   await db.query(`INSERT INTO workspaces (id, name, "createdById", "updatedAt") VALUES ($1, 'E2E workspace', $2, now())`, [ids.workspace, ids.user]);
+  await db.query(`INSERT INTO workspace_members (id, "workspaceId", "userId", role, "updatedAt") VALUES (gen_random_uuid(), $1, $2, 'OWNER', now())`, [ids.workspace, ids.user]);
   await db.query(`INSERT INTO documents (id, "workspaceId", title, content, "updatedAt") VALUES ($1, $2, 'Launch plan', $3, now())`, [ids.document, ids.workspace, JSON.stringify({ format: 'aven-doc-v1', blocks })]);
-  const tokens = { active: randomBytes(24).toString('base64url'), revoked: randomBytes(24).toString('base64url'), expired: randomBytes(24).toString('base64url') };
-  const share = (token, revokedAt, expiresAt) => db.query(`INSERT INTO document_shares (id, "workspaceId", "documentId", "createdById", "tokenHash", "revokedAt", "expiresAt") VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)`, [ids.workspace, ids.document, ids.user, createHash('sha256').update(token).digest('hex'), revokedAt, expiresAt]);
-  await share(tokens.active, null, null); await share(tokens.revoked, new Date(), null); await share(tokens.expired, null, new Date(Date.now() - 86_400_000));
+  const tokens = { active: randomBytes(24).toString('base64url'), revoked: randomBytes(24).toString('base64url'), expired: randomBytes(24).toString('base64url'), download: randomBytes(24).toString('base64url') };
+  const share = (token, revokedAt, expiresAt, allowDownload = false) => db.query(`INSERT INTO document_shares (id, "workspaceId", "documentId", "createdById", "tokenHash", "revokedAt", "expiresAt", "allowDownload") VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)`, [ids.workspace, ids.document, ids.user, createHash('sha256').update(token).digest('hex'), revokedAt, expiresAt, allowDownload]);
+  await share(tokens.active, null, null); await share(tokens.download, null, null, true); await share(tokens.revoked, new Date(), null); await share(tokens.expired, null, new Date(Date.now() - 86_400_000));
   await db.end();
 
-  const shared = { ...process.env, E2E_API_PORT: String(ports.api), E2E_WEB_PORT: String(ports.web), E2E_DATABASE_URL: e2eUrl, E2E_TOKEN_ACTIVE: tokens.active, E2E_TOKEN_REVOKED: tokens.revoked, E2E_TOKEN_EXPIRED: tokens.expired, E2E_CLERK_PUBLISHABLE_KEY: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '', E2E_CLERK_SECRET_KEY: env.CLERK_SECRET_KEY ?? '' };
+  const shared = { ...process.env, E2E_API_PORT: String(ports.api), E2E_WEB_PORT: String(ports.web), E2E_DATABASE_URL: e2eUrl, E2E_TOKEN_ACTIVE: tokens.active, E2E_TOKEN_REVOKED: tokens.revoked, E2E_TOKEN_EXPIRED: tokens.expired, E2E_TOKEN_DOWNLOAD: tokens.download, E2E_CLERK_PUBLISHABLE_KEY: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '', E2E_CLERK_SECRET_KEY: env.CLERK_SECRET_KEY ?? '' };
   const result = spawnSync('npx', ['playwright', 'test', '--config', 'e2e/playwright.config.ts', ...process.argv.slice(2)], { cwd: webDir, env: shared, stdio: 'inherit' });
   status = result.status ?? 1;
 } catch (error) { console.error(error instanceof Error ? error.message : error); } finally {
