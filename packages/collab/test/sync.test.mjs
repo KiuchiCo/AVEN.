@@ -99,3 +99,16 @@ test('nobody\u2019s typing is lost: markers typed at once by several people all 
     assert.equal(server.text.replace(/<\d>/g, ''), 'one two three four five six');
   }
 });
+
+test('a caret reported against an older revision is moved past the edits accepted since', () => {
+  const server = new SyncDocument('hello world');
+  server.receive(0, ['Oh, ', 11]);           // "Oh, hello world"
+  server.receive(1, [9, ' big', 6]);         // "Oh, hello big world"
+  assert.equal(server.rebase(6, 0), 14, 'just before "world": shifted by both inserts');
+  assert.equal(server.rebase(0, 0), 0, 'a caret at the very start stays in front of text inserted there');
+  assert.equal(server.rebase(8, 1), 8, 'in front of the second insert');
+  assert.equal(server.rebase(12, 1), 16, 'after the second insert');
+  assert.equal(server.rebase(5, 2), 5, 'already current');
+  assert.equal(server.rebase(5, 3), null, 'a revision the server has not reached');
+  server.forgetBefore(1); assert.equal(server.rebase(0, 0), null, 'a revision that is no longer kept');
+});

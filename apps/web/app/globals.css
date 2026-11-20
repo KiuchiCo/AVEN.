@@ -2689,6 +2689,9 @@ body {
 .document-block { position:relative; padding:8px 0; }
 .document-block--others { box-shadow:-3px 0 0 var(--presence, #A48766); padding-left:10px; margin-left:-13px; }
 .document-block__presence { position:absolute; top:-6px; right:0; padding:1px 9px; border-radius:999px; background:var(--presence, #A48766); color:#fff; font-size:11px; line-height:1.6; pointer-events:none; }
+.document-block__carets { position:absolute; inset:0; pointer-events:none; }
+.document-block__caret { position:absolute; width:2px; border-radius:1px; }
+.document-block__caret-name { position:absolute; bottom:100%; left:0; padding:0 5px; border-radius:3px 3px 3px 0; color:#fff; font-size:10px; line-height:15px; white-space:nowrap; }
 .document-block__controls { display:flex; align-items:center; gap:4px; min-height:25px; opacity:0; transition:opacity 120ms ease; }
 .document-block:hover .document-block__controls, .document-block:focus-within .document-block__controls { opacity:1; }
 .document-block__controls > span { margin-right:auto; color:var(--h-988b7b); font-size:9px; text-transform:uppercase; letter-spacing:.08em; }

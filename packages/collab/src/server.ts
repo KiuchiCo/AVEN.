@@ -1,4 +1,4 @@
-import { apply, baseLength, transform, type Operation } from './operation.ts';
+import { apply, baseLength, transform, transformPosition, type Operation } from './operation.ts';
 
 /**
  * The authoritative copy of one shared text. Every edit is written against some revision; if others were accepted since, the edit is
@@ -31,6 +31,17 @@ export class SyncDocument {
     this.text = apply(current, this.text); // throws if it still does not fit
     this.history.push(current);
     return { operation: current, revision: this.revision };
+  }
+
+  /**
+   * Where a position given in the text as it was at `fromRevision` sits now, or null when that revision is no longer kept (or not
+   * reached yet). For carets: a person reports where their caret is in the text they last saw.
+   */
+  rebase(position: number, fromRevision: number): number | null {
+    if (!Number.isInteger(fromRevision) || fromRevision > this.revision || fromRevision < this.first) return null;
+    let moved = position;
+    for (let index = fromRevision - this.first; index < this.history.length; index += 1) moved = transformPosition(this.history[index], moved);
+    return moved;
   }
 
   /** Forgets edits older than `revision` (when every connected client has moved past it). Later edits written against older ones are refused. */

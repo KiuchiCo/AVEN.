@@ -56,6 +56,27 @@ export class TextSessions implements OnModuleDestroy {
   }
 
   /**
+   * Shares where someone's caret is. They give positions in the text as of the revision they last saw; those are moved forward to the
+   * current text and published in order with the text events, so everyone can place the caret exactly. Ignored when nothing is live for the block.
+   */
+  async cursor(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, blockId: string, body: unknown) {
+    const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
+    const input = (body && typeof body === 'object' ? body : {}) as { revision?: unknown; start?: unknown; end?: unknown; clientId?: unknown };
+    const clientId = input.clientId === undefined || input.clientId === null ? null : typeof input.clientId === 'string' && /^[\w-]{1,64}$/.test(input.clientId) ? input.clientId : this.reject('clientId must be a short identifier.');
+    const id = this.blockId(blockId);
+    const session = this.sessions.get(documentId)?.get(id);
+    const by = { id: userId, name: this.events.viewers(documentId).find((viewer) => viewer.id === userId)?.name ?? 'Someone' };
+    if (input.start === null) { if (session) this.events.publish(documentId, { type: 'cursor', blockId: id, revision: session.doc.revision, start: null, end: null, by, clientId }); return; }
+    const whole = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0;
+    if (!whole(input.revision) || !whole(input.start) || !whole(input.end) || input.end < input.start) throw new BadRequestException('revision, start and end must be whole numbers with start not after end.');
+    if (!session) return;
+    const [start, end] = [session.doc.rebase(input.start, input.revision), session.doc.rebase(input.end, input.revision)];
+    if (start === null || end === null) return; // too old to place: the next report will do
+    const length = session.doc.text.length;
+    this.events.publish(documentId, { type: 'cursor', blockId: id, revision: session.doc.revision, start: Math.min(start, length), end: Math.min(end, length), by, clientId });
+  }
+
+  /**
    * Retires an edit source: from now on the server accepts nothing more from it. A client that lost track of whether its last edit
    * arrived calls this before it re-reads the text, so the text it reads is final and it can safely send its edit again if needed.
    */

@@ -78,6 +78,29 @@ describe('live text sessions', { skip }, () => {
     assert.equal((await t.call('liv', 'GET', `${path()}/text/${P}`)).body.text, 'hello big world!', 'nothing refused changed the text');
   });
 
+  test('carets are shared in order with the text, moved forward from the revision they were reported against', async () => {
+    const feed = await listen(t, 'max', `${path()}/stream`); await until(() => feed.events.some((e) => e.type === 'presence'));
+    const now = (await t.call('liv', 'GET', `${path()}/text/${P}`)).body;
+    await t.call('liv', 'POST', `${path()}/text/${P}/ops`, { revision: now.revision, operation: ['>> ', now.text.length], clientId: 'tab-c' });
+    // Max looked at the text one revision ago and put his caret at 5; Liv has since added three characters at the start.
+    assert.equal((await t.call('max', 'POST', `${path()}/text/${P}/cursor`, { revision: now.revision, start: 5, end: 8, clientId: 'tab-m' })).status, 204);
+    await until(() => feed.events.some((e) => e.type === 'cursor'), 'the cursor event');
+    const seen = feed.events.filter((e) => e.type === 'text' || e.type === 'cursor');
+    const cursor = seen.find((e) => e.type === 'cursor');
+    assert.deepEqual({ blockId: cursor.blockId, start: cursor.start, end: cursor.end, by: cursor.by.name, clientId: cursor.clientId, revision: cursor.revision }, { blockId: P, start: 8, end: 11, by: 'max', clientId: 'tab-m', revision: now.revision + 1 });
+    assert.ok(seen.indexOf(cursor) > seen.findIndex((e) => e.type === 'text' && e.revision === now.revision + 1), 'the text event comes first');
+    assert.equal((await t.call('max', 'POST', `${path()}/text/${P}/cursor`, { start: null })).status, 204);
+    await until(() => feed.events.filter((e) => e.type === 'cursor').length === 2, 'the clear');
+    assert.equal(feed.events.filter((e) => e.type === 'cursor')[1].start, null);
+    for (const body of [{ revision: now.revision, start: -1, end: 2 }, { revision: now.revision, start: 4, end: 2 }, { revision: 'x', start: 1, end: 2 }, { start: 1, end: 2 }, { revision: 0, start: 1, end: 2, clientId: '<x>' }]) assert.equal((await t.call('max', 'POST', `${path()}/text/${P}/cursor`, body)).status, 400, JSON.stringify(body));
+    assert.equal((await t.call('max', 'POST', `${path()}/text/${P}/cursor`, { revision: 999999, start: 1, end: 2 })).status, 204, 'a revision that cannot be placed is ignored, not an error');
+    const count = feed.events.length; await t.call('max', 'POST', `${path()}/text/nope/cursor`, { revision: 0, start: 1, end: 2 }); await new Promise((r) => setTimeout(r, 120)); assert.equal(feed.events.length, count, 'nothing live for that block');
+    assert.equal((await t.call('gia', 'POST', `${path()}/text/${P}/cursor`, { revision: 0, start: 1, end: 1 })).status, 403, 'guests are watchers');
+    assert.equal((await t.call('out', 'POST', `${path()}/text/${P}/cursor`, { revision: 0, start: 1, end: 1 })).status, 404);
+    assert.equal((await t.call(null, 'POST', `${path()}/text/${P}/cursor`, {})).status, 401);
+    feed.close();
+  });
+
   test('a retired edit source is refused from then on, and fencing is for members who can edit', async () => {
     const fence = (who, body, blockId = P) => t.call(who, 'POST', `${path()}/text/${blockId}/fence`, body);
     const rev = (await t.call('liv', 'GET', `${path()}/text/${P}`)).body;

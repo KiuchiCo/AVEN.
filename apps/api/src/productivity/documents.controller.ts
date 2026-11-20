@@ -55,6 +55,19 @@ export class DocumentsController {
     return this.textSessions.receive(identity, workspaceId, documentId, blockId, body);
   }
 
+  /** Shares the caret position in a block's text with the others who have the document open. */
+  @Post(':documentId/text/:blockId/cursor')
+  @HttpCode(204)
+  async shareCursor(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Param('blockId') blockId: string,
+    @Body() body: unknown,
+  ) {
+    await this.textSessions.cursor(identity, workspaceId, documentId, blockId, body);
+  }
+
   /** Retires an edit source so nothing more is accepted from it; used before a client re-reads a block after losing track of its last edit. */
   @Post(':documentId/text/:blockId/fence')
   @HttpCode(204)

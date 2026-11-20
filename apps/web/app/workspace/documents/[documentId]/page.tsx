@@ -14,7 +14,8 @@ import { FavouriteStar } from '../../favourites';
 import { readEvents } from '../../messages/sse';
 import { transformPosition } from '@aven/collab';
 import { mergeBlocks, moveCaret, reconcileDraft } from './block-merge';
-import { LiveTextEngine, type TextEvent } from './live-text';
+import { LiveTextEngine, type CursorEvent, type RemoteCursor, type TextEvent } from './live-text';
+import { caretPosition } from './caret-position';
 import { draftKey, readDraft, removeDraft, writeDraft } from './offline-draft';
 
 type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER' | 'TABLE' | 'IMAGE';
@@ -41,11 +42,39 @@ function parseBlocks(content: string): Block[] {
 }
 const presenceColours = ['#A48766', '#6B5746', '#6F8A62', '#5F7399', '#9A5C68'];
 /** Each person gets the same colour for as long as they are in the document, whoever else is there. */
+function presenceColour(id: string) { let hash = 0; for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0; return presenceColours[hash % presenceColours.length]; }
 function blockColour(others: { id: string; blockId: string | null }[], blockId: string): React.CSSProperties | undefined {
   const viewer = others.find((candidate) => candidate.blockId === blockId);
-  if (!viewer) return undefined;
-  let hash = 0; for (const char of viewer.id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return { '--presence': presenceColours[hash % presenceColours.length] } as React.CSSProperties;
+  return viewer ? ({ '--presence': presenceColour(viewer.id) } as React.CSSProperties) : undefined;
+}
+
+/** Draws other people's carets over a block's text box. It works on the page directly because the positions come from measuring the rendered text. */
+function CaretLayer({ blockId, cursors, text }: { blockId: string; cursors: RemoteCursor[]; text: string }) {
+  const layer = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const resized = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', resized);
+    return () => window.removeEventListener('resize', resized);
+  }, []);
+  useLayoutEffect(() => {
+    const host = layer.current;
+    if (!host) return;
+    host.replaceChildren();
+    const field = globalThis.document.getElementById(`block-${blockId}`);
+    if (!(field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement)) return;
+    for (const cursor of cursors) {
+      const spot = caretPosition(field, Math.min(cursor.end, field.value.length));
+      const colour = presenceColour(cursor.userId);
+      const caret = globalThis.document.createElement('span');
+      caret.className = 'document-block__caret';
+      Object.assign(caret.style, { left: `${field.offsetLeft + spot.left}px`, top: `${field.offsetTop + spot.top}px`, height: `${spot.height}px`, background: colour });
+      const label = globalThis.document.createElement('span');
+      label.className = 'document-block__caret-name'; label.textContent = cursor.name; label.style.background = colour;
+      caret.appendChild(label); host.appendChild(caret);
+    }
+  }, [blockId, cursors, text, width]);
+  return <div ref={layer} className="document-block__carets" aria-hidden="true" />;
 }
 function encodeBlocks(blocks: Block[]) { return JSON.stringify({ format: 'aven-doc-v1', blocks }); }
 
@@ -72,6 +101,7 @@ export default function DocumentEditorPage() {
   const [conflict, setConflict] = useState<Document | null>(null);
   const [offline, setOffline] = useState(false);
   const [liveBusy, setLiveBusy] = useState(false);
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor[]>>({});
   const liveEngine = useRef<LiveTextEngine | null>(null);
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE'>('OUTLINE');
   const [viewers, setViewers] = useState<{ id: string; name: string; blockId: string | null }[]>([]);
@@ -108,6 +138,18 @@ export default function DocumentEditorPage() {
     }, 250);
   }, [documentId, request, workspace.id]);
   useEffect(() => { const state = announced.current; return () => window.clearTimeout(state.timer); }, []);
+
+  // Share where my caret is (after a short pause, so typing doesn't flood the connection) and clear it when I leave a block.
+  useEffect(() => {
+    let timer: number | undefined;
+    const field = () => { const active = globalThis.document.activeElement; return (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) && active.id.startsWith('block-') ? active : null; };
+    const report = () => { const active = field(); if (active && active.selectionStart !== null && active.selectionEnd !== null) liveEngine.current?.reportCursor(active.id.slice('block-'.length), active.selectionStart, active.selectionEnd); };
+    const moved = () => { window.clearTimeout(timer); timer = window.setTimeout(report, 250); };
+    const left = (event: FocusEvent) => { const target = event.target; if ((target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) && target.id.startsWith('block-')) { window.clearTimeout(timer); liveEngine.current?.reportCursor(target.id.slice('block-'.length), null, null); } };
+    globalThis.document.addEventListener('selectionchange', moved);
+    globalThis.document.addEventListener('focusout', left);
+    return () => { window.clearTimeout(timer); globalThis.document.removeEventListener('selectionchange', moved); globalThis.document.removeEventListener('focusout', left); };
+  }, []);
 
   const reloadCollaboration = useCallback(async () => {
     const [history, threads] = await Promise.all([
@@ -149,6 +191,7 @@ export default function DocumentEditorPage() {
     const engine = new LiveTextEngine(crypto.randomUUID(), {
       get: (blockId) => latest.current.request(`/workspaces/${workspace.id}/documents/${documentId}/text/${blockId}`) as Promise<{ text: string; revision: number }>,
       post: async (blockId, body) => { await latest.current.request(`/workspaces/${workspace.id}/documents/${documentId}/text/${blockId}/ops`, { method: 'POST', body: JSON.stringify(body) }); },
+      cursor: async (blockId, body) => { await latest.current.request(`/workspaces/${workspace.id}/documents/${documentId}/text/${blockId}/cursor`, { method: 'POST', body: JSON.stringify(body) }); },
       fence: async (blockId, clientId) => { await latest.current.request(`/workspaces/${workspace.id}/documents/${documentId}/text/${blockId}/fence`, { method: 'POST', body: JSON.stringify({ clientId }) }); },
     }, {
       readText: (blockId) => live.current.blocks.find((block) => block.id === blockId)?.text,
@@ -160,6 +203,7 @@ export default function DocumentEditorPage() {
         setBlocks((current) => current.map((block) => (block.id === blockId ? { ...block, text } : block)));
       },
       changed: () => setLiveBusy(engine.unsettled),
+      cursors: (blockId, list) => setRemoteCursors((current) => (list.length || current[blockId]?.length ? { ...current, [blockId]: list } : current)),
       reset: () => setSuccess(latest.current.t('ed.liveReset')),
     });
     liveEngine.current = engine;
@@ -203,9 +247,10 @@ export default function DocumentEditorPage() {
           const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
           if (!response.ok || !response.body) return;
           if (attempt > 0) liveEngine.current?.resyncAll(); // events may have been missed while the connection was down
-          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string } } | ({ type: 'text' } & TextEvent)>(response.body)) {
-            if (event.type === 'presence') setViewers(event.viewers);
+          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string } } | ({ type: 'text' } & TextEvent) | ({ type: 'cursor' } & CursorEvent)>(response.body)) {
+            if (event.type === 'presence') { setViewers(event.viewers); liveEngine.current?.keepCursorsOf(new Set(event.viewers.map((viewer) => viewer.id))); }
             else if (event.type === 'text') liveEngine.current?.handle(event);
+            else if (event.type === 'cursor') liveEngine.current?.handleCursor(event);
             else void sync(event.by.id === user.id ? t('ed.anotherTab') : event.by.name).catch(() => undefined);
           }
         } catch { if (abort.signal.aborted) return; }
@@ -406,6 +451,7 @@ export default function DocumentEditorPage() {
             {others.filter((viewer) => viewer.blockId === block.id).length > 0 && <span className="document-block__presence" role="status">{t('ed.editingHere', { names: others.filter((viewer) => viewer.blockId === block.id).map((viewer) => viewer.name).join(', ') })}</span>}
             <div className="document-block__controls"><select aria-label={t('ed.blockTypeFor', { n: index + 1 })} value={block.type} onChange={(event) => changeBlock(block.id, { type: event.target.value as BlockType })}>{blockTypes.map((option) => <option value={option.type} key={option.type}>{t(option.label)}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label={t('ed.moveUp')}>↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label={t('ed.moveDown')}>↓</button><button type="button" onClick={() => removeBlock(block.id)} aria-label={t('ed.deleteBlock')}>×</button></div>
             {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label={t('ed.markTodo')} />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span><textarea id={`block-${block.id}`} value={block.text} onChange={(event) => changeBlock(block.id, { text: event.target.value })} placeholder={block.type === 'CODE' ? t('ed.phCode') : block.type === 'CALLOUT' ? t('ed.phCallout') : t('ed.phText')} aria-label={t('ed.blockLabel', { type: (() => { const found = blockTypes.find((option) => option.type === block.type); return found ? t(found.label) : t('ed.text'); })(), n: index + 1 })} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}
+            <CaretLayer blockId={block.id} cursors={remoteCursors[block.id] ?? []} text={block.text} />
             <div className="document-block__actions">{block.type === 'TODO' && block.text.trim() && <button type="button" disabled={creatingTask === block.id} onClick={() => void createTaskFromBlock(block)}>{creatingTask === block.id ? t('ed.creating') : t('ed.createTask')}</button>}<button className="document-block__insert" type="button" onClick={() => insertBlock(block.id)}>{t('ed.addBelow')}</button></div>
           </section>)}</div>
         </main>
