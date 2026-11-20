@@ -9,6 +9,8 @@ import { AttachmentsPanel } from '../../files/attachments-panel';
 import { ImageBlock, TableBlock } from './document-blocks';
 import { SharePanel } from './share-panel';
 import { FavouriteStar } from '../../favourites';
+import { readEvents } from '../../messages/sse';
+import { mergeBlocks } from './block-merge';
 
 type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER' | 'TABLE' | 'IMAGE';
 type Block = { id: string; type: BlockType; text: string; checked?: boolean; rows?: string[][]; fileId?: string };
@@ -37,7 +39,7 @@ function encodeBlocks(blocks: Block[]) { return JSON.stringify({ format: 'aven-d
 export default function DocumentEditorPage() {
   const { documentId } = useParams<{ documentId: string }>();
   const { getToken } = useAuth();
-  const { workspace } = useWorkspaceSession();
+  const { workspace, user } = useWorkspaceSession();
   const [document, setDocument] = useState<Document | null>(null);
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -55,7 +57,10 @@ export default function DocumentEditorPage() {
   const [success, setSuccess] = useState('');
   const [conflict, setConflict] = useState<Document | null>(null);
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE'>('OUTLINE');
+  const [viewers, setViewers] = useState<{ id: string; name: string }[]>([]);
   const revision = useRef(0);
+  const live = useRef<{ document: Document | null; blocks: Block[]; title: string; dirty: boolean; saving: boolean }>({ document: null, blocks: [], title: '', dirty: false, saving: false });
+  useEffect(() => { live.current = { document, blocks, title, dirty, saving }; });
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -76,6 +81,50 @@ export default function DocumentEditorPage() {
     ]);
     setVersions(history); setComments(threads);
   }, [documentId, request, workspace.id]);
+
+  /**
+   * Brings in a newer saved copy. With nothing unsaved it simply replaces what is on screen. With unsaved edits it merges
+   * block by block, so changes to different blocks both survive; if both of us changed the same block it returns 'conflict'
+   * and leaves everything as it is for the person to choose.
+   */
+  const applyRemote = useCallback((latest: Document, who: string): 'same' | 'applied' | 'merged' | 'conflict' => {
+    const mine = live.current;
+    if (!mine.document || latest.updatedAt === mine.document.updatedAt) return 'same';
+    if (!mine.dirty) {
+      setDocument(latest); setTitle(latest.title); setBlocks(parseBlocks(latest.content)); revision.current += 1; setSuccess(`${who} updated this document.`);
+      return 'applied';
+    }
+    const { blocks: merged, conflicts } = mergeBlocks(parseBlocks(mine.document.content), mine.blocks, parseBlocks(latest.content));
+    if (conflicts.length) return 'conflict';
+    setDocument(latest); setBlocks(merged); if (mine.title === mine.document.title) setTitle(latest.title);
+    revision.current += 1; setSuccess(`${who}’s changes were merged with yours.`);
+    return 'merged';
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const abort = new AbortController(); let timer: number | undefined;
+    const sync = async (who: string, attempt = 0): Promise<void> => {
+      if (live.current.saving && attempt < 6) { timer = window.setTimeout(() => { void sync(who, attempt + 1); }, 700); return; }
+      const latest = await request(`/workspaces/${workspace.id}/documents/${documentId}`) as Document;
+      if (applyRemote(latest, who) === 'conflict') setConflict(latest);
+    };
+    void (async () => {
+      for (let attempt = 0; attempt < 6 && !abort.signal.aborted; attempt += 1) {
+        try {
+          const token = await getToken();
+          const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
+          if (!response.ok || !response.body) return;
+          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string } }>(response.body)) {
+            if (event.type === 'presence') setViewers(event.viewers);
+            else void sync(event.by.id === user.id ? 'Another tab' : event.by.name).catch(() => undefined);
+          }
+        } catch { if (abort.signal.aborted) return; }
+        await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
+      }
+    })();
+    return () => { abort.abort(); window.clearTimeout(timer); };
+  }, [applyRemote, documentId, getToken, hydrated, request, user.id, workspace.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,12 +155,12 @@ export default function DocumentEditorPage() {
       }
       return false;
     } catch (reason) {
-      if (reason instanceof ConflictError) setConflict(reason.current);
+      if (reason instanceof ConflictError) { if (applyRemote(reason.current, 'Someone') === 'conflict') setConflict(reason.current); }
       else setError(reason instanceof Error ? reason.message : 'Autosave failed.');
       return false;
     }
     finally { setSaving(false); }
-  }, [blocks, dirty, document, request, saving, title, workspace.id]);
+  }, [applyRemote, blocks, dirty, document, request, saving, title, workspace.id]);
 
   useEffect(() => {
     if (!hydrated || !dirty || saving || error || conflict) return;
@@ -194,6 +243,7 @@ export default function DocumentEditorPage() {
 
   return <div className="workspace-section-page document-studio">
     <div className="document-studio__crumb"><Link href="/workspace/documents">Documents</Link><span>›</span><span>{document?.project?.name ?? workspace.name}</span><span>›</span><strong>{document?.title ?? 'Document'}</strong><span className="document-studio__save-state">{saving ? 'Saving…' : dirty ? 'Unsaved changes' : success || 'All changes saved'}</span></div>
+    {viewers.filter((viewer) => viewer.id !== user.id).length > 0 && <p className="document-presence" role="status">Also here: {viewers.filter((viewer) => viewer.id !== user.id).map((viewer) => viewer.name).join(', ')}</p>}
     {conflict && <div className="productivity-error document-conflict" role="alertdialog" aria-labelledby="document-conflict-title">
       <strong id="document-conflict-title">Someone else saved this document while you were editing.</strong>
       <p>Autosave is paused so nothing is overwritten. Your unsaved changes are still on this page.</p>

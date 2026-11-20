@@ -23,12 +23,13 @@ import { WorkflowTriggersService } from '../workflows/workflow-triggers.service.
 import { EmailModule } from '../email/email.module.js';
 import { DashboardController } from './dashboard.controller.js';
 import { DashboardService } from './dashboard.service.js';
+import { DocumentEvents } from './document-events.js';
 import { TaskCollaborationModule } from './task-collaboration/task-collaboration.module.js';
 
 @Module({
   imports: [TaskCollaborationModule, EmailModule],
   controllers: [ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController, IntelligenceController, InvitationsController, KnowledgeController, AutomationsController, DashboardController],
-  providers: [ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, KnowledgeService, AutomationsService, DashboardService, WorkflowTriggersService, ClerkAuthGuard],
+  providers: [DocumentEvents, ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, KnowledgeService, AutomationsService, DashboardService, WorkflowTriggersService, ClerkAuthGuard],
   exports: [ProductivityService, IntelligenceService, WorkflowTriggersService],
 })
 export class ProductivityModule {}

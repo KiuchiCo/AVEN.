@@ -24,3 +24,21 @@ test('a conflict is a 409 that carries the current document through the error fi
   assert.deepEqual(out.body.current, current);
   assert.match(out.body.message, /changed by someone else/);
 });
+
+import { DocumentEvents } from '../dist/productivity/document-events.js';
+test('document events: presence is per person, saves reach everyone, and connections are capped', () => {
+  const events = new DocumentEvents(); const a = []; const b = [];
+  const leaveA = events.subscribe('d1', { id: 'u1', name: 'Ann' }, (e) => a.push(e));
+  const leaveB = events.subscribe('d1', { id: 'u2', name: 'Bob' }, (e) => b.push(e));
+  const second = events.subscribe('d1', { id: 'u2', name: 'Bob' }, () => {});
+  assert.deepEqual(events.viewers('d1').map((v) => v.name), ['Ann', 'Bob'], 'two tabs are one person');
+  events.publish('d1', { type: 'saved', updatedAt: 'x', by: { id: 'u1', name: 'Ann' } });
+  events.publish('d2', { type: 'saved', updatedAt: 'y', by: { id: 'u1', name: 'Ann' } });
+  assert.equal(a.filter((e) => e.type === 'saved').length, 1); assert.equal(b.filter((e) => e.type === 'saved').length, 1);
+  second(); leaveB(); assert.deepEqual(events.viewers('d1').map((v) => v.name), ['Ann']);
+  leaveA(); assert.deepEqual(events.viewers('d1'), []);
+  events.subscribe('d1', { id: 'u3', name: 'Cy' }, () => { throw new Error('broken'); });
+  assert.doesNotThrow(() => events.publish('d1', { type: 'presence', viewers: [] }));
+  const releases = Array.from({ length: 10 }, () => events.acquire('u9')); assert.ok(releases.every(Boolean));
+  assert.equal(events.acquire('u9'), null); releases[0](); assert.ok(events.acquire('u9'));
+});

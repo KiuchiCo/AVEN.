@@ -233,3 +233,7 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 .permission-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .permission-row span { display: grid; gap: 2px; }
 .permission-row small { opacity: .7; }
+
+/* Live documents */
+.document-presence { margin: 4px 0 8px; font-size: 13px; opacity: .8; }
+.document-presence::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: #5a8f5a; }

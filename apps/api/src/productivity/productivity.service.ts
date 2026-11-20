@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { DocumentEvents } from './document-events.js';
 import { PermissionsService } from '../billing/permissions.service.js';
 import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -33,7 +34,7 @@ const databaseRecordSearchMaxScan = 3000;
 
 @Injectable()
 export class ProductivityService {
-  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService, private readonly documentEvents: DocumentEvents) {}
 
   async listProjects(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
@@ -892,7 +893,24 @@ export class ProductivityService {
       include: { project: { select: { id: true, name: true } } },
     });
     if (body.silent !== true) await this.recordActivity(workspaceId, actorId, 'DOCUMENT', document.id, `updated document “${document.title}”`);
+    await this.announceSave(document.id, document.updatedAt, actorId);
     return document;
+  }
+
+  /** Lets anyone with this document open know a newer version exists. Never blocks or fails a save. */
+  private async announceSave(documentId: string, updatedAt: Date, actorId: string) {
+    try {
+      const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { displayName: true } });
+      this.documentEvents.publish(documentId, { type: 'saved', updatedAt: updatedAt.toISOString(), by: { id: actorId, name: actor?.displayName ?? 'Someone' } });
+    } catch { /* live updates are best-effort */ }
+  }
+
+  /** Opens a document's live stream: members only, and the document must be in this workspace. */
+  async openDocumentStream(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
+    const userId = await this.requireMembership(identity, workspaceId);
+    await this.requireDocument(workspaceId, documentId);
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } });
+    return { id: userId, name: user?.displayName ?? 'Someone' };
   }
 
   async getDocument(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
@@ -936,6 +954,7 @@ export class ProductivityService {
       return transaction.document.update({ where: { id: documentId }, data: { title: version.title, content: version.content }, include: { project: { select: { id: true, name: true } } } });
     });
     await this.recordActivity(workspaceId, actorId, 'DOCUMENT', documentId, `restored a version of “${restored.title}”`);
+    await this.announceSave(documentId, restored.updatedAt, actorId);
     return restored;
   }
 

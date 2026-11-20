@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Param, ParseUUIDPipe, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { DocumentEvents } from './document-events.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -7,7 +9,27 @@ import { ProductivityService } from './productivity.service.js';
 @Controller('workspaces/:workspaceId/documents')
 @UseGuards(ClerkAuthGuard)
 export class DocumentsController {
-  constructor(private readonly productivity: ProductivityService) {}
+  constructor(private readonly productivity: ProductivityService, private readonly events: DocumentEvents) {}
+
+  /** Server-sent events for one open document: who else is here, and when someone saves a newer version. */
+  @Get(':documentId/stream')
+  async stream(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ) {
+    const viewer = await this.productivity.openDocumentStream(identity, workspaceId, documentId);
+    const release = this.events.acquire(viewer.id);
+    if (!release) throw new HttpException('Too many live connections are open for your account. Close some tabs and try again.', 429);
+    response.status(200).set({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+    response.flushHeaders();
+    response.write(': connected\n\n');
+    const unsubscribe = this.events.subscribe(documentId, viewer, (event) => { if (!response.writableEnded) response.write(`data: ${JSON.stringify(event)}\n\n`); });
+    const heartbeat = setInterval(() => { if (!response.writableEnded) response.write(': keep-alive\n\n'); }, 25_000);
+    request.on('close', () => { clearInterval(heartbeat); unsubscribe(); release(); });
+  }
 
   @Get()
   list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
