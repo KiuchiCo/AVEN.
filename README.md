@@ -126,7 +126,7 @@ Everything below is real, tested code. Features that need an outside service say
 - **Favourites** — pin projects, documents, databases and whiteboards to the sidebar.
 - **Whiteboards** — an infinite canvas with notes, shapes, text, arrows and a pen, autosaved with conflict protection.
 - **Timeline** — task start dates and a Gantt-style project chart.
-- **Appearance and language** — an editorial light theme by default, optional dark, and menus, Home, Settings, Tasks, Inbox, Activity, Task Labels, Analytics, Whiteboards, Search, Documents, People, Files, Calendar, Messages, Knowledge, Automations and the document editor in English, Spanish, French or German (other screens are English for now).
+- **Appearance and language** — an editorial light theme by default, optional dark, and menus, Home, Settings, Tasks, Inbox, Activity, Task Labels, Analytics, Whiteboards, Search, Documents, People, Files, Calendar, Messages, Knowledge, Automations, the document editor and Databases in English, Spanish, French or German (other screens are English for now).
 - **Inbox** — updates about the same item are grouped.
 - **Operations** — security headers, liveness and readiness checks, graceful shutdown, a backup script, and a [deployment guide](docs/DEPLOYMENT.md).
 - **Tests** — unit tests, a committed integration suite (`npm run test:integration`) and a route-by-route access audit that checks anonymous, outsider and guest access on every endpoint.
