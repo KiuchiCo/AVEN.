@@ -4,6 +4,8 @@ export type TemplateTask = {
   priority: string;
   labels: string[];
   daysFromToday: number | null;
+  /** Absent on templates saved before start dates existed. */
+  startDaysFromToday?: number | null;
   dependsOnIndexes: number[];
 };
 

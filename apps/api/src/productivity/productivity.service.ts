@@ -72,11 +72,11 @@ export class ProductivityService {
     const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true, description: true, name: true } });
     if (!project) throw new NotFoundException('Project not found in this workspace.');
     const [projectTasks, milestones] = await Promise.all([
-      this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { id: true, title: true, description: true, priority: true, labels: true, dueAt: true, dependsOn: { select: { id: true } } } }),
+      this.prisma.task.findMany({ where: { projectId, workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100, select: { id: true, title: true, description: true, priority: true, labels: true, startAt: true, dueAt: true, dependsOn: { select: { id: true } } } }),
       this.prisma.projectMilestone.findMany({ where: { projectId, workspaceId }, orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }], take: 50, select: { title: true, dueAt: true } }),
     ]);
     const taskIndexes = new Map(projectTasks.map((task, index) => [task.id, index]));
-    const tasks = projectTasks.map((task) => ({ title: task.title, description: task.description, priority: task.priority, labels: task.labels, daysFromToday: task.dueAt ? dayOffsetFromToday(task.dueAt) : null, dependsOnIndexes: task.dependsOn.map((dependency) => taskIndexes.get(dependency.id)).filter((index): index is number => index !== undefined) }));
+    const tasks = projectTasks.map((task) => ({ title: task.title, description: task.description, priority: task.priority, labels: task.labels, daysFromToday: task.dueAt ? dayOffsetFromToday(task.dueAt) : null, startDaysFromToday: task.startAt ? dayOffsetFromToday(task.startAt) : null, dependsOnIndexes: task.dependsOn.map((dependency) => taskIndexes.get(dependency.id)).filter((index): index is number => index !== undefined) }));
     const template = await this.prisma.projectTemplate.create({
       data: { workspaceId, createdById: actorId, name, description: project.description, taskTemplates: tasks as Prisma.InputJsonValue, milestoneTemplates: milestones.map((milestone) => ({ title: milestone.title, daysFromToday: milestone.dueAt ? dayOffsetFromToday(milestone.dueAt) : null })) as Prisma.InputJsonValue },
       include: { createdBy: { select: { displayName: true } } },
@@ -99,7 +99,7 @@ export class ProductivityService {
       const createdTasks: { id: string }[] = [];
       const today = new Date();
       const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-      for (const task of tasks) createdTasks.push(await transaction.task.create({ data: { workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, labels: task.labels, status: 'TODO', dueAt: task.daysFromToday === null ? null : new Date(todayUtc.getTime() + task.daysFromToday * 86_400_000) }, select: { id: true } }));
+      for (const task of tasks) createdTasks.push(await transaction.task.create({ data: { workspaceId, projectId: project.id, createdById: actorId, title: task.title, description: task.description, priority: task.priority, labels: task.labels, status: 'TODO', startAt: task.startDaysFromToday === null ? null : new Date(todayUtc.getTime() + task.startDaysFromToday * 86_400_000), dueAt: task.daysFromToday === null ? null : new Date(todayUtc.getTime() + task.daysFromToday * 86_400_000) }, select: { id: true } }));
       for (const [index, task] of tasks.entries()) if (task.dependsOnIndexes.length) await transaction.task.update({ where: { id: createdTasks[index].id }, data: { dependsOn: { connect: task.dependsOnIndexes.map((dependencyIndex) => ({ id: createdTasks[dependencyIndex].id })) } } });
       if (milestones.length) await transaction.projectMilestone.createMany({ data: milestones.map((milestone) => ({ workspaceId, projectId: project.id, title: milestone.title, dueAt: milestone.daysFromToday === null ? null : new Date(todayUtc.getTime() + milestone.daysFromToday * 86_400_000) })) });
       const usageUpdate = await transaction.projectTemplate.updateMany({ where: { id: templateId, workspaceId }, data: { useCount: { increment: 1 }, lastUsedAt: new Date() } });
@@ -434,13 +434,14 @@ export class ProductivityService {
       return id;
     });
     if (new Set(taskIds).size !== taskIds.length) throw new BadRequestException('A task can only be selected once.');
-    const data: { priority?: TaskPriority; assigneeId?: string | null; status?: TaskStatus; dueAt?: Date | null; completedAt?: Date | null } = {};
+    const data: { priority?: TaskPriority; assigneeId?: string | null; status?: TaskStatus; dueAt?: Date | null; startAt?: Date | null; completedAt?: Date | null } = {};
     if ('priority' in body) data.priority = enumField(body.priority, taskPriorities, 'Task priority');
     if ('status' in body) {
       data.status = enumField(body.status, taskStatuses, 'Task status');
       data.completedAt = data.status === 'COMPLETED' ? new Date() : null;
     }
     if ('dueAt' in body) data.dueAt = dateField(body.dueAt, 'Task due date');
+    if ('startAt' in body) data.startAt = dateField(body.startAt, 'Task start date');
     if ('assigneeId' in body) {
       data.assigneeId = optionalUuid(body.assigneeId, 'Assignee');
       if (data.assigneeId && !await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: data.assigneeId } }, select: { userId: true } })) throw new BadRequestException('Assignee must be a member of this workspace.');
@@ -450,10 +451,10 @@ export class ProductivityService {
     const replacementLabels = 'labels' in body ? taskLabels(body.labels) : null;
     const labelsToAdd = 'addLabels' in body ? taskLabels(body.addLabels) : null;
     const labelsToRemove = 'removeLabels' in body ? taskLabels(body.removeLabels) : null;
-    if (!Object.keys(data).length && !labelFields.length) throw new BadRequestException('Choose a status, priority, assignee, due date, or labels change.');
+    if (!Object.keys(data).length && !labelFields.length) throw new BadRequestException('Choose a status, priority, assignee, start date, due date, or labels change.');
     const changedStatuses: { id: string; status: string }[] = [];
     const updated = await this.prisma.$transaction(async (transaction) => {
-      const previousTasks = await transaction.task.findMany({ where: { workspaceId, id: { in: taskIds } }, select: { id: true, title: true, status: true, priority: true, assigneeId: true, dueAt: true, labels: true } });
+      const previousTasks = await transaction.task.findMany({ where: { workspaceId, id: { in: taskIds } }, select: { id: true, title: true, status: true, priority: true, assigneeId: true, startAt: true, dueAt: true, labels: true } });
       if (previousTasks.length !== taskIds.length) throw new NotFoundException('One or more selected tasks are not in this workspace.');
       if (data.status === 'COMPLETED') {
         const completingIds = previousTasks.filter((task) => task.status !== 'COMPLETED').map((task) => task.id);
@@ -461,12 +462,13 @@ export class ProductivityService {
         if (blocked.length) throw new BadRequestException(`Complete prerequisite tasks first: ${blocked.map((task) => `${task.title} → ${task.dependsOn.map((prerequisite) => prerequisite.title).join(', ')}`).join('; ')}.`);
         await this.assertSubtasksComplete(transaction, workspaceId, completingIds);
       }
+      for (const task of previousTasks) assertDateOrder('startAt' in data ? data.startAt : task.startAt, 'dueAt' in data ? data.dueAt : task.dueAt);
       const updatedLabels = new Map<string, string[]>();
       for (const task of previousTasks) {
         const nextLabels = replacementLabels ?? (labelsToAdd ? taskLabels([...task.labels, ...labelsToAdd]) : labelsToRemove ? task.labels.filter((label) => !labelsToRemove.includes(label)) : task.labels);
         updatedLabels.set(task.id, nextLabels);
       }
-      const changedTasks = previousTasks.filter((task) => ('priority' in data && task.priority !== data.priority) || ('status' in data && task.status !== data.status) || ('assigneeId' in data && task.assigneeId !== data.assigneeId) || ('dueAt' in data && (task.dueAt?.getTime() ?? null) !== (data.dueAt?.getTime() ?? null)) || (labelFields.length > 0 && JSON.stringify(task.labels) !== JSON.stringify(updatedLabels.get(task.id))));
+      const changedTasks = previousTasks.filter((task) => ('priority' in data && task.priority !== data.priority) || ('status' in data && task.status !== data.status) || ('assigneeId' in data && task.assigneeId !== data.assigneeId) || ('dueAt' in data && (task.dueAt?.getTime() ?? null) !== (data.dueAt?.getTime() ?? null)) || ('startAt' in data && (task.startAt?.getTime() ?? null) !== (data.startAt?.getTime() ?? null)) || (labelFields.length > 0 && JSON.stringify(task.labels) !== JSON.stringify(updatedLabels.get(task.id))));
       if (!changedTasks.length) return 0;
       if (labelFields.length) {
         for (const task of changedTasks) {
@@ -1312,7 +1314,7 @@ function recordTitle(values: unknown) {
   return 'Untitled record';
 }
 
-type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority; labels: string[]; daysFromToday: number | null; dependsOnIndexes: number[] };
+type ProjectTaskTemplate = { title: string; description: string | null; priority: TaskPriority; labels: string[]; daysFromToday: number | null; startDaysFromToday: number | null; dependsOnIndexes: number[] };
 type ProjectMilestoneTemplate = { title: string; daysFromToday: number | null };
 
 function taskLabels(value: unknown): string[] {
@@ -1356,7 +1358,10 @@ function parseTemplateTasks(value: Prisma.JsonValue): ProjectTaskTemplate[] {
     if (new Set(dependsOnIndexes).size !== dependsOnIndexes.length) throw new BadRequestException('This project template repeats a task prerequisite.');
     const daysFromToday = task.daysFromToday ?? null;
     if (daysFromToday !== null && (typeof daysFromToday !== 'number' || !Number.isInteger(daysFromToday) || daysFromToday < -3650 || daysFromToday > 3650)) throw new BadRequestException('This project template has an invalid task date offset.');
-    return { title: task.title.trim(), description: typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null, priority: task.priority as TaskPriority, labels: taskLabels(task.labels ?? []), daysFromToday: daysFromToday as number | null, dependsOnIndexes };
+    const startDaysFromToday = task.startDaysFromToday ?? null;
+    if (startDaysFromToday !== null && (typeof startDaysFromToday !== 'number' || !Number.isInteger(startDaysFromToday) || startDaysFromToday < -3650 || startDaysFromToday > 3650)) throw new BadRequestException('This project template has an invalid task start offset.');
+    if (startDaysFromToday !== null && daysFromToday !== null && startDaysFromToday > (daysFromToday as number)) throw new BadRequestException('A project template task cannot start after it is due.');
+    return { title: task.title.trim(), description: typeof task.description === 'string' && task.description.trim() ? task.description.trim() : null, priority: task.priority as TaskPriority, labels: taskLabels(task.labels ?? []), daysFromToday: daysFromToday as number | null, startDaysFromToday: startDaysFromToday as number | null, dependsOnIndexes };
   });
   for (const [index, task] of tasks.entries()) if (task.dependsOnIndexes.includes(index)) throw new BadRequestException('A project template task cannot depend on itself.');
   const reaches = (from: number, target: number, visited = new Set<number>()): boolean => {
