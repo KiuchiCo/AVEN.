@@ -102,3 +102,50 @@ test('byte sizes are described in a readable way', async () => {
   const { formatBytes } = await import('../dist/files/file-rules.js');
   assert.deepEqual([formatBytes(500), formatBytes(2048), formatBytes(25 * 1024 * 1024), formatBytes(1536 * 1024)], ['500 bytes', '2 KB', '25 MB', '1.5 MB']);
 });
+
+// ---- S3 driver ----
+import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
+import { S3StorageDriver, signV4 } from '../dist/files/s3-storage.js';
+
+test('SigV4 produces a well-formed authorization header', () => {
+  const signed = signV4({ method: 'GET', host: 'examplebucket.s3.amazonaws.com', path: '/test.txt', payloadHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', region: 'us-east-1', accessKeyId: 'AKIAIOSFODNN7EXAMPLE', secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', now: new Date('2013-05-24T00:00:00Z') });
+  assert.match(signed.authorization, /^AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE\/20130524\/us-east-1\/s3\/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=[0-9a-f]{64}$/);
+  assert.equal(signed['x-amz-date'], '20130524T000000Z');
+});
+
+test('S3 driver stores, reads, enforces the size cap and deletes against a stub server', async () => {
+  const objects = new Map();
+  const seen = [];
+  const server = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      const body = Buffer.concat(chunks);
+      seen.push({ method: req.method, url: req.url, auth: req.headers.authorization, hash: req.headers['x-amz-content-sha256'], bodyHash: createHash('sha256').update(body).digest('hex') });
+      if (req.method === 'PUT') { objects.set(req.url, body); res.writeHead(200).end(); }
+      else if (req.method === 'GET') { const o = objects.get(req.url); if (!o) return res.writeHead(404).end(); res.writeHead(200, { 'content-length': o.length }).end(o); }
+      else { objects.delete(req.url); res.writeHead(204).end(); }
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const s3 = new S3StorageDriver({ bucket: 'b', region: 'eu-west-1', accessKeyId: 'AK', secretAccessKey: 'SK', endpoint: `http://127.0.0.1:${server.address().port}` });
+    const { size, checksum } = await s3.put('ws/a b.txt', Readable.from([Buffer.from('hello '), Buffer.from('world')]), 100);
+    assert.equal(size, 11);
+    assert.equal(checksum, createHash('sha256').update('hello world').digest('hex'));
+    assert.equal(seen[0].url, '/b/ws/a%20b.txt');
+    assert.equal(seen[0].hash, seen[0].bodyHash);
+    assert.match(seen[0].auth, /Credential=AK\/\d{8}\/eu-west-1\/s3\/aws4_request/);
+    const got = await s3.get('ws/a b.txt');
+    assert.equal(got.size, 11);
+    let text = ''; for await (const c of got.stream) text += c;
+    assert.equal(text, 'hello world');
+    await assert.rejects(s3.put('big', Readable.from([Buffer.alloc(50), Buffer.alloc(60)]), 100), /Files can be up to/);
+    assert.equal(objects.has('/b/big'), false);
+    await s3.delete('ws/a b.txt');
+    await s3.delete('ws/a b.txt');
+    await assert.rejects(s3.get('ws/a b.txt'));
+    await assert.rejects(s3.get('../x'), /Invalid storage key/);
+  } finally { server.close(); }
+});

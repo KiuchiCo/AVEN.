@@ -51,7 +51,7 @@ Workflows, email summaries and scheduled work run inside the API process too. If
 
 ## 5. Files
 
-Uploads are stored on local disk in `STORAGE_DIR` (default under `apps/api`). Use a persistent volume. There is no S3 driver yet; the storage layer is an interface (`StorageDriver`) so one can be added without touching callers.
+Uploads are stored on local disk in `STORAGE_DIR` (default under `apps/api`). Use a persistent volume. Alternatively set `STORAGE_DRIVER=s3` with `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and, for non-AWS stores (R2, MinIO, Spaces), `S3_ENDPOINT`. The driver signs requests itself (SigV4, path-style) and buffers each upload in memory up to `MAX_UPLOAD_BYTES`. It is verified against a local S3 stub (request shape, payload hash, size cap), not a live bucket (awaiting credentials). Back up the bucket with your provider's versioning/replication instead of rsync.
 
 ## 6. Backups and restore
 

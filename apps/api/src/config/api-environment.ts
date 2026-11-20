@@ -12,7 +12,9 @@ export type ApiEnvironment = {
   isProduction: boolean;
   /** Express `trust proxy`: false, true, or how many proxies sit in front of the API. */
   trustProxy: boolean | number;
-  storageDriver: 'local';
+  storageDriver: 'local' | 's3';
+  /** Present when STORAGE_DRIVER=s3. */
+  s3?: { bucket: string; region: string; accessKeyId: string; secretAccessKey: string; endpoint?: string };
   storageDir: string;
   maxUploadBytes: number;
   storageQuotaBytes: number;
@@ -68,7 +70,16 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if ((clerkSecretKey || clerkJwtKey) && !clerkIssuer) errors.push('CLERK_ISSUER is required when Clerk verification credentials are configured');
 
   const storageDriver = source.STORAGE_DRIVER?.trim() || 'local';
-  if (storageDriver !== 'local') errors.push('STORAGE_DRIVER must be “local” (object-storage drivers are not available yet)');
+  if (storageDriver !== 'local' && storageDriver !== 's3') errors.push('STORAGE_DRIVER must be “local” or “s3”');
+  let s3: ApiEnvironment['s3'];
+  if (storageDriver === 's3') {
+    const bucket = source.S3_BUCKET?.trim(), accessKeyId = source.S3_ACCESS_KEY_ID?.trim(), secretAccessKey = source.S3_SECRET_ACCESS_KEY?.trim();
+    const region = source.S3_REGION?.trim() || 'us-east-1';
+    const endpoint = source.S3_ENDPOINT?.trim() || undefined;
+    if (!bucket || !accessKeyId || !secretAccessKey) errors.push('S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required when STORAGE_DRIVER=s3');
+    else s3 = { bucket, region, accessKeyId, secretAccessKey, endpoint };
+    if (endpoint) { try { new URL(endpoint); } catch { errors.push('S3_ENDPOINT must be a valid URL'); } }
+  }
   const byteSetting = (name: string, fallback: number, max: number) => {
     const raw = source[name]?.trim();
     if (!raw) return fallback;
@@ -150,5 +161,5 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: 'local', storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
 }

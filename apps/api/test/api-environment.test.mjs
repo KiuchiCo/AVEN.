@@ -48,3 +48,12 @@ test('production requires Clerk verification credentials and an issuer', () => {
     /production requires CLERK_ISSUER and a Clerk verification key/,
   );
 });
+
+test('s3 storage requires its credentials and exposes them when set', async () => {
+  const { readApiEnvironment } = await import('../dist/config/api-environment.js');
+  const base = { DATABASE_URL: 'postgresql://u:p@localhost:5432/d', STORAGE_DRIVER: 's3' };
+  assert.throws(() => readApiEnvironment(base), /S3_BUCKET/);
+  const env = readApiEnvironment({ ...base, S3_BUCKET: 'b', S3_ACCESS_KEY_ID: 'a', S3_SECRET_ACCESS_KEY: 's' });
+  assert.equal(env.storageDriver, 's3');
+  assert.equal(env.s3.region, 'us-east-1');
+});

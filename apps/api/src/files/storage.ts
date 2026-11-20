@@ -9,7 +9,7 @@ import { formatBytes } from './file-rules.js';
 
 /**
  * Where file contents live. PostgreSQL only ever holds metadata.
- * Only a local-disk driver exists today; an S3-compatible driver implements the same three methods.
+ * Drivers: local disk and S3-compatible object storage (see s3-storage.ts).
  */
 export interface StorageDriver {
   /** Streams `source` to `key`. Rejects with 413 (leaving nothing behind) if it exceeds `maxBytes`. */
