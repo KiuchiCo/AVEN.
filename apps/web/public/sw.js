@@ -1,4 +1,20 @@
-/* AVEN. service worker: shows push notifications and opens the right page when one is clicked. No caching. */
+/* AVEN. service worker: shows push notifications, opens the right page when one is clicked, and shows a plain offline page when a
+   page load fails for lack of a connection. It never stores workspace data or any other response. */
+const OFFLINE_CACHE = 'aven-offline-v1';
+const OFFLINE_PAGE = '/offline.html';
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(caches.open(OFFLINE_CACHE).then((cache) => cache.add(OFFLINE_PAGE)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('aven-offline-') && key !== OFFLINE_CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') return;
+  event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE_PAGE).then((page) => page || Response.error())));
+});
 self.addEventListener('push', (event) => {
   let message = { title: 'AVEN.', body: 'You have a new notification.', url: '/workspace/inbox' };
   try { if (event.data) message = { ...message, ...event.data.json() }; } catch { /* keep the default text */ }

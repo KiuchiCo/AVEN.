@@ -135,7 +135,9 @@ Everything below is real, tested code. Features that need an outside service say
 
 Verified only against local stand-ins, because they need your credentials: Stripe, Anthropic, Resend, Google and Microsoft calendars, S3, Brave Search and push services. Each one reports clearly when it is not configured.
 
-Not built yet: character-level co-editing, scanned-PDF (OCR) and legacy .doc/.xls reading, semantic search, translating every screen, mobile and desktop apps, offline use.
+- **Installable and offline-aware** — AVEN. has a web app manifest (install it from Chrome or Safari on desktop or phone), a service worker that shows a plain offline page when a page can’t load, and a banner that says changes can’t be saved while offline. It stores no workspace data offline.
+
+Not built yet: character-level co-editing, scanned-PDF (OCR) and legacy .doc/.xls reading, search by meaning over tasks and files, translating every screen (server messages, built-in starter-plan text and Clerk’s Security page stay English), native mobile and desktop apps, and working offline (editing without a connection).
 
 ## Local development
 

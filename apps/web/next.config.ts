@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
   // The browser tests use their own folder so they can run while a normal dev server is open.
   distDir: process.env.NEXT_DIST_DIR || '.next',
   poweredByHeader: false,
+  // The browser tests open the dev server by IP address; without this Next blocks its client scripts from that address.
+  allowedDevOrigins: ['127.0.0.1'],
   async headers() {
     return [{
       source: '/:path*',

@@ -10,6 +10,7 @@ import type { Key } from '../i18n/en';
 import { LanguageProvider, translate, useT } from '../i18n';
 import { FavouritesProvider, useFavourites } from './favourites';
 import { navigationGroups, workspaceNavigation } from './workspace-navigation';
+import { OfflineBanner } from './offline-banner';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
 const WorkspaceContext = createContext<WorkspaceSession | null>(null);
@@ -162,6 +163,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
           </header>
 
           <main className="workspace-content">
+            <OfflineBanner />
             {session.workspace.role === 'GUEST' && <p className="workspace-readonly-banner" role="status">Guest access is read-only. You can browse workspace information, but editing is disabled.</p>}
             {ready ? children : null}
           </main>

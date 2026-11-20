@@ -76,6 +76,7 @@ test.describe('the public API behind it', () => {
 
 test.describe('the signed-out app', () => {
   test('sends someone without a session away from the workspace', async ({ page }) => {
+    test.skip(!process.env.E2E_CLERK_PUBLISHABLE_KEY, 'needs Clerk keys (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) so there is a sign-in to be sent to');
     await page.goto('/workspace');
     await page.waitForLoadState('domcontentloaded');
     await expect.poll(() => new URL(page.url()).pathname, { timeout: 30_000 }).not.toBe('/workspace');
@@ -88,5 +89,29 @@ test.describe('the signed-out app', () => {
     expect(response?.status()).toBeLessThan(400);
     await expect(page.locator('body')).toContainText('AVEN');
     expect(errors).toEqual([]);
+  });
+});
+
+test.describe('installable and offline-aware', () => {
+  test('publishes a web app manifest whose icons exist', async ({ page, request }) => {
+    await page.goto('/');
+    const href = await page.locator('link[rel="manifest"]').getAttribute('href');
+    expect(href).toBe('/manifest.webmanifest');
+    const manifest = await (await request.get(href!)).json();
+    expect(manifest).toMatchObject({ name: 'AVEN.', display: 'standalone', start_url: '/workspace' });
+    for (const icon of manifest.icons) expect((await request.get(icon.src)).status(), icon.src).toBe(200);
+    expect(manifest.icons.map((icon: { sizes: string }) => icon.sizes)).toEqual(expect.arrayContaining(['192x192', '512x512']));
+  });
+
+  test('shows a plain offline page when a page cannot load, and caches nothing else', async ({ page, context }) => {
+    await page.goto(`/shared/${token('ACTIVE')}`);
+    // The dev server may reload the page once while it compiles, so look again until the worker is in control.
+    await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)).catch(() => false), { timeout: 30_000 }).toBe(true);
+    await context.setOffline(true);
+    await page.goto('/workspace');
+    await expect(page.getByRole('heading', { name: 'You’re offline' })).toBeVisible();
+    await context.setOffline(false);
+    const cached = await page.evaluate(async () => Promise.all((await caches.keys()).map(async (key) => ({ key, urls: (await (await caches.open(key)).keys()).map((r) => new URL(r.url).pathname) }))));
+    expect(cached).toEqual([{ key: 'aven-offline-v1', urls: ['/offline.html'] }]);
   });
 });

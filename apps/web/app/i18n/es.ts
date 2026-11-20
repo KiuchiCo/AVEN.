@@ -1805,4 +1805,5 @@ export const es: Dictionary = {
   'tpl.ed.labelsPh': "planificación, diseño",
   'tpl.ed.labelsHint': "Usa hasta {max} etiquetas, cada una con letras, números, guiones o guiones bajos.",
   'tpl.ed.removeTask': "Quitar tarea",
+  'shell.offline': "Estás sin conexión. Los cambios no se pueden guardar hasta que vuelva la conexión.",
 };

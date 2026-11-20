@@ -1805,4 +1805,5 @@ export const fr: Dictionary = {
   'tpl.ed.labelsPh': "planification, design",
   'tpl.ed.labelsHint': "Utilisez jusqu’à {max} étiquettes, chacune avec des lettres, chiffres, tirets ou tirets bas.",
   'tpl.ed.removeTask': "Supprimer la tâche",
+  'shell.offline': "Vous êtes hors ligne. Les modifications ne peuvent pas être enregistrées tant que la connexion n’est pas rétablie.",
 };

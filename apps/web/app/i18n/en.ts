@@ -1804,6 +1804,7 @@ export const en = {
   'tpl.ed.labelsPh': "planning, design",
   'tpl.ed.labelsHint': "Use up to {max} labels, each with letters, numbers, hyphens, or underscores.",
   'tpl.ed.removeTask': "Remove task",
+  'shell.offline': "You’re offline. Changes can’t be saved until your connection returns.",
 } as const;
 
 export type Key = keyof typeof en;

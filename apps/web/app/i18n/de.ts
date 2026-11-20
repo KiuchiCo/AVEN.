@@ -1805,4 +1805,5 @@ export const de: Dictionary = {
   'tpl.ed.labelsPh': "Planung, Design",
   'tpl.ed.labelsHint': "Verwende bis zu {max} Labels, jeweils aus Buchstaben, Zahlen, Bindestrichen oder Unterstrichen.",
   'tpl.ed.removeTask': "Aufgabe entfernen",
+  'shell.offline': "Du bist offline. Änderungen können erst gespeichert werden, wenn die Verbindung zurück ist.",
 };
