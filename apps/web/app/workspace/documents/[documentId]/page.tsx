@@ -4,6 +4,8 @@ import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useT } from '../../../i18n';
+import type { Key } from '../../../i18n/en';
 import { useWorkspaceSession } from '../../workspace-shell';
 import { AttachmentsPanel } from '../../files/attachments-panel';
 import { ImageBlock, TableBlock } from './document-blocks';
@@ -19,11 +21,7 @@ type Version = { id: string; title: string; label: string | null; createdAt: str
 type Comment = { id: string; body: string; createdAt: string; resolvedAt: string | null; createdBy: { id: string; displayName: string } };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 class ConflictError extends Error { constructor(message: string, readonly current: Document) { super(message); } }
-const blockTypes: { type: BlockType; label: string }[] = [
-  { type: 'PARAGRAPH', label: 'Paragraph' }, { type: 'HEADING_1', label: 'Heading 1' }, { type: 'HEADING_2', label: 'Heading 2' },
-  { type: 'BULLET', label: 'Bulleted list' }, { type: 'NUMBERED', label: 'Numbered list' }, { type: 'TODO', label: 'To-do item' },
-  { type: 'QUOTE', label: 'Quote' }, { type: 'CODE', label: 'Code block' }, { type: 'CALLOUT', label: 'Callout' }, { type: 'DIVIDER', label: 'Divider' }, { type: 'TABLE', label: 'Table' }, { type: 'IMAGE', label: 'Image' },
-];
+const blockTypes: { type: BlockType; label: Key }[] = (['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'DIVIDER', 'TABLE', 'IMAGE'] as const).map((type) => ({ type, label: `bt.${type}` as Key }));
 
 function createBlock(type: BlockType = 'PARAGRAPH'): Block { return { id: crypto.randomUUID(), type, text: '', checked: false }; }
 const readOnlyRole = (role: string | null) => role === 'GUEST';
@@ -37,6 +35,7 @@ function parseBlocks(content: string): Block[] {
 function encodeBlocks(blocks: Block[]) { return JSON.stringify({ format: 'aven-doc-v1', blocks }); }
 
 export default function DocumentEditorPage() {
+  const t = useT();
   const { documentId } = useParams<{ documentId: string }>();
   const { getToken } = useAuth();
   const { workspace, user } = useWorkspaceSession();
@@ -91,15 +90,15 @@ export default function DocumentEditorPage() {
     const mine = live.current;
     if (!mine.document || latest.updatedAt === mine.document.updatedAt) return 'same';
     if (!mine.dirty) {
-      setDocument(latest); setTitle(latest.title); setBlocks(parseBlocks(latest.content)); revision.current += 1; setSuccess(`${who} updated this document.`);
+      setDocument(latest); setTitle(latest.title); setBlocks(parseBlocks(latest.content)); revision.current += 1; setSuccess(t('ed.updatedBy', { who }));
       return 'applied';
     }
     const { blocks: merged, conflicts } = mergeBlocks(parseBlocks(mine.document.content), mine.blocks, parseBlocks(latest.content));
     if (conflicts.length) return 'conflict';
     setDocument(latest); setBlocks(merged); if (mine.title === mine.document.title) setTitle(latest.title);
-    revision.current += 1; setSuccess(`${who}’s changes were merged with yours.`);
+    revision.current += 1; setSuccess(t('ed.merged', { who }));
     return 'merged';
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -117,14 +116,14 @@ export default function DocumentEditorPage() {
           if (!response.ok || !response.body) return;
           for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string } }>(response.body)) {
             if (event.type === 'presence') setViewers(event.viewers);
-            else void sync(event.by.id === user.id ? 'Another tab' : event.by.name).catch(() => undefined);
+            else void sync(event.by.id === user.id ? t('ed.anotherTab') : event.by.name).catch(() => undefined);
           }
         } catch { if (abort.signal.aborted) return; }
         await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
       }
     })();
     return () => { abort.abort(); window.clearTimeout(timer); };
-  }, [applyRemote, documentId, getToken, hydrated, request, user.id, workspace.id]);
+  }, [applyRemote, documentId, getToken, hydrated, request, t, user.id, workspace.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,12 +154,12 @@ export default function DocumentEditorPage() {
       }
       return false;
     } catch (reason) {
-      if (reason instanceof ConflictError) { if (applyRemote(reason.current, 'Someone') === 'conflict') setConflict(reason.current); }
+      if (reason instanceof ConflictError) { if (applyRemote(reason.current, t('ed.someone')) === 'conflict') setConflict(reason.current); }
       else setError(reason instanceof Error ? reason.message : 'Autosave failed.');
       return false;
     }
     finally { setSaving(false); }
-  }, [applyRemote, blocks, dirty, document, request, saving, title, workspace.id]);
+  }, [applyRemote, blocks, dirty, document, request, saving, t, title, workspace.id]);
 
   useEffect(() => {
     if (!hydrated || !dirty || saving || error || conflict) return;
@@ -173,7 +172,7 @@ export default function DocumentEditorPage() {
     setSaving(true); setError('');
     try {
       const updated = await request(`/workspaces/${workspace.id}/documents/${conflict.id}`, { method: 'PATCH', body: JSON.stringify({ title, content: encodeBlocks(blocks), silent: true, baseUpdatedAt: conflict.updatedAt }) }) as Document;
-      setDocument(updated); setConflict(null); setDirty(false); setSuccess('Your changes were saved over the other version. It remains in version history only if someone saved it there.');
+      setDocument(updated); setConflict(null); setDirty(false); setSuccess(t('ed.savedOver'));
     } catch (reason) {
       if (reason instanceof ConflictError) setConflict(reason.current);
       else setError(reason instanceof Error ? reason.message : 'Could not save your changes.');
@@ -181,8 +180,8 @@ export default function DocumentEditorPage() {
   }
 
   function useTheirVersion() {
-    if (!conflict || !window.confirm('Discard your unsaved changes and load the latest saved version?')) return;
-    setDocument(conflict); setTitle(conflict.title); setBlocks(parseBlocks(conflict.content)); revision.current += 1; setDirty(false); setConflict(null); setSuccess('Loaded the latest saved version.');
+    if (!conflict || !window.confirm(t('ed.discardConfirm'))) return;
+    setDocument(conflict); setTitle(conflict.title); setBlocks(parseBlocks(conflict.content)); revision.current += 1; setDirty(false); setConflict(null); setSuccess(t('ed.loadedLatest'));
   }
 
   function markChanged() { revision.current += 1; setDirty(true); setSuccess(''); }
@@ -203,16 +202,16 @@ export default function DocumentEditorPage() {
 
   async function saveVersion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    try { if (dirty && !await saveDocument()) return; await request(`/workspaces/${workspace.id}/documents/${documentId}/versions`, { method: 'POST', body: JSON.stringify({ label: versionLabel }) }); setVersionLabel(''); setSuccess('Version saved.'); await reloadCollaboration(); }
+    try { if (dirty && !await saveDocument()) return; await request(`/workspaces/${workspace.id}/documents/${documentId}/versions`, { method: 'POST', body: JSON.stringify({ label: versionLabel }) }); setVersionLabel(''); setSuccess(t('ed.versionSaved')); await reloadCollaboration(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save version.'); }
   }
 
   async function restoreVersion(version: Version) {
-    if (!window.confirm(`Restore “${version.label || version.title}”? AVEN will save the current document as a version first.`)) return;
+    if (!window.confirm(t('ed.restoreConfirm', { name: version.label || version.title }))) return;
     try {
       if (dirty && !await saveDocument()) return;
       const restored = await request(`/workspaces/${workspace.id}/documents/${documentId}/versions/${version.id}/restore`, { method: 'POST' }) as Document;
-      setDocument(restored); setTitle(restored.title); setBlocks(parseBlocks(restored.content)); revision.current += 1; setDirty(false); setSuccess('Document version restored.'); await reloadCollaboration();
+      setDocument(restored); setTitle(restored.title); setBlocks(parseBlocks(restored.content)); revision.current += 1; setDirty(false); setSuccess(t('ed.restored')); await reloadCollaboration();
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not restore this version.'); }
   }
@@ -230,44 +229,44 @@ export default function DocumentEditorPage() {
 
   async function createTaskFromBlock(block: Block) {
     if (!block.text.trim()) return;
-    const rawLabels = window.prompt('Optional task labels, separated by commas:');
+    const rawLabels = window.prompt(t('ed.labelsPrompt'));
     if (rawLabels === null) return;
     const labels = rawLabels.split(',').map((label) => label.trim().toLocaleLowerCase()).filter(Boolean);
     setCreatingTask(block.id); setError(''); setSuccess('');
     try {
       await request(`/workspaces/${workspace.id}/tasks`, { method: 'POST', body: JSON.stringify({ title: block.text.trim(), projectId: document?.project?.id, labels }) });
-      setSuccess(document?.project ? `Task added to ${document.project.name}.` : 'Task added to My Tasks.');
+      setSuccess(document?.project ? t('ed.taskAddedProject', { name: document.project.name }) : t('ed.taskAdded'));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create a task from this block.'); }
     finally { setCreatingTask(''); }
   }
 
   return <div className="workspace-section-page document-studio">
-    <div className="document-studio__crumb"><Link href="/workspace/documents">Documents</Link><span>›</span><span>{document?.project?.name ?? workspace.name}</span><span>›</span><strong>{document?.title ?? 'Document'}</strong><span className="document-studio__save-state">{saving ? 'Saving…' : dirty ? 'Unsaved changes' : success || 'All changes saved'}</span></div>
-    {viewers.filter((viewer) => viewer.id !== user.id).length > 0 && <p className="document-presence" role="status">Also here: {viewers.filter((viewer) => viewer.id !== user.id).map((viewer) => viewer.name).join(', ')}</p>}
+    <div className="document-studio__crumb"><Link href="/workspace/documents">{t('ed.crumbDocuments')}</Link><span>›</span><span>{document?.project?.name ?? workspace.name}</span><span>›</span><strong>{document?.title ?? t('ed.document')}</strong><span className="document-studio__save-state">{saving ? t('ed.saving') : dirty ? t('ed.unsaved') : success || t('ed.allSaved')}</span></div>
+    {viewers.filter((viewer) => viewer.id !== user.id).length > 0 && <p className="document-presence" role="status">{t('ed.alsoHere', { names: viewers.filter((viewer) => viewer.id !== user.id).map((viewer) => viewer.name).join(', ') })}</p>}
     {conflict && <div className="productivity-error document-conflict" role="alertdialog" aria-labelledby="document-conflict-title">
-      <strong id="document-conflict-title">Someone else saved this document while you were editing.</strong>
-      <p>Autosave is paused so nothing is overwritten. Your unsaved changes are still on this page.</p>
-      <div><button type="button" disabled={saving} onClick={() => void keepMyChanges()}>Keep my changes</button><button type="button" disabled={saving} onClick={useTheirVersion}>Load their version</button></div>
+      <strong id="document-conflict-title">{t('ed.conflictTitle')}</strong>
+      <p>{t('ed.conflictBody')}</p>
+      <div><button type="button" disabled={saving} onClick={() => void keepMyChanges()}>{t('ed.keepMine')}</button><button type="button" disabled={saving} onClick={useTheirVersion}>{t('ed.loadTheirs')}</button></div>
     </div>}
-    {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>Retry save</button></p>}
-    {loading ? <p className="productivity-message">Opening document…</p> : !document ? <div className="workspace-section-empty"><h2>Document unavailable</h2><p>This document could not be found in the current workspace.</p><Link href="/workspace/documents">Back to documents</Link></div> : <>
-      <div className="document-studio__toolbar"><label>New block<select id="document-block-type" value={blockType} onChange={(event) => setBlockType(event.target.value as BlockType)}>{blockTypes.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}</select></label><button type="button" onClick={() => insertBlock()}>＋ Add block</button><span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>Save now</button><Link href="/workspace/documents">All documents</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
+    {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>{t('ed.retry')}</button></p>}
+    {loading ? <p className="productivity-message">{t('ed.opening')}</p> : !document ? <div className="workspace-section-empty"><h2>{t('ed.unavailable')}</h2><p>{t('ed.unavailableBody')}</p><Link href="/workspace/documents">{t('ed.back')}</Link></div> : <>
+      <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={blockType} onChange={(event) => setBlockType(event.target.value as BlockType)}>{blockTypes.map((item) => <option key={item.type} value={item.type}>{t(item.label)}</option>)}</select></label><button type="button" onClick={() => insertBlock()}>{t('ed.addBlock')}</button><span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
       <div className="document-studio__layout">
         <main className="document-studio__paper">
-          <p className="workspace-eyebrow">AVEN DOCUMENT · {document.project?.name ?? 'PERSONAL'}</p>
-          <input className="document-studio__title" value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={200} aria-label="Document title" />
+          <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}</p>
+          <input className="document-studio__title" value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={200} aria-label={t('ed.titleLabel')} />
           <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}`} key={block.id}>
-            <div className="document-block__controls"><select aria-label={`Block type for block ${index + 1}`} value={block.type} onChange={(event) => changeBlock(block.id, { type: event.target.value as BlockType })}>{blockTypes.map((option) => <option value={option.type} key={option.type}>{option.label}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label="Move block up">↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label="Move block down">↓</button><button type="button" onClick={() => removeBlock(block.id)} aria-label="Delete block">×</button></div>
-            {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label="Mark to-do complete" />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span><textarea id={`block-${block.id}`} value={block.text} onChange={(event) => changeBlock(block.id, { text: event.target.value })} placeholder={block.type === 'CODE' ? 'Write code…' : block.type === 'CALLOUT' ? 'Add a useful callout…' : 'Write something…'} aria-label={`${blockTypes.find((option) => option.type === block.type)?.label ?? 'Text'} block ${index + 1}`} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}
-            <div className="document-block__actions">{block.type === 'TODO' && block.text.trim() && <button type="button" disabled={creatingTask === block.id} onClick={() => void createTaskFromBlock(block)}>{creatingTask === block.id ? 'Creating…' : 'Create task'}</button>}<button className="document-block__insert" type="button" onClick={() => insertBlock(block.id)}>＋ Add below</button></div>
+            <div className="document-block__controls"><select aria-label={t('ed.blockTypeFor', { n: index + 1 })} value={block.type} onChange={(event) => changeBlock(block.id, { type: event.target.value as BlockType })}>{blockTypes.map((option) => <option value={option.type} key={option.type}>{t(option.label)}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label={t('ed.moveUp')}>↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label={t('ed.moveDown')}>↓</button><button type="button" onClick={() => removeBlock(block.id)} aria-label={t('ed.deleteBlock')}>×</button></div>
+            {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label={t('ed.markTodo')} />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span><textarea id={`block-${block.id}`} value={block.text} onChange={(event) => changeBlock(block.id, { text: event.target.value })} placeholder={block.type === 'CODE' ? t('ed.phCode') : block.type === 'CALLOUT' ? t('ed.phCallout') : t('ed.phText')} aria-label={t('ed.blockLabel', { type: (() => { const found = blockTypes.find((option) => option.type === block.type); return found ? t(found.label) : t('ed.text'); })(), n: index + 1 })} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}
+            <div className="document-block__actions">{block.type === 'TODO' && block.text.trim() && <button type="button" disabled={creatingTask === block.id} onClick={() => void createTaskFromBlock(block)}>{creatingTask === block.id ? t('ed.creating') : t('ed.createTask')}</button>}<button className="document-block__insert" type="button" onClick={() => insertBlock(block.id)}>{t('ed.addBelow')}</button></div>
           </section>)}</div>
         </main>
-        <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label="Document tools">{(['OUTLINE', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? 'Outline' : tab === 'COMMENTS' ? `Comments ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? 'Files' : tab === 'SHARE' ? 'Share' : 'History'}</button>)}</nav>
+        <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(['OUTLINE', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
           {activePanel === 'SHARE' && <SharePanel documentId={document.id} />}
           {activePanel === 'FILES' && <section className="document-studio__panel"><AttachmentsPanel target={{ documentId: document.id }} /></section>}
-          {activePanel === 'OUTLINE' && <section className="document-studio__panel"><h2>On this page</h2>{outline.length === 0 ? <p>Add a heading block to create an outline.</p> : <nav>{outline.map((block) => <a className={block.type === 'HEADING_2' ? 'is-nested' : ''} key={block.id} href={`#block-${block.id}`}>{block.text}</a>)}</nav>}</section>}
-          {activePanel === 'COMMENTS' && <section className="document-studio__panel"><h2>Comments</h2><form className="document-studio__comment-form" onSubmit={addComment}><textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={2000} required placeholder="Add a comment to this document…" /><button type="submit">Post comment</button></form><div className="document-studio__comments">{comments.length === 0 ? <p>Document feedback and decisions will appear here.</p> : comments.map((comment) => <article className={comment.resolvedAt ? 'is-resolved' : ''} key={comment.id}><div><strong>{comment.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</time></div><p>{comment.body}</p><button type="button" onClick={() => void toggleComment(comment)}>{comment.resolvedAt ? 'Reopen' : 'Resolve'}</button></article>)}</div></section>}
-          {activePanel === 'HISTORY' && <section className="document-studio__panel"><h2>Version history</h2><form className="document-studio__version-form" onSubmit={saveVersion}><input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} maxLength={120} placeholder="Optional version note" /><button type="submit">Save version</button></form><div className="document-studio__versions">{versions.length === 0 ? <p>No saved versions yet. Create a version before a major edit.</p> : versions.map((version) => <article key={version.id}><strong>{version.label || version.title}</strong><small>{version.createdBy.displayName} · {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(version.createdAt))}</small><button type="button" onClick={() => void restoreVersion(version)}>Restore</button></article>)}</div></section>}
+          {activePanel === 'OUTLINE' && <section className="document-studio__panel"><h2>{t('ed.onThisPage')}</h2>{outline.length === 0 ? <p>{t('ed.outlineEmpty')}</p> : <nav>{outline.map((block) => <a className={block.type === 'HEADING_2' ? 'is-nested' : ''} key={block.id} href={`#block-${block.id}`}>{block.text}</a>)}</nav>}</section>}
+          {activePanel === 'COMMENTS' && <section className="document-studio__panel"><h2>{t('ed.tab.comments')}</h2><form className="document-studio__comment-form" onSubmit={addComment}><textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={2000} required placeholder={t('ed.commentPh')} /><button type="submit">{t('ed.post')}</button></form><div className="document-studio__comments">{comments.length === 0 ? <p>{t('ed.commentsEmpty')}</p> : comments.map((comment) => <article className={comment.resolvedAt ? 'is-resolved' : ''} key={comment.id}><div><strong>{comment.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</time></div><p>{comment.body}</p><button type="button" onClick={() => void toggleComment(comment)}>{comment.resolvedAt ? t('ed.reopen') : t('ed.resolve')}</button></article>)}</div></section>}
+          {activePanel === 'HISTORY' && <section className="document-studio__panel"><h2>{t('ed.versionHistory')}</h2><form className="document-studio__version-form" onSubmit={saveVersion}><input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} maxLength={120} placeholder={t('ed.versionNotePh')} /><button type="submit">{t('ed.saveVersion')}</button></form><div className="document-studio__versions">{versions.length === 0 ? <p>{t('ed.versionsEmpty')}</p> : versions.map((version) => <article key={version.id}><strong>{version.label || version.title}</strong><small>{version.createdBy.displayName} · {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(version.createdAt))}</small><button type="button" onClick={() => void restoreVersion(version)}>{t('ed.restore')}</button></article>)}</div></section>}
         </aside>
       </div>
     </>}

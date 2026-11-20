@@ -2,6 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
+import { useT } from '../../../i18n';
 import { useWorkspaceSession } from '../../workspace-shell';
 import { useFilesApi } from '../../files/use-files-api';
 import type { FileRecord } from '../../files/types';
@@ -11,18 +12,20 @@ const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const imageTypes = /^image\/(png|jpeg|gif|webp)$/;
 
 export function TableBlock({ rows, readOnly, onChange }: { rows: unknown; readOnly: boolean; onChange: (rows: Rows) => void }) {
+  const t = useT();
   const grid = cleanRows(rows);
   return <div className="document-table">
-    <div className="document-table__scroll"><table><tbody>{grid.map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c}><input value={cell} readOnly={readOnly} aria-label={`Row ${r + 1}, column ${c + 1}`} onChange={(event) => onChange(setCell(grid, r, c, event.target.value))} /></td>)}
-      {!readOnly && <td className="document-table__edge"><button type="button" onClick={() => onChange(removeRow(grid, r))} disabled={grid.length <= 1} aria-label={`Remove row ${r + 1}`}>×</button></td>}</tr>)}
-      {!readOnly && <tr className="document-table__edge">{grid[0].map((_, c) => <td key={c}><button type="button" onClick={() => onChange(removeColumn(grid, c))} disabled={grid[0].length <= 1} aria-label={`Remove column ${c + 1}`}>×</button></td>)}<td /></tr>}
+    <div className="document-table__scroll"><table><tbody>{grid.map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c}><input value={cell} readOnly={readOnly} aria-label={t('bl.row', { r: r + 1, c: c + 1 })} onChange={(event) => onChange(setCell(grid, r, c, event.target.value))} /></td>)}
+      {!readOnly && <td className="document-table__edge"><button type="button" onClick={() => onChange(removeRow(grid, r))} disabled={grid.length <= 1} aria-label={t('bl.removeRow', { n: r + 1 })}>×</button></td>}</tr>)}
+      {!readOnly && <tr className="document-table__edge">{grid[0].map((_, c) => <td key={c}><button type="button" onClick={() => onChange(removeColumn(grid, c))} disabled={grid[0].length <= 1} aria-label={t('bl.removeCol', { n: c + 1 })}>×</button></td>)}<td /></tr>}
     </tbody></table></div>
-    {!readOnly && <div className="document-table__actions"><button type="button" onClick={() => onChange(addRow(grid))}>＋ Row</button><button type="button" onClick={() => onChange(addColumn(grid))}>＋ Column</button></div>}
+    {!readOnly && <div className="document-table__actions"><button type="button" onClick={() => onChange(addRow(grid))}>{t('bl.addRow')}</button><button type="button" onClick={() => onChange(addColumn(grid))}>{t('bl.addCol')}</button></div>}
   </div>;
 }
 
 /** Fetches a stored image with the person's sign-in and shows it. Images are never reachable without that. */
 function StoredImage({ fileId, alt }: { fileId: string; alt: string }) {
+  const t = useT();
   const { getToken } = useAuth();
   const { workspace } = useWorkspaceSession();
   const [url, setUrl] = useState<string | null>(null);
@@ -40,12 +43,13 @@ function StoredImage({ fileId, alt }: { fileId: string; alt: string }) {
     })();
     return () => { live = false; if (created) URL.revokeObjectURL(created); };
   }, [fileId, getToken, workspace.id]);
-  if (failed) return <p className="document-image__missing">This image is no longer available.</p>;
+  if (failed) return <p className="document-image__missing">{t('bl.imageGone')}</p>;
   // eslint-disable-next-line @next/next/no-img-element -- a blob URL from an authenticated download, which next/image can't load
-  return url ? <img src={url} alt={alt} className="document-image__img" /> : <p className="document-image__missing">Loading image…</p>;
+  return url ? <img src={url} alt={alt} className="document-image__img" /> : <p className="document-image__missing">{t('bl.imageLoading')}</p>;
 }
 
 export function ImageBlock({ fileId, caption, readOnly, onPick, onCaption }: { fileId: string | undefined; caption: string; readOnly: boolean; onPick: (fileId: string) => void; onCaption: (text: string) => void }) {
+  const t = useT();
   const files = useFilesApi();
   const [choices, setChoices] = useState<FileRecord[] | null>(null);
   const [error, setError] = useState('');
@@ -57,18 +61,18 @@ export function ImageBlock({ fileId, caption, readOnly, onPick, onCaption }: { f
   }
   async function upload(file: File) {
     setError('');
-    if (!imageTypes.test(file.type)) { setError('Choose a PNG, JPEG, GIF or WebP image.'); return; }
+    if (!imageTypes.test(file.type)) { setError(t('bl.badType')); return; }
     try { onPick((await files.upload(file)).id); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not upload that image.'); }
   }
 
   return <div className="document-image">
-    {fileId ? <StoredImage fileId={fileId} alt={caption} /> : <p className="document-image__missing">No image chosen yet.</p>}
+    {fileId ? <StoredImage fileId={fileId} alt={caption} /> : <p className="document-image__missing">{t('bl.noImage')}</p>}
     {!readOnly && <div className="document-image__actions">
-      <label className="files-replace">Upload image<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={(event) => { const next = event.target.files?.[0]; event.target.value = ''; if (next) void upload(next); }} /></label>
-      <button type="button" onClick={() => void browse()}>Choose from Files</button>
+      <label className="files-replace">{t('bl.upload')}<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={(event) => { const next = event.target.files?.[0]; event.target.value = ''; if (next) void upload(next); }} /></label>
+      <button type="button" onClick={() => void browse()}>{t('bl.choose')}</button>
     </div>}
-    {choices && <ul className="document-image__choices">{choices.length ? choices.map((file) => <li key={file.id}><button type="button" onClick={() => { onPick(file.id); setChoices(null); }}>{file.name}</button></li>) : <li>No images in your Files yet.</li>}</ul>}
+    {choices && <ul className="document-image__choices">{choices.length ? choices.map((file) => <li key={file.id}><button type="button" onClick={() => { onPick(file.id); setChoices(null); }}>{file.name}</button></li>) : <li>{t('bl.noImages')}</li>}</ul>}
     {error && <p className="workspace-settings-status" role="alert">{error}</p>}
-    <input className="document-image__caption" value={caption} readOnly={readOnly} placeholder="Caption (also makes the image findable)" maxLength={300} aria-label="Image caption" onChange={(event) => onCaption(event.target.value)} />
+    <input className="document-image__caption" value={caption} readOnly={readOnly} placeholder={t('bl.caption')} maxLength={300} aria-label={t('bl.captionLabel')} onChange={(event) => onCaption(event.target.value)} />
   </div>;
 }
