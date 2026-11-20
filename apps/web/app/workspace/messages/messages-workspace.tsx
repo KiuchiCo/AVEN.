@@ -158,7 +158,8 @@ export function MessagesWorkspace() {
   }
   function openReplies(message: Message) {
     if (!activeId) return;
-    openThread.current = message.id; setThread({ root: message, replies: [] }); void loadThread(activeId, message.id);
+    if (openThread.current === message.id) { openThread.current = null; setThread(null); return; }
+    setInfo(false); openThread.current = message.id; setThread({ root: message, replies: [] }); void loadThread(activeId, message.id);
   }
   async function search(event: FormEvent) {
     event.preventDefault(); setError('');
@@ -205,12 +206,12 @@ export function MessagesWorkspace() {
       {message.deletedAt ? <p className="chat-deleted">{t('msg.deleted')}</p> : editing?.id === message.id ? <div className="msgs-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label={t('msg.editLabel')} /><div><button type="button" className="rd-btn" onClick={() => void saveEdit()} disabled={!editing.body.trim()}>{t('msg.save')}</button><button type="button" className="rd-btn rd-btn--soft" onClick={() => setEditing(null)}>{t('msg.cancel')}</button></div></div> : <>
         {message.body && <p><MessageBody body={message.body} names={names} /></p>}
         {message.files?.length > 0 && <div className="msgs-files">{message.files.map(fileCard)}</div>}</>}
-      {!message.deletedAt && !inThread && (message.replyCount > 0 || !readOnly) && <button type="button" className="msgs-replies" onClick={() => openReplies(message)}>{message.replyCount ? <><strong>{t(message.replyCount === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: message.replyCount })}</strong><Icon name="chevron" size={14} /></> : <span>{t('msg.reply')}</span>}</button>}
+      {!message.deletedAt && !inThread && (message.replyCount > 0 || !readOnly) && <button type="button" className="msgs-replies" onClick={() => openReplies(message)}>{message.replyCount ? <><strong>{t(message.replyCount === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: message.replyCount })}</strong><span className={`msgs-replies__chev${thread?.root.id === message.id ? ' is-open' : ''}`}><Icon name="chevron" size={14} /></span></> : <span>{t('msg.reply')}</span>}</button>}
     </div>
   </article>;
 
   const inScope = (item: Channel) => scope === 'ALL' || (scope === 'CHANNELS') === (item.kind === 'CHANNEL');
-  const sideOpen = Boolean(thread) || info;
+  const sideOpen = info;
   const stack = roster.slice(0, 3);
 
   return <section className={`msgs${sideOpen ? ' msgs--side' : ''}`}>
@@ -241,7 +242,7 @@ export function MessagesWorkspace() {
             <details className="rd-menu"><summary className="rd-iconbtn rd-iconbtn--boxed" aria-label={t('msg.moreActions')}><Icon name="more" size={20} /></summary><div className="rd-menu__list">
               <button type="button" onClick={() => void call(`/${channel.id}/read`, 'POST').then(() => setChannels((list) => list.map((item) => (item.id === channel.id ? { ...item, unread: 0 } : item)))).catch(fail)}><Icon name="checkCircle" size={16} />{t('msg.markRead')}</button>
               {hasMore && <button type="button" onClick={() => void older()}><Icon name="history" size={16} />{t('msg.loadOlder')}</button>}</div></details>
-            <button type="button" className={`rd-iconbtn rd-iconbtn--boxed${info ? ' is-active' : ''}`} aria-label={t('msg.info')} aria-pressed={info} onClick={() => { setThread(null); openThread.current = null; setInfo((open) => !open); }}><Icon name="info" size={20} /></button>
+            <button type="button" className={`rd-iconbtn rd-iconbtn--boxed${info ? ' is-active' : ''}`} aria-label={t('msg.info')} aria-pressed={info} onClick={() => { openThread.current = null; setThread(null); setInfo((open) => !open); }}><Icon name="info" size={20} /></button>
           </div>
         </header>
         <PillTabs label={t('msg.conversations')} value={tab} onChange={setTab} items={[{ key: 'MESSAGES', label: t('msg.tabMessages'), icon: 'chat' }, { key: 'FILES', label: t('msg.tabFiles'), icon: 'attach', count: sharedFiles.length || undefined }]} />
@@ -250,26 +251,22 @@ export function MessagesWorkspace() {
           : <div className="msgs-thread" aria-live="polite">
             {hasMore && <button type="button" className="rd-btn rd-btn--soft msgs-older" onClick={() => void older()}>{t('msg.older')}</button>}
             {visible.length === 0 && <p className="rd-muted msgs-hello">{t('msg.conversationEmpty')}</p>}
-            {visible.map((message, index) => <div key={message.id}>{(index === 0 || dayOf(visible[index - 1].createdAt) !== dayOf(message.createdAt)) && <p className="msgs-day"><span>{dayTitle(message.createdAt)}</span></p>}{renderMessage(message, false)}</div>)}
+            {visible.map((message, index) => <div key={message.id}>{(index === 0 || dayOf(visible[index - 1].createdAt) !== dayOf(message.createdAt)) && <p className="msgs-day"><span>{dayTitle(message.createdAt)}</span></p>}{renderMessage(message, false)}{thread?.root.id === message.id && <div className="msgs-inline" aria-label={t('msg.thread')}>{thread.replies.map((reply) => renderMessage(reply, true))}{!readOnly && <Composer label={t('msg.reply')} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds, thread.root.id)} compact />}</div>}</div>)}
             <div ref={endRef} />
           </div>}
           {readOnly ? <p className="workspace-settings-note">{t('msg.guests')}</p> : <Composer label={t('msg.composerLabel', { name: label(channel) })} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds)} />}
         </div>
       </>}
     </div>
-    {sideOpen && channel && <aside className="msgs-side" aria-label={thread ? t('msg.thread') : t('msg.info')}>
-      {thread ? <>
-        <header><h2>{t('msg.thread')}</h2><button type="button" className="rd-iconbtn" onClick={() => { openThread.current = null; setThread(null); }} aria-label={t('msg.closeThread')}><Icon name="close" size={18} /></button></header>
-        <div className="msgs-thread">{renderMessage(thread.root, true)}<p className="chat-side__count">{t(thread.replies.length === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: thread.replies.length })}</p>{thread.replies.map((reply) => renderMessage(reply, true))}</div>
-        {!readOnly && <Composer label={t('msg.reply')} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds, thread.root.id)} compact />}
-      </> : <>
+    {sideOpen && channel && <aside className="msgs-side" aria-label={t('msg.info')}>
+      <>
         <header><h2>{t('msg.info')}</h2><button type="button" className="rd-iconbtn" onClick={() => setInfo(false)} aria-label={t('msg.close')}><Icon name="close" size={18} /></button></header>
         <div className="msgs-info"><h3>{label(channel)}</h3><p className="rd-muted">{channel.topic || t(channel.kind === 'CHANNEL' ? 'msg.kind.channel' : channel.kind === 'GROUP' ? 'msg.kind.group' : 'msg.kind.direct')}</p>
           <h4>{t('msg.members')} <span>{roster.length}</span></h4>
           <ul className="msgs-roster">{roster.map((person) => { const id = 'userId' in person ? person.userId : ''; return <li key={id}><Avatar name={person.displayName} size={34} online={online.includes(id)} /><span><strong>{person.displayName}</strong><small>{({ OWNER: t('role.owner'), ADMINISTRATOR: t('role.administrator'), MANAGER: t('role.manager'), MEMBER: t('role.member'), GUEST: t('role.guest') } as Record<string, string>)[person.role] ?? person.role.toLowerCase()}</small></span></li>; })}</ul>
           <h4>{t('msg.sharedHere')} <span>{sharedFiles.length}</span></h4>
           {sharedFiles.length === 0 ? <p className="rd-muted">{t('msg.noFiles')}</p> : <div className="msgs-files">{sharedFiles.slice(0, 5).map(fileCard)}</div>}
-        </div></>}
+        </div></>
     </aside>}
   </section>;
 }

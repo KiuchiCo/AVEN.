@@ -105,6 +105,7 @@ export function MyTasksWorkspace() {
   const { tasks, projects, loading, savingId, error, updateStatus } = useWorkspaceProductivity();
   const [filter, setFilter] = useState('OPEN');
   const [tab, setTab] = useState<'ALL' | 'MINE'>('ALL');
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
   const [groupBy, setGroupBy] = useState<TaskGroupBy>('DUE');
   const [projectFilter, setProjectFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -192,11 +193,11 @@ export function MyTasksWorkspace() {
             {loading ? <p className="productivity-message">{t('tasks.loading')}</p> : visibleTasks.length === 0 ? (
               <EmptyState art="check" title={filter === 'COMPLETED' ? t('tasks.emptyDone') : t('tasks.emptyClear')} text={filter === 'COMPLETED' ? t('tasks.emptyDoneHint') : t('tasks.emptyClearHint')}><Link className="rd-btn rd-btn--soft" href="/workspace/projects">{t('tasks.openProjects')} <span aria-hidden="true">→</span></Link></EmptyState>
             ) : (
-              <div className="rd-groups">{groups.map((group) => <section key={group.key} className="rd-group"><h3><Icon name="chevron" size={18} />{group.title}<span>{group.items.length}</span></h3>
-                {group.items.map((task) => <article className={`rd-taskrow${dayOf(task) && dayOf(task)! < todayKey && task.status !== 'COMPLETED' ? ' is-overdue' : ''}${task.status === 'COMPLETED' ? ' is-done' : ''}`} key={task.id}>
+              <div className="rd-groups">{groups.map((group) => <section key={group.key} className={`rd-group${collapsedGroups.includes(group.key) ? ' is-collapsed' : ''}`}><h3><button type="button" className="rd-group__toggle" aria-expanded={!collapsedGroups.includes(group.key)} onClick={() => setCollapsedGroups((current) => (current.includes(group.key) ? current.filter((key) => key !== group.key) : [...current, group.key]))}><Icon name="chevron" size={18} />{group.title}<span>{group.items.length}</span></button></h3>
+                {!collapsedGroups.includes(group.key) && group.items.map((task) => <article className={`rd-taskrow${dayOf(task) && dayOf(task)! < todayKey && task.status !== 'COMPLETED' ? ' is-overdue' : ''}${task.status === 'COMPLETED' ? ' is-done' : ''}`} key={task.id}>
                   <input type="checkbox" className="rd-check" checked={task.status === 'COMPLETED'} disabled={savingId === task.id} aria-label={t('tasks.markDone', { title: task.title })} onChange={(event) => void updateStatus(task.id, event.target.checked ? 'COMPLETED' : 'TODO')} />
                   <div className="rd-taskrow__main"><h4><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link><TaskBadges task={task} /></h4><TaskLabels labels={task.labels} compact />{task.events.length > 0 && <small>{task.events.length === 1 ? t('tasks.scheduled') : t('tasks.events', { n: task.events.length })}</small>}</div>
-                  {task.project && <Link className="rd-projectpill" href="/workspace/projects"><Icon name="layers" size={15} />{task.project.name}</Link>}
+                  {task.project ? <Link className="rd-projectpill" href="/workspace/projects"><Icon name="layers" size={15} />{task.project.name}</Link> : <span />}
                   <Pill tone={priorityTone(task.priority)}><i className="rd-dot" />{t(`prio.${task.priority.toLowerCase()}` as Key).replace(/^./, (c) => c.toLocaleUpperCase())}</Pill>
                   <span className="rd-due">{task.dueAt ? <time dateTime={task.dueAt}><Icon name="calendar" size={16} />{dayOf(task) === todayKey ? t('tasks.gr.today') : dateOf(task.dueAt)}</time> : <span className="rd-due--none">—</span>}</span>
                   <details className="rd-menu"><summary className="rd-iconbtn" aria-label={t('tasks.rowActions', { title: task.title })}><Icon name="more" size={20} /></summary>
@@ -386,7 +387,7 @@ export function InboxWorkspace() {
           <div className="rd-groups">{visibleFilteredTasks.map((task) => <article className={`rd-taskrow inbox-task${task.dueAt && task.dueAt.slice(0, 10) < todayKey ? ' is-overdue' : ''}`} key={task.id}>
             <span className="rd-tile rd-tile--round rd-tile--small" aria-hidden="true"><Icon name="tasks" size={18} /></span>
             <div className="rd-taskrow__main"><h4><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link><TaskBadges task={task} /></h4><TaskLabels labels={task.labels} compact /></div>
-            {task.project && <Link className="rd-projectpill" href="/workspace/projects"><Icon name="layers" size={15} />{task.project.name}</Link>}
+            {task.project ? <Link className="rd-projectpill" href="/workspace/projects"><Icon name="layers" size={15} />{task.project.name}</Link> : <span />}
             <Pill tone={priorityTone(task.priority)}><i className="rd-dot" />{t(`prio.${task.priority.toLowerCase()}` as Key).replace(/^./, (c) => c.toLocaleUpperCase())}</Pill>
             <span className={`rd-due${task.dueAt && task.dueAt.slice(0, 10) < todayKey ? ' rd-due--late' : ''}`}><time><Icon name="calendar" size={16} />{dueLabel(task.dueAt)}</time></span>
             <label className="rd-statuspick"><span className="visually-hidden">{t('tasks.statusFor', { title: task.title })}</span><select className="rd-select" value={task.status} disabled={savingId === task.id} onChange={(event) => void updateStatus(task.id, event.target.value)}>{taskStatuses.slice(0, 4).map((status) => <option key={status.value} value={status.value}>{t(status.label)}</option>)}</select></label>

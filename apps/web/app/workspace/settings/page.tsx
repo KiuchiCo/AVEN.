@@ -104,7 +104,7 @@ export default function WorkspaceSettingsPage() {
     finally { setBusy(false); }
   }
 
-  return <section className="workspace-settings-page">
+  return <section className="workspace-settings-page settings-cards">
     <PageHeader eyebrow={t('set.eyebrow')} title={t('set.title')} description={t('set.sub')} icon="sliders" />
     <AccountSettings />
     <ThemeCard />

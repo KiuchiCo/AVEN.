@@ -61,15 +61,15 @@ export default function ActivityPage() {
     <div className="workspace-section-page activity-page">
       <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.activity')} description={t('act.desc')} />
       {error && <p className="productivity-error" role="alert">{error}</p>}
+      <StatRow columns={5} label={t('act.count', { n: scoped.length })}>
+        <StatCard icon="hash" value={scoped.length} label={t('act.s.total')} />
+        <StatCard icon="doc" value={count('DOCUMENT')} label={t('act.s.documents')} tone="green" />
+        <StatCard icon="tasks" value={count('TASK', 'TASK_COMMENT', 'TASK_CHECKLIST')} label={t('act.s.tasks')} tone="blue" />
+        <StatCard icon="folder" value={count('PROJECT', 'MILESTONE')} label={t('act.s.projects')} />
+        <StatCard icon="calendar" value={count('CALENDAR')} label={t('act.s.calendar')} tone="red" />
+      </StatRow>
       <div className="rd-grid rd-grid--aside">
         <div>
-          <StatRow columns={5} label={t('act.count', { n: scoped.length })}>
-            <StatCard icon="hash" value={scoped.length} label={t('act.s.total')} />
-            <StatCard icon="doc" value={count('DOCUMENT')} label={t('act.s.documents')} tone="green" />
-            <StatCard icon="tasks" value={count('TASK', 'TASK_COMMENT', 'TASK_CHECKLIST')} label={t('act.s.tasks')} tone="blue" />
-            <StatCard icon="folder" value={count('PROJECT', 'MILESTONE')} label={t('act.s.projects')} />
-            <StatCard icon="calendar" value={count('CALENDAR')} label={t('act.s.calendar')} tone="red" />
-          </StatRow>
           <section className="activity-feed rd-panel" aria-labelledby="activity-feed-title">
             <div className="rd-panel__head"><div className="rd-panel__titles"><h2 id="activity-feed-title">{t('home.recentActivity')}</h2></div><span className="rd-muted">{t('act.count', { n: scoped.length })}</span></div>
             <div className="activity-filter rd-tabs rd-tabs--small" role="group" aria-label={t('act.filterAria')}>{activityTypes.map((type) => <button key={type} type="button" aria-pressed={filter === type} className={filter === type ? 'is-active' : ''} onClick={() => setFilter(type)}>{t(filterKeys[type])}</button>)}</div>

@@ -111,7 +111,7 @@
 .rd-groups { display: grid; gap: 4px; }
 .rd-group h3 { display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; font-family: var(--aven-interface-font); font-size: 16px; font-weight: 700; color: var(--m-ink); }
 .rd-group h3 span { color: var(--m-muted); font-size: 14px; font-weight: 500; }
-.rd-taskrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto minmax(110px, auto) auto; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; }
+.rd-taskrow { display: grid; grid-template-columns: 24px minmax(0, 1fr) minmax(0, 200px) 96px 128px 40px; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; }
 .rd-taskrow:hover { background: rgb(233 227 217 / 40%); }
 .rd-taskrow.is-overdue { background: rgb(249 223 219 / 45%); }
 .rd-taskrow.is-done h4 a { color: var(--m-muted); text-decoration: line-through; }
@@ -646,8 +646,9 @@
 .settings-tabs a { display: inline-flex; align-items: center; padding: 9px 18px; border: 1px solid var(--m-border); border-radius: 999px; background: var(--m-card-solid); color: var(--m-ink); font: 600 13.5px var(--aven-interface-font); text-decoration: none; }
 .settings-tabs a:hover { background: var(--m-chip); }
 .settings-tabs a[aria-current='page'] { border-color: rgb(164 135 102 / 55%); background: var(--m-active); }
-.workspace-settings-page { max-width: 1240px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
-.workspace-settings-page > header, .workspace-settings-page > .rd-pageheader, .workspace-settings-page > p, .workspace-settings-page > .workspace-settings-card--wide { grid-column: 1 / -1; }
+.workspace-settings-page { max-width: 1240px; padding: 0; }
+.settings-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.settings-cards > header, .settings-cards > p { grid-column: 1 / -1; }
 .workspace-settings-card { gap: 18px; padding: 24px; border: 1px solid var(--m-border); border-radius: 22px; background: var(--m-card); box-shadow: var(--m-shadow); }
 .workspace-settings-card h2 { font: 500 24px var(--aven-display-font); }
 .workspace-settings-card p { font-size: 14px; }
@@ -657,7 +658,41 @@
 .workspace-settings-save { min-height: 42px; padding: 0 20px; border-radius: 12px; background: var(--m-primary); color: var(--m-primary-ink); font: 600 14px var(--aven-interface-font); cursor: pointer; }
 .workspace-settings-card button:not(.workspace-settings-save) { min-height: 38px; padding: 0 16px; border: 1px solid var(--m-border); border-radius: 12px; background: var(--m-card); color: var(--m-ink); font: 600 13px var(--aven-interface-font); cursor: pointer; }
 .workspace-settings-card dl { border-top: 1px solid var(--m-border); }
-@media (max-width: 1000px) { .workspace-settings-page { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1000px) { .settings-cards { grid-template-columns: minmax(0, 1fr); } }
 .files-split > *, .files-toolbar > * { min-width: 0; } .files-listing { overflow: hidden; }
 @media (max-width: 720px) { .files-toolbar { gap: 8px; } .files-views button, .files-toolbar > button, .files-upload { padding: 0 12px; } .files-listing > header { flex-wrap: wrap; } }
 .files-table-wrap { position: relative; }
+
+/* Messages: replies open inline under their message. */
+.msgs-inline { margin: 4px 0 10px 56px; padding: 6px 0 4px 18px; border-left: 2px solid var(--m-border); display: grid; gap: 2px; }
+.msgs-inline .msgs-message { padding: 6px 0; }
+.msgs-inline .chat-compose { margin-top: 8px; }
+.msgs-inline .chat-compose__field textarea { min-height: 52px; }
+.msgs-replies__chev { display: inline-grid; transform: rotate(-90deg); transition: transform .15s; } .msgs-replies__chev.is-open { transform: rotate(0); }
+
+/* Task lists: aligned columns, a gap between rows so tinted rows never touch, collapsible groups. */
+.rd-group { display: grid; gap: 8px; margin-bottom: 8px; }
+.rd-group.is-collapsed { gap: 0; }
+.rd-group h3 { margin: 10px 0 2px; }
+.rd-group__toggle { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px; margin-left: -6px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.rd-group__toggle:hover { background: var(--m-chip); }
+.rd-group__toggle > svg { transition: transform .15s; } .rd-group__toggle[aria-expanded='false'] > svg { transform: rotate(-90deg); }
+.rd-taskrow .rd-projectpill { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-taskrow .rd-due { justify-self: start; } .rd-taskrow .rd-menu { justify-self: end; }
+.rd-taskrow .rd-statuspick { justify-self: end; }
+@media (max-width: 900px) { .rd-taskrow { grid-template-columns: 24px minmax(0, 1fr) auto 40px; } .rd-taskrow > .rd-projectpill, .rd-taskrow > span:empty { display: none; } .rd-taskrow .rd-due { grid-column: 2; } }
+.rd-taskrow.inbox-task { grid-template-columns: 36px minmax(0, 1fr) minmax(0, 200px) 96px 128px 150px; }
+@media (max-width: 900px) { .rd-taskrow.inbox-task { grid-template-columns: 36px minmax(0, 1fr) auto; } .rd-taskrow.inbox-task .rd-statuspick { grid-column: 2 / -1; justify-self: start; } }
+
+/* One page grid for every workspace page: same width, same centring. Messages and Home keep their own full layouts. */
+.workspace-content > :not(.msgs):not(.home):not(:has(.board)) { max-width: 1240px !important; margin-inline: auto !important; width: 100%; }
+.rd-stats { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+
+/* Sidebar: no sideways scroll, a slim vertical scrollbar, labels that fit the nav width. */
+.workspace-nav { overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgb(164 135 102 / 45%) transparent; scrollbar-gutter: stable; }
+.workspace-nav::-webkit-scrollbar { width: 6px; height: 0; } .workspace-nav::-webkit-scrollbar-thumb { border-radius: 6px; background: rgb(164 135 102 / 45%); } .workspace-nav::-webkit-scrollbar-track { background: transparent; }
+.workspace-nav__group, .workspace-nav__item { box-sizing: border-box; min-width: 0; max-width: 100%; }
+.workspace-nav__item { width: 100%; }
+.workspace-nav__item > span:not(.workspace-nav__badge) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-nav__item svg { flex: none; }
+.msgs-list { overflow-x: hidden; } .msgs-group li button { min-width: 0; }
