@@ -19,6 +19,8 @@ export type ApiEnvironment = {
   maxUploadBytes: number;
   storageQuotaBytes: number;
   aiApiKey?: string;
+  /** Browser push (VAPID). Absent means push is off. */
+  push?: { publicKey: string; privateKey: string; subject: string };
   /** Optional web search for AVEN Intelligence (Brave Search API). */
   webSearch?: { apiKey: string; baseUrl: string };
   aiModel: string;
@@ -94,6 +96,15 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   const storageDir = source.STORAGE_DIR?.trim() || '.storage';
 
   const aiApiKey = source.ANTHROPIC_API_KEY?.trim() || undefined;
+  const vapidPublic = source.VAPID_PUBLIC_KEY?.trim() || undefined, vapidPrivate = source.VAPID_PRIVATE_KEY?.trim() || undefined;
+  let push: ApiEnvironment['push'];
+  if (vapidPublic || vapidPrivate) {
+    const subject = source.VAPID_SUBJECT?.trim() ?? '';
+    if (!vapidPublic || !vapidPrivate) errors.push('VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set together');
+    else if (Buffer.from(vapidPublic, 'base64url').length !== 65 || Buffer.from(vapidPrivate, 'base64url').length !== 32) errors.push('VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be a P-256 key pair from `npm run vapid:generate`');
+    else if (!/^(mailto:[^\s@]+@[^\s@]+|https:\/\/\S+)$/.test(subject)) errors.push('VAPID_SUBJECT must be a mailto: address or an https URL');
+    else push = { publicKey: vapidPublic, privateKey: vapidPrivate, subject };
+  }
   const webSearchKey = source.WEB_SEARCH_API_KEY?.trim() || undefined;
   const webSearchBase = source.WEB_SEARCH_BASE_URL?.trim() || 'https://api.search.brave.com';
   try { const parsed = new URL(webSearchBase); if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname))) errors.push('WEB_SEARCH_BASE_URL must be an https address'); } catch { errors.push('WEB_SEARCH_BASE_URL must be a valid URL'); }
@@ -167,5 +178,5 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, webSearch, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
 }

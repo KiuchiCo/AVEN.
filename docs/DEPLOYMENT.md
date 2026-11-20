@@ -14,7 +14,7 @@ Copy `.env.example` to `.env` once and fill it in. Never copy it over an existin
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_ISSUER` | Sign-in. Use a production Clerk instance, not a development one |
 | `TRUST_PROXY` | Number of proxies in front of the API (usually `1`). Without it every visitor looks like the proxy's address and shares one rate limit |
 
-Optional features switch on when their keys are present: `ANTHROPIC_API_KEY` (AVEN Intelligence), `WEB_SEARCH_API_KEY` (Brave Search for the assistant; verified only against a local stub), `EMAIL_API_KEY` + `EMAIL_FROM` (invitations and notification emails), `STRIPE_*` (paid plans). With no key, the feature says it is off rather than pretending.
+Optional features switch on when their keys are present: `ANTHROPIC_API_KEY` (AVEN Intelligence), `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` (browser push notifications; generate a pair with `npm run vapid:generate --workspace @aven/api` after building; the web app must be served over HTTPS), `WEB_SEARCH_API_KEY` (Brave Search for the assistant; verified only against a local stub), `EMAIL_API_KEY` + `EMAIL_FROM` (invitations and notification emails), `STRIPE_*` (paid plans). With no key, the feature says it is off rather than pretending.
 
 The API refuses to start with an invalid configuration and says which setting is wrong.
 

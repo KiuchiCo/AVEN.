@@ -6,7 +6,7 @@ import { isPublicAddress } from './workflow-rules.js';
 
 /** `retry` failures are worth trying again (the other side is down or busy); `permanent` ones will not improve. */
 export class WebhookError extends Error {
-  constructor(message: string, readonly retry: boolean) { super(message); }
+  constructor(message: string, readonly retry: boolean, readonly status?: number) { super(message); }
 }
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -16,7 +16,7 @@ const MAX_RESPONSE_BYTES = 64 * 1024;
  * uses exactly that address, so a hostname that later points somewhere internal (DNS rebinding) cannot be reached.
  * Redirects are not followed.
  */
-export function sendWebhook(url: URL, body: string, options: { allowPrivate: boolean; timeoutMs?: number }): Promise<{ status: number }> {
+export function sendWebhook(url: URL, body: string | Buffer, options: { allowPrivate: boolean; timeoutMs?: number; headers?: Record<string, string>; userAgent?: string }): Promise<{ status: number }> {
   return new Promise((resolve, reject) => {
     // Node skips the DNS hook when the host is already an IP address, so those are checked here.
     const literal = url.hostname.replace(/^\[|\]$/g, '');
@@ -24,7 +24,7 @@ export function sendWebhook(url: URL, body: string, options: { allowPrivate: boo
     const secure = url.protocol === 'https:';
     const request = (secure ? https : http).request({
       method: 'POST', hostname: url.hostname.replace(/^\[|\]$/g, ''), port: url.port || (secure ? 443 : 80), path: `${url.pathname}${url.search}`,
-      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'user-agent': 'AVEN-Workflows/1.0' },
+      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'user-agent': options.userAgent ?? 'AVEN-Workflows/1.0', ...options.headers },
       timeout: options.timeoutMs ?? 10_000,
       lookup: (hostname, lookupOptions, callback) => {
         dnsLookup(hostname, { all: true }).then((addresses) => {
@@ -40,7 +40,7 @@ export function sendWebhook(url: URL, body: string, options: { allowPrivate: boo
       response.on('close', () => {
         const status = response.statusCode ?? 0;
         if (status >= 200 && status < 300) resolve({ status });
-        else reject(new WebhookError(`The webhook answered with HTTP ${status}.`, status === 429 || status >= 500 || status === 408));
+        else reject(new WebhookError(`The webhook answered with HTTP ${status}.`, status === 429 || status >= 500 || status === 408, status));
       });
     });
     request.on('timeout', () => request.destroy(new WebhookError('The webhook did not answer in time.', true)));

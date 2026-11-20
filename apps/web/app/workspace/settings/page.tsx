@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { BillingCard } from './billing-card';
 import { PermissionsCard } from './permissions-card';
+import { PushCard } from './push-card';
 import { ThemeCard } from './theme-card';
 import { TimeZoneCard } from './time-zone-card';
 
@@ -102,6 +103,7 @@ export default function WorkspaceSettingsPage() {
     <AccountSettings />
     <ThemeCard />
     <TimeZoneCard />
+    <PushCard />
     <BillingCard />
     <PermissionsCard />
     <div className="workspace-settings-card">

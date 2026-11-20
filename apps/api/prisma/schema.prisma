@@ -89,6 +89,7 @@ model User {
   displayName                 String              @db.VarChar(120)
   notifyTeamActivity          Boolean             @default(true)
   notifyTaskUpdates           Boolean             @default(true)
+  pushSubscriptions           PushSubscription[]
   dashboardHiddenWidgets      String[]            @default([])
   emailNotifications          Boolean             @default(false)
   /// IANA name such as Australia/Sydney. Null means "use the device's own time zone".
@@ -435,6 +436,8 @@ model ActivityReceipt {
   dismissedAt          DateTime?         @db.Timestamptz(3)
   /// When this notification was included in an email (null = not emailed).
   emailedAt            DateTime?         @db.Timestamptz(3)
+  /// When this notification was sent as a browser push (null = not pushed).
+  pushedAt             DateTime?         @db.Timestamptz(3)
   createdAt            DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
   activity             WorkspaceActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
@@ -444,6 +447,7 @@ model ActivityReceipt {
   @@index([userId, readAt, dismissedAt])
   @@index([userId, isNotificationTarget, activityId])
   @@index([isNotificationTarget, emailedAt, createdAt])
+  @@index([isNotificationTarget, pushedAt, createdAt])
   @@map("activity_receipts")
 }
 
@@ -1193,4 +1197,18 @@ model Favourite {
   @@unique([userId, kind, entityId])
   @@index([userId, workspaceId, createdAt])
   @@map("favourites")
+}
+
+/// One browser (or device) that agreed to receive notifications. The endpoint is the push service's address for it.
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  endpoint  String   @unique @db.VarChar(1000)
+  p256dh    String   @db.VarChar(200)
+  auth      String   @db.VarChar(100)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }

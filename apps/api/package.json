@@ -8,6 +8,7 @@
     "test": "npm run build && node --experimental-strip-types --test test/*.test.mjs",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
+    "vapid:generate": "node scripts/vapid.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",

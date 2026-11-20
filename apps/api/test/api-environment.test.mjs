@@ -65,3 +65,14 @@ test('web search is optional and needs a safe base URL', async () => {
   assert.equal(readApiEnvironment({ ...base, WEB_SEARCH_API_KEY: 'k' }).webSearch.baseUrl, 'https://api.search.brave.com');
   assert.throws(() => readApiEnvironment({ ...base, WEB_SEARCH_API_KEY: 'k', WEB_SEARCH_BASE_URL: 'http://example.com' }), /https/);
 });
+
+test('push needs a matching VAPID key pair and subject', async () => {
+  const { readApiEnvironment } = await import('../dist/config/api-environment.js');
+  const { generateVapidKeys } = await import('../dist/push/push-crypto.js');
+  const base = { DATABASE_URL: 'postgresql://u:p@localhost:5432/d' }; const k = generateVapidKeys();
+  assert.equal(readApiEnvironment(base).push, undefined);
+  assert.throws(() => readApiEnvironment({ ...base, VAPID_PUBLIC_KEY: k.publicKey }), /set together/);
+  assert.throws(() => readApiEnvironment({ ...base, VAPID_PUBLIC_KEY: 'abc', VAPID_PRIVATE_KEY: 'def', VAPID_SUBJECT: 'mailto:a@b.co' }), /P-256/);
+  assert.throws(() => readApiEnvironment({ ...base, VAPID_PUBLIC_KEY: k.publicKey, VAPID_PRIVATE_KEY: k.privateKey, VAPID_SUBJECT: 'http://x' }), /VAPID_SUBJECT/);
+  assert.equal(readApiEnvironment({ ...base, VAPID_PUBLIC_KEY: k.publicKey, VAPID_PRIVATE_KEY: k.privateKey, VAPID_SUBJECT: 'mailto:ops@aven.test' }).push.subject, 'mailto:ops@aven.test');
+});
