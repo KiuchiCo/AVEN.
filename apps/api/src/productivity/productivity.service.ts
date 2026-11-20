@@ -759,12 +759,19 @@ export class ProductivityService {
     if (effectiveRecurrence && previousTask.parentId) throw new BadRequestException('Subtasks cannot repeat.');
 
     const completing = data.status === 'COMPLETED' && previousTask.status !== 'COMPLETED';
+    // An edit made offline says what each field was when the person changed it; if it has changed since, nothing is applied.
+    const expected = 'base' in body ? this.parseTaskBase(body.base, Object.keys(data)) : {};
     const result = await this.prisma.$transaction(async (transaction) => {
-      const updated = await transaction.task.updateMany({ where: { id: taskId, workspaceId }, data });
+      const updated = await transaction.task.updateMany({ where: { id: taskId, workspaceId, ...expected }, data });
       if (updated.count === 1 && completing) await this.spawnNextOccurrence(transaction, workspaceId, taskId, actorId);
       return updated;
     });
-    if (result.count !== 1) throw new NotFoundException('Task not found in this workspace.');
+    if (result.count !== 1) {
+      const current = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, include: { project: { select: { id: true, name: true } }, assignee: { select: { id: true, displayName: true } } } });
+      if (!current) throw new NotFoundException('Task not found in this workspace.');
+      const changed = Object.keys(data).filter((field) => field !== 'completedAt' && field in expected);
+      throw new ConflictException({ message: 'This task was changed by someone else while you were editing.', current, fields: changed });
+    }
     if (data.status && data.status !== previousTask.status) {
       await this.automations.runForTaskStatusChange(workspaceId, taskId, previousTask.status, data.status, actorId);
     }
@@ -778,6 +785,23 @@ export class ProductivityService {
       : [];
     await this.recordActivity(workspaceId, actorId, 'TASK', task.id, `updated task “${task.title}”`, true, assignmentRecipients);
     return task;
+  }
+
+  /** `base` maps each field being changed to the value it had when the edit was made. Only fields being changed may appear. */
+  private parseTaskBase(raw: unknown, changing: string[]): Prisma.TaskWhereInput {
+    const base = objectInput(raw);
+    const allowed = new Set(changing.filter((field) => field !== 'completedAt'));
+    for (const key of Object.keys(base)) if (!allowed.has(key)) throw new BadRequestException(`base may only describe fields being changed (${key}).`);
+    const where: Prisma.TaskWhereInput = {};
+    if ('title' in base) where.title = textField(base.title, 'Base title', 200);
+    if ('description' in base) where.description = optionalText(base.description, 'Base description', 5000);
+    if ('status' in base) where.status = enumField(base.status, taskStatuses, 'Base status');
+    if ('priority' in base) where.priority = enumField(base.priority, taskPriorities, 'Base priority');
+    if ('labels' in base) where.labels = { equals: taskLabels(base.labels) };
+    if ('dueAt' in base) where.dueAt = dateField(base.dueAt, 'Base due date');
+    if ('startAt' in base) where.startAt = dateField(base.startAt, 'Base start date');
+    if ('assigneeId' in base) where.assigneeId = optionalUuid(base.assigneeId, 'Base assignee');
+    return where;
   }
 
   async deleteTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string) {

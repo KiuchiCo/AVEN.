@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useT } from '../../i18n';
 import type { Key } from '../../i18n/en';
 import { useWorkspaceSession } from '../workspace-shell';
@@ -13,6 +13,8 @@ import { TemplateEditor } from './templates/components/editor/TemplateEditor';
 import { templateDraft } from './templates/editor/normalize';
 import type { ProjectTemplate, TemplateMilestone, TemplateTask } from './templates/types';
 import { csvCell, parseTaskCsv, type TaskImportRow } from './task-csv';
+import { baseFor } from '../task-offline';
+import { useTaskSync } from '../task-sync';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Member = { userId: string; displayName: string; role: string };
@@ -38,6 +40,8 @@ export default function ProjectsPage() {
   const t = useT();
   const prio = (value: string) => capitalise(t(prioKeys[value] ?? 'prio.medium'));
   const { workspace } = useWorkspaceSession();
+  const taskSync = useTaskSync();
+  const handledSync = useRef(0);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskLabelUsages, setTaskLabelUsages] = useState<TaskLabelUsage[]>([]);
@@ -386,11 +390,25 @@ export default function ProjectsPage() {
     } finally { setBusy(false); }
   }
 
+  /** Saves a task edit, or keeps it on this device when offline and shows it as if it had saved. */
+  useEffect(() => {
+    if (taskSync.syncVersion === handledSync.current) return;
+    handledSync.current = taskSync.syncVersion;
+    void reload().catch(() => undefined);
+  }, [reload, taskSync.syncVersion]);
+
+  async function saveTaskFields(task: Task, fields: Record<string, unknown>) {
+    const outcome = await taskSync.change(task.id, task.title, fields, baseFor(task, fields));
+    if (outcome === 'saved') { await reload(); return; }
+    const assignee = 'assigneeId' in fields ? members.find((member) => member.userId === fields.assigneeId) : undefined;
+    const shown = { ...fields, ...('assigneeId' in fields ? { assignee: assignee ? { id: assignee.userId, displayName: assignee.displayName } : null } : {}) };
+    setTasks((current) => current.map((row) => (row.id === task.id ? { ...row, ...shown } as Task : row)));
+  }
+
   async function changeStatus(task: Task, status: string) {
     setBusy(true); setError('');
     try {
-      await request(`/workspaces/${workspace.id}/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-      await reload();
+      await saveTaskFields(task, { status });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not update the task.');
     } finally { setBusy(false); }
@@ -409,8 +427,7 @@ export default function ProjectsPage() {
   async function updateTask(task: Task, field: 'priority' | 'dueAt' | 'assigneeId' | 'labels', value: string | string[]) {
     setBusy(true); setError('');
     try {
-      await request(`/workspaces/${workspace.id}/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: field === 'labels' ? value : value || null }) });
-      await reload();
+      await saveTaskFields(task, { [field]: field === 'labels' ? value : value || null });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not update the task.');
     } finally { setBusy(false); }

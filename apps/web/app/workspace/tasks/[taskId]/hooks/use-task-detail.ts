@@ -18,5 +18,7 @@ export function useTaskDetail(taskId: string) {
     void load();
     return () => { live = false; };
   }, [request]);
-  return { task, loading, error, reload };
+  /** Shows an edit that is waiting to sync as if it had saved. */
+  const patchLocal = useCallback((fields: Partial<TaskSummary>) => setTask((current) => (current ? { ...current, ...fields } : current)), []);
+  return { task, loading, error, reload, patchLocal };
 }

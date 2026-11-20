@@ -3,8 +3,11 @@
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWorkspaceSession } from '../../workspace-shell';
+import { baseFor } from '../../task-offline';
+import type { TaskSummary } from './types';
+import { useTaskSync } from '../../task-sync';
 import { TaskDetailError } from './components/task-detail-error';
 import { TaskDetailLoading } from './components/task-detail-loading';
 import { TaskDetailView } from './components/task-detail-view';
@@ -14,7 +17,7 @@ import { useTaskMembers } from './hooks/use-task-members';
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>(); const router = useRouter(); const { getToken } = useAuth(); const { workspace, user } = useWorkspaceSession();
-  const { members } = useTaskMembers(); const { task, loading, error, reload } = useTaskDetail(taskId); const [errorMessage, setErrorMessage] = useState(''); const [busy, setBusy] = useState(false); const [projectTasks, setProjectTasks] = useState<{ id: string; title: string; status: string; project: { id: string; name: string } | null }[]>([]);
+  const { members } = useTaskMembers(); const { task, loading, error, reload, patchLocal } = useTaskDetail(taskId); const taskSync = useTaskSync(); const handledSync = useRef(0); const [errorMessage, setErrorMessage] = useState(''); const [busy, setBusy] = useState(false); const [projectTasks, setProjectTasks] = useState<{ id: string; title: string; status: string; project: { id: string; name: string } | null }[]>([]);
   useEffect(() => {
     if (!task?.project) return;
     let live = true;
@@ -42,7 +45,25 @@ export default function TaskDetailPage() {
     } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : fallback); return false; }
     finally { setBusy(false); }
   }
-  const updateTask = (fields: Record<string, string | number | null>) => send('PATCH', `/tasks/${taskId}`, fields, 'Could not update this task.');
+  useEffect(() => {
+    if (taskSync.syncVersion === handledSync.current) return;
+    handledSync.current = taskSync.syncVersion;
+    void reload().catch(() => undefined);
+  }, [reload, taskSync.syncVersion]);
+  async function updateTask(fields: Record<string, string | number | null>): Promise<boolean> {
+    if (!task) return false;
+    setBusy(true); setErrorMessage('');
+    try {
+      const outcome = await taskSync.change(taskId, task.title, fields, baseFor(task, fields));
+      if (outcome === 'saved') await reload();
+      else {
+        const assignee = 'assigneeId' in fields ? members.find((member) => member.userId === fields.assigneeId) : undefined;
+        patchLocal({ ...fields, ...('assigneeId' in fields ? { assignee: assignee ? { id: assignee.userId, displayName: assignee.displayName } : null } : {}) } as unknown as Partial<TaskSummary>);
+      }
+      return true;
+    } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : 'Could not update this task.'); return false; }
+    finally { setBusy(false); }
+  }
   const addSubtask = (title: string) => send('POST', '/tasks', { title, parentId: taskId }, 'Could not add the subtask.');
   const toggleSubtask = (subtaskId: string, completed: boolean) => { void send('PATCH', `/tasks/${subtaskId}`, { status: completed ? 'COMPLETED' : 'TODO' }, 'Could not update the subtask.'); };
   async function duplicateTask() { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}/duplicate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => null) as { id?: string; message?: string } | null; if (!response.ok || !body?.id) throw new Error(body?.message ?? 'Could not duplicate this task.'); router.push(`/workspace/tasks/${body.id}`); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : 'Could not duplicate this task.'); } finally { setBusy(false); } }

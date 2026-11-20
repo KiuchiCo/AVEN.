@@ -1807,6 +1807,22 @@ export const en = {
   'shell.offline': "You’re offline. Changes can’t be saved until your connection returns.",
   'ed.offlineKept': "You’re offline. Your changes are kept on this device and will save when you reconnect.",
   'ed.draftRestored': "Restored changes from your last visit that hadn’t been saved.",
+  'sync.pendingOne': "1 change is waiting to sync.",
+  'sync.pendingMany': "{n} changes are waiting to sync.",
+  'sync.conflict': "“{task}”: {fields} was changed by someone else while you were offline. Which version do you want?",
+  'sync.rejected': "“{task}” couldn’t be updated: {message}",
+  'sync.gone': "“{task}” no longer exists, so your offline change was dropped.",
+  'sync.keepMine': "Keep mine",
+  'sync.keepTheirs': "Keep theirs",
+  'sync.discard': "Dismiss",
+  'sync.f.title': "title",
+  'sync.f.description': "description",
+  'sync.f.status': "status",
+  'sync.f.priority': "priority",
+  'sync.f.labels': "labels",
+  'sync.f.startAt': "start date",
+  'sync.f.dueAt': "due date",
+  'sync.f.assigneeId': "assignee",
 } as const;
 
 export type Key = keyof typeof en;
