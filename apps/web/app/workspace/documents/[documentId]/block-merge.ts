@@ -47,3 +47,19 @@ export function mergeBlocks<T extends MergeableBlock>(base: T[], mine: T[], thei
   }
   return { blocks: out.map((id) => chosen.get(id)!), conflicts };
 }
+
+/**
+ * Brings changes that were never saved (kept on this device) back onto the latest saved copy.
+ * `base` is the saved copy the draft was started from. Same rules as `mergeBlocks`; a changed title counts as mine unless
+ * someone else also renamed the document, which is reported as a conflict.
+ */
+export function reconcileDraft<T extends MergeableBlock>(
+  draft: { title: string; blocks: T[]; base: { updatedAt: string; title: string; blocks: T[] } },
+  latest: { updatedAt: string; title: string; blocks: T[] },
+): { title: string; blocks: T[]; conflict: boolean } {
+  const renamed = draft.title !== draft.base.title;
+  if (latest.updatedAt === draft.base.updatedAt) return { title: draft.title, blocks: draft.blocks, conflict: false };
+  const { blocks, conflicts } = mergeBlocks(draft.base.blocks, draft.blocks, latest.blocks);
+  const titleClash = renamed && latest.title !== draft.base.title && latest.title !== draft.title;
+  return { title: renamed ? draft.title : latest.title, blocks, conflict: conflicts.length > 0 || titleClash };
+}

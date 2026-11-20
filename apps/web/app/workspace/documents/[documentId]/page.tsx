@@ -12,7 +12,8 @@ import { ImageBlock, TableBlock } from './document-blocks';
 import { SharePanel } from './share-panel';
 import { FavouriteStar } from '../../favourites';
 import { readEvents } from '../../messages/sse';
-import { mergeBlocks } from './block-merge';
+import { mergeBlocks, reconcileDraft } from './block-merge';
+import { draftKey, readDraft, removeDraft, writeDraft } from './offline-draft';
 
 type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER' | 'TABLE' | 'IMAGE';
 type Block = { id: string; type: BlockType; text: string; checked?: boolean; rows?: string[][]; fileId?: string };
@@ -21,6 +22,8 @@ type Version = { id: string; title: string; label: string | null; createdAt: str
 type Comment = { id: string; body: string; createdAt: string; resolvedAt: string | null; createdBy: { id: string; displayName: string } };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 class ConflictError extends Error { constructor(message: string, readonly current: Document) { super(message); } }
+/** The request never reached the server: no connection, or the sign-in token could not be refreshed. */
+class OfflineError extends Error {}
 const blockTypes: { type: BlockType; label: Key }[] = (['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'DIVIDER', 'TABLE', 'IMAGE'] as const).map((type) => ({ type, label: `bt.${type}` as Key }));
 
 function createBlock(type: BlockType = 'PARAGRAPH'): Block { return { id: crypto.randomUUID(), type, text: '', checked: false }; }
@@ -55,6 +58,7 @@ export default function DocumentEditorPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [conflict, setConflict] = useState<Document | null>(null);
+  const [offline, setOffline] = useState(false);
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE'>('OUTLINE');
   const [viewers, setViewers] = useState<{ id: string; name: string }[]>([]);
   const revision = useRef(0);
@@ -62,9 +66,13 @@ export default function DocumentEditorPage() {
   useEffect(() => { live.current = { document, blocks, title, dirty, saving }; });
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
-    const token = await getToken();
+    let token: string | null = null;
+    try { token = await getToken(); } catch { throw new OfflineError('offline'); }
+    if (!token && typeof navigator !== 'undefined' && !navigator.onLine) throw new OfflineError('offline');
     if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
-    const response = await fetch(`${apiBase}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } });
+    let response: Response;
+    try { response = await fetch(`${apiBase}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } }); }
+    catch { throw new OfflineError('offline'); }
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string; current?: Document } | null;
       if (response.status === 409 && body?.current) throw new ConflictError(body.message ?? 'This document was changed by someone else.', body.current);
@@ -133,11 +141,24 @@ export default function DocumentEditorPage() {
       request(`/workspaces/${workspace.id}/documents/${documentId}/comments`) as Promise<Comment[]>,
     ]).then(([savedDocument, history, threads]) => {
       if (cancelled) return;
-      setDocument(savedDocument); setTitle(savedDocument.title); setBlocks(parseBlocks(savedDocument.content)); setVersions(history); setComments(threads); setHydrated(true);
+      const latestBlocks = parseBlocks(savedDocument.content);
+      let start = { title: savedDocument.title, blocks: latestBlocks }, restored = false, clash = false;
+      // Edits that were never saved (connection lost, tab closed) are brought back onto whatever is saved now.
+      try {
+        const key = draftKey(user.id, workspace.id, documentId);
+        const draft = readDraft(window.localStorage, key);
+        if (draft) {
+          const result = reconcileDraft({ title: draft.title, blocks: parseBlocks(draft.content), base: { updatedAt: draft.base.updatedAt, title: draft.base.title, blocks: parseBlocks(draft.base.content) } }, { updatedAt: savedDocument.updatedAt, title: savedDocument.title, blocks: latestBlocks });
+          if (!result.conflict && result.title === savedDocument.title && JSON.stringify(result.blocks) === JSON.stringify(latestBlocks)) removeDraft(window.localStorage, key);
+          else { start = result; restored = true; clash = result.conflict; }
+        }
+      } catch { /* A draft that can't be read is left alone. */ }
+      setDocument(savedDocument); setTitle(start.title); setBlocks(start.blocks); setVersions(history); setComments(threads); setHydrated(true);
+      if (restored) { revision.current += 1; setDirty(true); setSuccess(t('ed.draftRestored')); if (clash) setConflict(savedDocument); }
     }).catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not open document.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [documentId, request, workspace.id]);
+  }, [documentId, request, t, user.id, workspace.id]);
 
   const saveDocument = useCallback(async (): Promise<boolean> => {
     if (!document || saving) return false;
@@ -147,14 +168,15 @@ export default function DocumentEditorPage() {
     setSaving(true); setError(''); setSuccess('');
     try {
       const updated = await request(`/workspaces/${workspace.id}/documents/${document.id}`, { method: 'PATCH', body: JSON.stringify(payload) }) as Document;
-      setDocument(updated);
+      setDocument(updated); setOffline(false);
       if (revision.current === currentRevision) {
         setDirty(false);
         return true;
       }
       return false;
     } catch (reason) {
-      if (reason instanceof ConflictError) { if (applyRemote(reason.current, t('ed.someone')) === 'conflict') setConflict(reason.current); }
+      if (reason instanceof OfflineError) setOffline(true);
+      else if (reason instanceof ConflictError) { if (applyRemote(reason.current, t('ed.someone')) === 'conflict') setConflict(reason.current); }
       else setError(reason instanceof Error ? reason.message : 'Autosave failed.');
       return false;
     }
@@ -162,10 +184,35 @@ export default function DocumentEditorPage() {
   }, [applyRemote, blocks, dirty, document, request, saving, t, title, workspace.id]);
 
   useEffect(() => {
-    if (!hydrated || !dirty || saving || error || conflict) return;
+    if (!hydrated || !dirty || saving || error || conflict || offline) return;
     const timer = window.setTimeout(() => { void saveDocument(); }, 900);
     return () => window.clearTimeout(timer);
-  }, [conflict, dirty, error, hydrated, saveDocument, saving]);
+  }, [conflict, dirty, error, hydrated, offline, saveDocument, saving]);
+
+  // While offline, try again when the connection returns and every few seconds in case the browser doesn't say.
+  useEffect(() => {
+    if (!offline) return;
+    const retry = () => { void saveDocument(); };
+    const timer = window.setInterval(retry, 8000);
+    window.addEventListener('online', retry);
+    return () => { window.clearInterval(timer); window.removeEventListener('online', retry); };
+  }, [offline, saveDocument]);
+
+  // Keep unsaved edits on this device until the server has them.
+  useEffect(() => {
+    if (!hydrated || !document) return;
+    const key = draftKey(user.id, workspace.id, documentId);
+    if (!dirty) { removeDraft(window.localStorage, key); return; }
+    const timer = window.setTimeout(() => writeDraft(window.localStorage, key, { title, content: encodeBlocks(blocks), base: { updatedAt: document.updatedAt, title: document.title, content: document.content }, savedAt: new Date().toISOString() }), 300);
+    return () => window.clearTimeout(timer);
+  }, [blocks, dirty, document, documentId, hydrated, title, user.id, workspace.id]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   async function keepMyChanges() {
     if (!conflict) return;
@@ -248,6 +295,7 @@ export default function DocumentEditorPage() {
       <p>{t('ed.conflictBody')}</p>
       <div><button type="button" disabled={saving} onClick={() => void keepMyChanges()}>{t('ed.keepMine')}</button><button type="button" disabled={saving} onClick={useTheirVersion}>{t('ed.loadTheirs')}</button></div>
     </div>}
+    {offline && dirty && <p className="productivity-error" role="status">{t('ed.offlineKept')}</p>}
     {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>{t('ed.retry')}</button></p>}
     {loading ? <p className="productivity-message">{t('ed.opening')}</p> : !document ? <div className="workspace-section-empty"><h2>{t('ed.unavailable')}</h2><p>{t('ed.unavailableBody')}</p><Link href="/workspace/documents">{t('ed.back')}</Link></div> : <>
       <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={blockType} onChange={(event) => setBlockType(event.target.value as BlockType)}>{blockTypes.map((item) => <option key={item.type} value={item.type}>{t(item.label)}</option>)}</select></label><button type="button" onClick={() => insertBlock()}>{t('ed.addBlock')}</button><span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>

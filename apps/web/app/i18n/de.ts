@@ -1806,4 +1806,6 @@ export const de: Dictionary = {
   'tpl.ed.labelsHint': "Verwende bis zu {max} Labels, jeweils aus Buchstaben, Zahlen, Bindestrichen oder Unterstrichen.",
   'tpl.ed.removeTask': "Aufgabe entfernen",
   'shell.offline': "Du bist offline. Änderungen können erst gespeichert werden, wenn die Verbindung zurück ist.",
+  'ed.offlineKept': "Du bist offline. Deine Änderungen bleiben auf diesem Gerät und werden gespeichert, sobald du wieder verbunden bist.",
+  'ed.draftRestored': "Nicht gespeicherte Änderungen deines letzten Besuchs wurden wiederhergestellt.",
 };

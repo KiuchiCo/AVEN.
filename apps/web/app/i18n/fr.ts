@@ -1806,4 +1806,6 @@ export const fr: Dictionary = {
   'tpl.ed.labelsHint': "Utilisez jusqu’à {max} étiquettes, chacune avec des lettres, chiffres, tirets ou tirets bas.",
   'tpl.ed.removeTask': "Supprimer la tâche",
   'shell.offline': "Vous êtes hors ligne. Les modifications ne peuvent pas être enregistrées tant que la connexion n’est pas rétablie.",
+  'ed.offlineKept': "Vous êtes hors ligne. Vos modifications sont conservées sur cet appareil et seront enregistrées à la reconnexion.",
+  'ed.draftRestored': "Les modifications non enregistrées de votre dernière visite ont été restaurées.",
 };

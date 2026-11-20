@@ -1806,4 +1806,6 @@ export const es: Dictionary = {
   'tpl.ed.labelsHint': "Usa hasta {max} etiquetas, cada una con letras, números, guiones o guiones bajos.",
   'tpl.ed.removeTask': "Quitar tarea",
   'shell.offline': "Estás sin conexión. Los cambios no se pueden guardar hasta que vuelva la conexión.",
+  'ed.offlineKept': "Estás sin conexión. Tus cambios se guardan en este dispositivo y se enviarán cuando vuelvas a conectarte.",
+  'ed.draftRestored': "Se recuperaron los cambios de tu última visita que no se habían guardado.",
 };
