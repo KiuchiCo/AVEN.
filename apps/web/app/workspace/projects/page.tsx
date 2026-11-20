@@ -3,6 +3,8 @@
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useT } from '../../i18n';
+import type { Key } from '../../i18n/en';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
 import { TaskBadges } from '../task-badges';
@@ -20,17 +22,21 @@ type TaskViewFilters = { projectId: string; search: string; status: string; prio
 type SavedTaskView = { id: string; name: string; filters: TaskViewFilters; createdBy?: { id: string; displayName: string } };
 type TaskLabelUsage = { label: string; taskCount: number };
 
-const columns = [
-  { status: 'TODO', title: 'To do' },
-  { status: 'IN_PROGRESS', title: 'In progress' },
-  { status: 'IN_REVIEW', title: 'In review' },
-  { status: 'COMPLETED', title: 'Completed' },
-  { status: 'CANCELLED', title: 'Cancelled' },
+const columns: { status: string; title: Key }[] = [
+  { status: 'TODO', title: 'status.todo' },
+  { status: 'IN_PROGRESS', title: 'status.inProgress' },
+  { status: 'IN_REVIEW', title: 'status.inReview' },
+  { status: 'COMPLETED', title: 'status.completed' },
+  { status: 'CANCELLED', title: 'status.cancelled' },
 ];
+const prioKeys: Record<string, Key> = { LOW: 'prio.low', MEDIUM: 'prio.medium', HIGH: 'prio.high', URGENT: 'prio.urgent' };
+const capitalise = (value: string) => value.replace(/^./, (c) => c.toLocaleUpperCase());
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
 export default function ProjectsPage() {
   const { getToken } = useAuth();
+  const t = useT();
+  const prio = (value: string) => capitalise(t(prioKeys[value] ?? 'prio.medium'));
   const { workspace } = useWorkspaceSession();
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -208,7 +214,7 @@ export default function ProjectsPage() {
     setSelectedProject(projects.some((project) => project.id === filters.projectId) ? filters.projectId : '');
     setTaskSearch(filters.search ?? ''); setStatusFilter(filters.status ?? 'ALL'); setPriorityFilter(filters.priority ?? 'ALL');
     setAssigneeFilter(filters.assigneeId ?? 'ALL'); setLabelFilter(filters.label ?? ''); setDueFilter(filters.due ?? 'ALL'); setDependencyFilter(filters.dependency ?? 'ALL'); setTaskSort(filters.sort ?? 'DUE_ASC');
-    setSelectedTaskIds([]); setNotice(`Applied “${view.name}”.`);
+    setSelectedTaskIds([]); setNotice(t('pj.applied', { name: view.name }));
   }
 
   async function saveCurrentTaskView(event: FormEvent<HTMLFormElement>) {
@@ -223,7 +229,7 @@ export default function ProjectsPage() {
         method: selected ? 'PATCH' : 'POST', body: JSON.stringify({ name, filters: currentTaskViewFilters() }),
       }) as SavedTaskView;
       setSavedTaskViews((views) => selected ? views.map((view) => view.id === saved.id ? saved : view) : [saved, ...views]);
-      setTaskViewChoice(saved.id); setTaskViewName(saved.name); setNotice(`${selected ? 'Updated' : 'Saved'} “${saved.name}” for this workspace.`);
+      setTaskViewChoice(saved.id); setTaskViewName(saved.name); setNotice(t(selected ? 'pj.viewUpdated' : 'pj.viewSaved', { name: saved.name }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save this task view.'); }
     finally { setBusy(false); }
   }
@@ -234,7 +240,7 @@ export default function ProjectsPage() {
     try {
       await request(`/workspaces/${workspace.id}/tasks/views/${taskViewChoice}`, { method: 'DELETE' });
       setSavedTaskViews((views) => views.filter((view) => view.id !== taskViewChoice)); setTaskViewChoice(''); setTaskViewName('');
-      setNotice('Deleted the saved task view.');
+      setNotice(t('pj.viewDeleted'));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete this task view.'); }
     finally { setBusy(false); }
   }
@@ -295,7 +301,7 @@ export default function ProjectsPage() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/projects/project-templates/${template.id}/duplicate`, { method: 'POST', body: JSON.stringify({}) });
-      await reload(); setNotice(`Duplicated “${template.name}”.`);
+      await reload(); setNotice(t('pj.tplDuplicated', { name: template.name }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not duplicate this template.'); }
     finally { setBusy(false); }
   }
@@ -304,7 +310,7 @@ export default function ProjectsPage() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/projects/project-templates/import`, { method: 'POST', body: JSON.stringify(template) });
-      await reload(); setNotice(`Imported “${template.name}”.`);
+      await reload(); setNotice(t('pj.tplImported', { name: template.name }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import this template.'); throw reason; }
     finally { setBusy(false); }
   }
@@ -313,7 +319,7 @@ export default function ProjectsPage() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/projects/project-templates`, { method: 'POST', body: JSON.stringify(template) });
-      await reload(); setNotice(`Created “${template.name}”.`);
+      await reload(); setNotice(t('pj.tplCreated', { name: template.name }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create this template.'); throw reason; }
     finally { setBusy(false); }
   }
@@ -327,20 +333,20 @@ export default function ProjectsPage() {
       if (labelFilter === result.from) setLabelFilter(result.to);
       setSavedTaskViews((views) => views.map((view) => view.filters.label === result.from ? { ...view, filters: { ...view.filters, label: result.to } } : view));
       setRenameLabelFrom(''); setRenameLabelTo(''); await reload();
-      setNotice(`Renamed #${result.from} to #${result.to} on ${result.updated} tasks${result.merged ? `; merged duplicates on ${result.merged}` : ''}.`);
+      setNotice(t('pj.labelRenamed', { from: result.from, to: result.to, n: result.updated, merged: result.merged ? t('pj.labelMerged', { n: result.merged }) : '' }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not rename this label.'); }
     finally { setBusy(false); }
   }
 
   async function deleteWorkspaceTaskLabel(label: string) {
-    if (!window.confirm(`Remove #${label} from every task in this workspace? This cannot be undone.`)) return;
+    if (!window.confirm(t('pj.removeLabelConfirm', { label }))) return;
     setBusy(true); setError('');
     try {
       const result = await request(`/workspaces/${workspace.id}/tasks/labels/${encodeURIComponent(label)}`, { method: 'DELETE' }) as { label: string; updated: number };
       if (labelFilter === result.label) setLabelFilter('');
       setSavedTaskViews((views) => views.map((view) => view.filters.label === result.label ? { ...view, filters: { ...view.filters, label: '' } } : view));
       if (renameLabelFrom === label) setRenameLabelFrom('');
-      await reload(); setNotice(`Removed #${result.label} from ${result.updated} tasks.`);
+      await reload(); setNotice(t('pj.labelRemoved', { label: result.label, n: result.updated }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove this label.'); }
     finally { setBusy(false); }
   }
@@ -438,7 +444,7 @@ export default function ProjectsPage() {
     try {
       const result = await request(`/workspaces/${workspace.id}/tasks/bulk`, { method: 'PATCH', body: JSON.stringify({ taskIds: selectedTaskIds, ...changes }) }) as { updated: number };
       setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); setBulkStatus(''); setBulkDueMode('KEEP'); setBulkStartMode('KEEP'); setBulkStartDate(''); setBulkDueDate(''); setBulkLabelMode('KEEP'); setBulkLabels(''); await reload();
-      setNotice(`Updated ${result.updated} tasks.`);
+      setNotice(t('pj.bulkUpdated', { n: result.updated }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the selected tasks.'); }
     finally { setBusy(false); }
   }
@@ -450,7 +456,7 @@ export default function ProjectsPage() {
     try {
       const result = await request(`/workspaces/${workspace.id}/tasks/bulk/duplicate`, { method: 'POST', body: JSON.stringify({ taskIds: selectedTaskIds }) }) as { duplicated: number; checklistItemsCopied: number };
       setSelectedTaskIds([]); setBulkPriority(''); setBulkAssignee(''); setBulkStatus(''); setBulkDueMode('KEEP'); setBulkStartMode('KEEP'); setBulkStartDate(''); setBulkDueDate(''); setBulkLabelMode('KEEP'); setBulkLabels(''); await reload();
-      setNotice(`Duplicated ${result.duplicated} tasks and copied ${result.checklistItemsCopied} checklist items.`);
+      setNotice(t('pj.bulkDuplicated', { n: result.duplicated, items: result.checklistItemsCopied }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not duplicate the selected tasks.'); }
     finally { setBusy(false); }
   }
@@ -482,7 +488,7 @@ export default function ProjectsPage() {
     try {
       const result = await request(`/workspaces/${workspace.id}/tasks/import`, { method: 'POST', body: JSON.stringify({ mode: importMode, projectId: selectedProject || null, tasks: importRows }) }) as { created: number; updated: number; unchanged: number };
       setImportRows([]); setImportFileName(''); setImportMode('CREATE'); formElement.reset(); await reload();
-      setNotice(`CSV import finished: ${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged${selectedProjectName && result.created ? ` · ${selectedProjectName}` : ''}.`);
+      setNotice(t('pj.csvDone', { created: result.created, updated: result.updated, unchanged: result.unchanged, project: selectedProjectName && result.created ? ` · ${selectedProjectName}` : '' }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import these tasks.'); }
     finally { setBusy(false); }
   }
@@ -521,124 +527,124 @@ export default function ProjectsPage() {
 
   return (
     <div className="workspace-section-page productivity-page">
-      <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
-      <h1>Projects</h1>
-      <p className="workspace-section-page__description">Plan work and track its next steps in one place.</p>
+      <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
+      <h1>{t('nav.projects')}</h1>
+      <p className="workspace-section-page__description">{t('pj.desc')}</p>
 
       {error && <p className="productivity-error" role="alert">{error}</p>}
       {notice && <p className="productivity-success" role="status">{notice}</p>}
 
       <div className="productivity-forms">
         <form className="productivity-form" onSubmit={submitProject}>
-          <h2>New project</h2>
-          <label>Project name<input name="name" maxLength={160} required placeholder="Website redesign" /></label>
-          <label>Description <span>(optional)</span><input name="description" maxLength={5000} placeholder="What is this project for?" /></label>
-          <div className="productivity-form__row"><label>Status<select name="status" defaultValue="PLANNING"><option value="PLANNING">Planning</option><option value="IN_PROGRESS">In progress</option><option value="ON_HOLD">On hold</option><option value="COMPLETED">Completed</option></select></label><label>Due date <span>(optional)</span><input name="dueAt" type="date" /></label></div>
-          <label>Budget <span>(optional, AUD)</span><input name="budgetTotal" type="number" min="0" step="0.01" placeholder="25000.00" /></label>
-          <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create project'}</button>
+          <h2>{t('pj.newProject')}</h2>
+          <label>{t('pj.projectName')}<input name="name" maxLength={160} required placeholder={t('pj.projectNamePh')} /></label>
+          <label>{t('db.description')} <span>{t('doc.optional')}</span><input name="description" maxLength={5000} placeholder={t('pj.descPh')} /></label>
+          <div className="productivity-form__row"><label>{t('pj.status')}<select name="status" defaultValue="PLANNING"><option value="PLANNING">{t('pj.s.planning')}</option><option value="IN_PROGRESS">{t('pj.s.inProgress')}</option><option value="ON_HOLD">{t('pj.s.onHold')}</option><option value="COMPLETED">{t('pj.s.completed')}</option></select></label><label>{t('pj.dueDate')} <span>{t('doc.optional')}</span><input name="dueAt" type="date" /></label></div>
+          <label>{t('pj.budget')} <span>{t('pj.budgetHint')}</span><input name="budgetTotal" type="number" min="0" step="0.01" placeholder="25000.00" /></label>
+          <button type="submit" disabled={busy}>{busy ? t('set.saving') : t('pj.createProject')}</button>
         </form>
         <form className="productivity-form" onSubmit={submitTask}>
-          <h2>New task</h2>
-          <label>Task name<input name="title" maxLength={200} required placeholder="Write the project brief" /></label>
+          <h2>{t('pj.newTask')}</h2>
+          <label>{t('pj.taskName')}<input name="title" maxLength={200} required placeholder={t('pj.taskNamePh')} /></label>
           <div className="productivity-form__row">
-            <label>Project<select name="projectId" value={selectedProject} onChange={(event) => { setSelectedProject(event.target.value); setSelectedTaskIds([]); }}><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-            <label>Priority<select name="priority" defaultValue="MEDIUM"><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label>
+            <label>{t('kn.project')}<select name="projectId" value={selectedProject} onChange={(event) => { setSelectedProject(event.target.value); setSelectedTaskIds([]); }}><option value="">{t('doc.noProject')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+            <label>{t('pj.priority')}<select name="priority" defaultValue="MEDIUM"><option value="LOW">{prio('LOW')}</option><option value="MEDIUM">{prio('MEDIUM')}</option><option value="HIGH">{prio('HIGH')}</option><option value="URGENT">{prio('URGENT')}</option></select></label>
           </div>
-          <label>Assign to <span>(optional)</span><select name="assigneeId" defaultValue=""><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
-          <label>Due date <span>(optional)</span><input name="dueAt" type="date" /></label>
-          <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create task'}</button>
+          <label>{t('pj.assignTo')} <span>{t('doc.optional')}</span><select name="assigneeId" defaultValue=""><option value="">{t('pj.unassigned')}</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
+          <label>{t('pj.dueDate')} <span>{t('doc.optional')}</span><input name="dueAt" type="date" /></label>
+          <button type="submit" disabled={busy}>{busy ? t('set.saving') : t('pj.createTask')}</button>
         </form>
       </div>
 
       <section aria-labelledby="project-template-title">
-        <p className="project-template-library__intro">Save a project’s description, task dependencies, and milestones as a starter. Task and milestone due dates are stored as day offsets and recalculated for each new project; completion states and assignees start fresh.</p>
-        {selectedProject ? <form className="project-template-save" onSubmit={saveSelectedTemplate}><label>Save “{selectedProjectName}” as a template<input name="templateName" required maxLength={160} placeholder="e.g. Website launch" /></label><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save template'}</button></form> : <p className="productivity-message">Create a project first, then save it here as a reusable template.</p>}
+        <p className="project-template-library__intro">{t('pj.tplIntro')}</p>
+        {selectedProject ? <form className="project-template-save" onSubmit={saveSelectedTemplate}><label>{t('pj.saveTplAs', { name: selectedProjectName ?? '' })}<input name="templateName" required maxLength={160} placeholder={t('pj.tplNamePh')} /></label><button type="submit" disabled={busy}>{busy ? t('set.saving') : t('pj.saveTpl')}</button></form> : <p className="productivity-message">{t('pj.createFirst')}</p>}
         <TemplateLibrary workspaceId={workspace.id} templates={templates} favoritesReady={!loading && !error} busy={busy} selectedId={selectedTemplate} onEdit={editTemplate} onUse={(template) => { setSelectedTemplate(template.id); setNewProjectName(`${template.name} project`); }} onDuplicate={duplicateTemplate} onDelete={(template) => void deleteTemplate(template)} onImport={importTemplate} onCreate={createTemplate} />
-        {selectedTemplate && <form className="project-template-launch" onSubmit={applyTemplate}><div><strong>Start from {templates.find((template) => template.id === selectedTemplate)?.name}</strong><span>Creates fresh tasks and milestones with the template’s relative schedule.</span></div><label>New project name<input required maxLength={160} value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} /></label><button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create project'}</button><button type="button" onClick={() => setSelectedTemplate('')}>Cancel</button></form>}
+        {selectedTemplate && <form className="project-template-launch" onSubmit={applyTemplate}><div><strong>{t('pj.startFrom', { name: templates.find((template) => template.id === selectedTemplate)?.name ?? '' })}</strong><span>{t('pj.startHint')}</span></div><label>{t('pj.newProjectName')}<input required maxLength={160} value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} /></label><button type="submit" disabled={busy}>{busy ? t('pj.creating') : t('pj.createProject')}</button><button type="button" onClick={() => setSelectedTemplate('')}>{t('msg.cancel')}</button></form>}
         {editingTemplateId && <TemplateEditor name={templateDraftName} description={templateDraftDescription} tasks={templateDraftTasks} milestones={templateDraftMilestones} busy={busy} onName={setTemplateDraftName} onDescription={setTemplateDraftDescription} onTasks={setTemplateDraftTasks} onMilestones={setTemplateDraftMilestones} onSubmit={saveTemplateEdits} onCancel={() => setEditingTemplateId('')} />}
       </section>
 
       <section className="productivity-projects" aria-labelledby="projects-list-title">
-        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">SAVED TO YOUR WORKSPACE</p><h2 id="projects-list-title">Your projects</h2></div><span>{projects.length} {projects.length === 1 ? 'project' : 'projects'}</span></div>
-        {loading ? <p className="productivity-message">Loading projects…</p> : projects.length === 0 ? (
-          <p className="productivity-message">No projects yet. Create one above to start your first board.</p>
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{t('pj.saved')}</p><h2 id="projects-list-title">{t('pj.yours')}</h2></div><span>{t(projects.length === 1 ? 'pj.countOne' : 'pj.countMany', { n: projects.length })}</span></div>
+        {loading ? <p className="productivity-message">{t('pj.loading')}</p> : projects.length === 0 ? (
+          <p className="productivity-message">{t('pj.none')}</p>
         ) : (
           <div className="productivity-project-list">{projects.map((project) => (
             <article key={project.id} className={`productivity-project${selectedProject === project.id ? ' productivity-project--active' : ''}`}>
               <button className="productivity-project__select" onClick={() => { setSelectedProject(project.id); setSelectedTaskIds([]); }} aria-pressed={selectedProject === project.id}>
-                <span><strong>{project.name}</strong><small>{project.description || 'A new AVEN project'}</small></span><span className="productivity-project__count">{project.taskCount} tasks</span>
+                <span><strong>{project.name}</strong><small>{project.description || t('pj.defaultDesc')}</small></span><span className="productivity-project__count">{t('pj.tasksCount', { n: project.taskCount })}</span>
               </button>
-              <div className="productivity-project__controls"><label>Status <select value={project.status} disabled={busy} onChange={(event) => void updateProject(project, 'status', event.target.value)}><option value="PLANNING">Planning</option><option value="IN_PROGRESS">In progress</option><option value="ON_HOLD">On hold</option><option value="COMPLETED">Completed</option><option value="ARCHIVED">Archived</option></select></label><label>Due <input aria-label={`Due date for ${project.name}`} type="date" value={project.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateProject(project, 'dueAt', event.target.value)} /></label></div>
-              <Link className="productivity-project__open" href={`/workspace/projects/${project.id}`}>Open project workspace <span aria-hidden="true">→</span></Link>
+              <div className="productivity-project__controls"><label>{t('pj.status')} <select value={project.status} disabled={busy} onChange={(event) => void updateProject(project, 'status', event.target.value)}><option value="PLANNING">{t('pj.s.planning')}</option><option value="IN_PROGRESS">{t('pj.s.inProgress')}</option><option value="ON_HOLD">{t('pj.s.onHold')}</option><option value="COMPLETED">{t('pj.s.completed')}</option><option value="ARCHIVED">{t('pj.s.archived')}</option></select></label><label>{t('pj.due')} <input aria-label={t('pj.dueAria', { name: project.name })} type="date" value={project.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateProject(project, 'dueAt', event.target.value)} /></label></div>
+              <Link className="productivity-project__open" href={`/workspace/projects/${project.id}`}>{t('pj.open')} <span aria-hidden="true">→</span></Link>
             </article>
           ))}</div>
         )}
       </section>
 
       {selectedProject && <section className="project-overview-panel" aria-labelledby="project-overview-title">
-        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">PROJECT OVERVIEW</p><h2 id="project-overview-title">{selectedProjectName}</h2></div><span>{completedTasks} of {selectedProjectTasks.length} tasks complete</span></div>
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{t('pj.overview')}</p><h2 id="project-overview-title">{selectedProjectName}</h2></div><span>{t('pj.completeOf', { done: completedTasks, total: selectedProjectTasks.length })}</span></div>
         <div className="project-overview-progress"><div className="project-overview-progress__track"><span style={{ width: `${taskProgress}%` }} /></div><strong>{taskProgress}%</strong></div>
         <div className="project-milestones">
-          <div className="project-milestones__heading"><h3>Milestones</h3><span>{milestones.filter((milestone) => milestone.completedAt).length} / {milestones.length} complete</span></div>
-          {milestones.length === 0 ? <p className="productivity-message">Add milestones to mark the important checkpoints in this project.</p> : <ul>{milestones.map((milestone) => <li key={milestone.id} className={milestone.completedAt ? 'project-milestone--complete' : ''}><label><input type="checkbox" checked={Boolean(milestone.completedAt)} disabled={busy} onChange={() => void toggleMilestone(milestone)} /><span>{milestone.title}</span></label><time>{milestone.dueAt ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(milestone.dueAt)) : 'No date'}</time></li>)}</ul>}
-          <form className="project-milestone-form" onSubmit={submitMilestone}><label className="visually-hidden" htmlFor="milestone-title">Milestone name</label><input id="milestone-title" name="title" maxLength={160} required placeholder="Add a project milestone" /><label className="visually-hidden" htmlFor="milestone-due">Milestone due date</label><input id="milestone-due" name="dueAt" type="date" /><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add milestone'}</button></form>
+          <div className="project-milestones__heading"><h3>{t('pj.milestones')}</h3><span>{t('pj.msComplete', { done: milestones.filter((milestone) => milestone.completedAt).length, total: milestones.length })}</span></div>
+          {milestones.length === 0 ? <p className="productivity-message">{t('pj.msNone')}</p> : <ul>{milestones.map((milestone) => <li key={milestone.id} className={milestone.completedAt ? 'project-milestone--complete' : ''}><label><input type="checkbox" checked={Boolean(milestone.completedAt)} disabled={busy} onChange={() => void toggleMilestone(milestone)} /><span>{milestone.title}</span></label><time>{milestone.dueAt ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(milestone.dueAt)) : t('pj.noDate')}</time></li>)}</ul>}
+          <form className="project-milestone-form" onSubmit={submitMilestone}><label className="visually-hidden" htmlFor="milestone-title">{t('pj.msName')}</label><input id="milestone-title" name="title" maxLength={160} required placeholder={t('pj.msAddPh')} /><label className="visually-hidden" htmlFor="milestone-due">{t('pj.msDue')}</label><input id="milestone-due" name="dueAt" type="date" /><button type="submit" disabled={busy}>{busy ? t('set.saving') : t('pj.addMilestone')}</button></form>
         </div>
       </section>}
 
       <section className="project-workload-panel" aria-labelledby="project-workload-title">
-        <div className="project-milestones__heading"><h2 id="project-workload-title">Workspace workload</h2><span>{tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length} open tasks</span></div>
-        {members.length === 0 ? <p className="productivity-message">Workspace members will appear here when they join.</p> : <div className="project-workload-list">{members.map((member) => {
+        <div className="project-milestones__heading"><h2 id="project-workload-title">{t('pj.workload')}</h2><span>{t('pj.openTasks', { n: tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length })}</span></div>
+        {members.length === 0 ? <p className="productivity-message">{t('pj.membersEmpty')}</p> : <div className="project-workload-list">{members.map((member) => {
           const openCount = tasks.filter((task) => task.assignee?.id === member.userId && task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length;
           const totalOpen = tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length;
-          return <div className="project-workload-row" key={member.userId}><span className="project-workload-row__name"><strong>{member.displayName}</strong><small>{member.role.toLowerCase()}</small></span><span className="project-workload-row__track"><span style={{ width: `${totalOpen ? Math.max((openCount / totalOpen) * 100, openCount ? 5 : 0) : 0}%` }} /></span><strong>{openCount}</strong></div>;
-        })}<p className="project-workload-unassigned">Unassigned · {tasks.filter((task) => !task.assignee && task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length}</p></div>}
+          return <div className="project-workload-row" key={member.userId}><span className="project-workload-row__name"><strong>{member.displayName}</strong><small>{({ OWNER: t('role.owner'), ADMINISTRATOR: t('role.administrator'), MANAGER: t('role.manager'), MEMBER: t('role.member'), GUEST: t('role.guest') } as Record<string, string>)[member.role] ?? member.role.toLowerCase()}</small></span><span className="project-workload-row__track"><span style={{ width: `${totalOpen ? Math.max((openCount / totalOpen) * 100, openCount ? 5 : 0) : 0}%` }} /></span><strong>{openCount}</strong></div>;
+        })}<p className="project-workload-unassigned">{t('pj.unassignedCount', { n: tasks.filter((task) => !task.assignee && task.status !== 'COMPLETED' && task.status !== 'CANCELLED').length })}</p></div>}
       </section>
 
       <section className="productivity-board" aria-labelledby="task-board-title">
-        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? `PROJECT · ${selectedProjectName}` : 'WORKSPACE TASKS'}</p><h2 id="task-board-title">Task board</h2></div></div>
-        <div className="task-view-tools" aria-label="Task view filters">
-          <label>Search<input type="search" value={taskSearch} onChange={(event) => { setTaskSearch(event.target.value); setSelectedTaskIds([]); }} placeholder="Task, description, project, label" /></label>
-          <label>Status<select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">All statuses</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.title}</option>)}</select></label>
-          <label>Priority<select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label>
-          <label>Assignee<select value={assigneeFilter} onChange={(event) => { setAssigneeFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">Anyone</option><option value="UNASSIGNED">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
-          <label>Label<select value={labelFilter} onChange={(event) => { setLabelFilter(event.target.value); setSelectedTaskIds([]); }}><option value="">All labels</option>{[...new Set(tasks.flatMap((task) => task.labels))].sort().map((label) => <option key={label} value={label}>#{label}</option>)}</select></label>
-          <label>Due date<select value={dueFilter} onChange={(event) => { setDueFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">Any date</option><option value="OVERDUE">Overdue</option><option value="TODAY">Due today</option><option value="NEXT_7_DAYS">Next 7 days</option><option value="NO_DATE">No due date</option></select></label>
-          <label>Sort<select value={taskSort} onChange={(event) => setTaskSort(event.target.value)}><option value="DUE_ASC">Due date · earliest</option><option value="DUE_DESC">Due date · latest</option><option value="PRIORITY">Priority · highest</option><option value="TITLE">Title · A–Z</option></select></label>
-          <label>Dependency<select value={dependencyFilter} onChange={(event) => { setDependencyFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">Any dependency state</option><option value="BLOCKED">Blocked by unfinished prerequisites</option><option value="BLOCKING">Blocking other open tasks</option><option value="HAS_DEPENDENCIES">Has dependencies</option><option value="NONE">No dependencies</option></select></label>
-          <button type="button" onClick={() => { setTaskSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); setAssigneeFilter('ALL'); setLabelFilter(''); setDueFilter('ALL'); setDependencyFilter('ALL'); setTaskSort('DUE_ASC'); setSelectedTaskIds([]); }}>Clear filters</button>
-          <form onSubmit={saveCurrentTaskView}><label>{taskViewChoice ? 'Update shared view' : 'Save current view'}<input required maxLength={60} value={taskViewName} onChange={(event) => setTaskViewName(event.target.value)} placeholder="e.g. My overdue work" /></label><button type="submit" disabled={busy || (!taskViewChoice && savedTaskViews.length >= 20)}>{busy ? 'Saving…' : taskViewChoice ? 'Update view' : 'Save view'}</button></form>
-          {savedTaskViews.length > 0 && <div className="task-view-tools__saved"><label>Workspace views<select value={taskViewChoice} onChange={(event) => { setTaskViewChoice(event.target.value); setTaskViewName(savedTaskViews.find((view) => view.id === event.target.value)?.name ?? ''); }}><option value="">Choose a saved view</option>{savedTaskViews.map((view) => <option key={view.id} value={view.id}>{view.name}{view.createdBy?.displayName ? ` · ${view.createdBy.displayName}` : ''}</option>)}</select></label><button type="button" disabled={!taskViewChoice || busy} onClick={() => { const view = savedTaskViews.find((item) => item.id === taskViewChoice); if (view) applyTaskView(view); }}>Apply view</button><button type="button" disabled={!taskViewChoice || busy} onClick={() => void deleteSavedTaskView()}>Delete view</button><button type="button" disabled={busy} onClick={() => { setTaskViewChoice(''); setTaskViewName(''); }}>New view</button></div>}
-          <p>{savedTaskViews.length} / 20 shared views. Everyone in this workspace can apply or update them.</p>
-          {legacyViewsRemaining > 0 && <p role="status">{legacyViewsRemaining} older browser-saved view(s) are still on this device. Free a workspace view slot and reload to finish importing them.</p>}
+        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? t('pj.projectEyebrow', { name: selectedProjectName }) : t('pj.wsTasks')}</p><h2 id="task-board-title">{t('pj.board')}</h2></div></div>
+        <div className="task-view-tools" aria-label={t('pj.filtersAria')}>
+          <label>{t('pj.search')}<input type="search" value={taskSearch} onChange={(event) => { setTaskSearch(event.target.value); setSelectedTaskIds([]); }} placeholder={t('pj.searchPh')} /></label>
+          <label>{t('pj.status')}<select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">{t('pj.allStatuses')}</option>{columns.map((column) => <option key={column.status} value={column.status}>{t(column.title)}</option>)}</select></label>
+          <label>{t('pj.priority')}<select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">{t('pj.allPriorities')}</option><option value="LOW">{prio('LOW')}</option><option value="MEDIUM">{prio('MEDIUM')}</option><option value="HIGH">{prio('HIGH')}</option><option value="URGENT">{prio('URGENT')}</option></select></label>
+          <label>{t('pj.assignee')}<select value={assigneeFilter} onChange={(event) => { setAssigneeFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">{t('pj.anyone')}</option><option value="UNASSIGNED">{t('pj.unassigned')}</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
+          <label>{t('lf.label')}<select value={labelFilter} onChange={(event) => { setLabelFilter(event.target.value); setSelectedTaskIds([]); }}><option value="">{t('lf.all')}</option>{[...new Set(tasks.flatMap((task) => task.labels))].sort().map((label) => <option key={label} value={label}>#{label}</option>)}</select></label>
+          <label>{t('pj.dueDate')}<select value={dueFilter} onChange={(event) => { setDueFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">{t('pj.anyDate')}</option><option value="OVERDUE">{t('pj.overdue')}</option><option value="TODAY">{t('pj.dueToday')}</option><option value="NEXT_7_DAYS">{t('pj.next7')}</option><option value="NO_DATE">{t('pj.noDueDate')}</option></select></label>
+          <label>{t('pj.sort')}<select value={taskSort} onChange={(event) => setTaskSort(event.target.value)}><option value="DUE_ASC">{t('pj.so.dueAsc')}</option><option value="DUE_DESC">{t('pj.so.dueDesc')}</option><option value="PRIORITY">{t('pj.so.priority')}</option><option value="TITLE">{t('pj.so.title')}</option></select></label>
+          <label>{t('pj.dependency')}<select value={dependencyFilter} onChange={(event) => { setDependencyFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">{t('pj.d.any')}</option><option value="BLOCKED">{t('pj.d.blocked')}</option><option value="BLOCKING">{t('pj.d.blocking')}</option><option value="HAS_DEPENDENCIES">{t('pj.d.has')}</option><option value="NONE">{t('pj.d.none')}</option></select></label>
+          <button type="button" onClick={() => { setTaskSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); setAssigneeFilter('ALL'); setLabelFilter(''); setDueFilter('ALL'); setDependencyFilter('ALL'); setTaskSort('DUE_ASC'); setSelectedTaskIds([]); }}>{t('pj.clearFilters')}</button>
+          <form onSubmit={saveCurrentTaskView}><label>{taskViewChoice ? t('pj.updateSharedView') : t('pj.saveCurrentView')}<input required maxLength={60} value={taskViewName} onChange={(event) => setTaskViewName(event.target.value)} placeholder={t('pj.viewNamePh')} /></label><button type="submit" disabled={busy || (!taskViewChoice && savedTaskViews.length >= 20)}>{busy ? t('set.saving') : taskViewChoice ? t('pj.updateView') : t('pj.saveView')}</button></form>
+          {savedTaskViews.length > 0 && <div className="task-view-tools__saved"><label>{t('pj.wsViews')}<select value={taskViewChoice} onChange={(event) => { setTaskViewChoice(event.target.value); setTaskViewName(savedTaskViews.find((view) => view.id === event.target.value)?.name ?? ''); }}><option value="">{t('pj.chooseView')}</option>{savedTaskViews.map((view) => <option key={view.id} value={view.id}>{view.name}{view.createdBy?.displayName ? ` · ${view.createdBy.displayName}` : ''}</option>)}</select></label><button type="button" disabled={!taskViewChoice || busy} onClick={() => { const view = savedTaskViews.find((item) => item.id === taskViewChoice); if (view) applyTaskView(view); }}>{t('pj.applyView')}</button><button type="button" disabled={!taskViewChoice || busy} onClick={() => void deleteSavedTaskView()}>{t('pj.deleteView')}</button><button type="button" disabled={busy} onClick={() => { setTaskViewChoice(''); setTaskViewName(''); }}>{t('pj.newView')}</button></div>}
+          <p>{t('pj.sharedCount', { n: savedTaskViews.length })}</p>
+          {legacyViewsRemaining > 0 && <p role="status">{t('pj.legacy', { n: legacyViewsRemaining })}</p>}
         </div>
         <details className="task-label-manager">
-          <summary>Workspace labels <span>{taskLabelUsages.length} labels · manage names and usage</span></summary>
+          <summary>{t('pj.wsLabels')} <span>{t('pj.labelsSummary', { n: taskLabelUsages.length })}</span></summary>
           <form onSubmit={renameWorkspaceTaskLabel}>
-            <label>Rename or merge<select required value={renameLabelFrom} onChange={(event) => setRenameLabelFrom(event.target.value)}><option value="">Choose a label</option>{taskLabelUsages.map((item) => <option key={item.label} value={item.label}>#{item.label} · {item.taskCount} tasks</option>)}</select></label>
-            <label>New label name<input required maxLength={32} pattern="[\p{L}\p{N}_-]+" value={renameLabelTo} onChange={(event) => setRenameLabelTo(event.target.value)} placeholder="new-label" /></label>
-            <button type="submit" disabled={busy || !renameLabelFrom || !renameLabelTo.trim()}>{busy ? 'Saving…' : 'Rename / merge'}</button>
+            <label>{t('pj.renameMerge')}<select required value={renameLabelFrom} onChange={(event) => setRenameLabelFrom(event.target.value)}><option value="">{t('pj.chooseLabel')}</option>{taskLabelUsages.map((item) => <option key={item.label} value={item.label}>{t('pj.labelUsage', { label: item.label, n: item.taskCount })}</option>)}</select></label>
+            <label>{t('pj.newLabelName')}<input required maxLength={32} pattern="[\p{L}\p{N}_-]+" value={renameLabelTo} onChange={(event) => setRenameLabelTo(event.target.value)} placeholder={t('pj.newLabelPh')} /></label>
+            <button type="submit" disabled={busy || !renameLabelFrom || !renameLabelTo.trim()}>{busy ? t('set.saving') : t('pj.renameMergeBtn')}</button>
           </form>
-          {taskLabelUsages.length === 0 ? <p>No labels yet. Add labels from any task card or import.</p> : <ul>{taskLabelUsages.map((item) => <li key={item.label}><span><strong>#{item.label}</strong><small>{item.taskCount} {item.taskCount === 1 ? 'task' : 'tasks'}</small></span><button type="button" disabled={busy} onClick={() => { setRenameLabelFrom(item.label); setRenameLabelTo(''); document.querySelector('.task-label-manager form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>Rename</button><button type="button" disabled={busy} onClick={() => void deleteWorkspaceTaskLabel(item.label)}>Remove everywhere</button></li>)}</ul>}
-          <p>Renaming to an existing label merges the two names. Changes are recorded on each affected task and notify its followers.</p>
+          {taskLabelUsages.length === 0 ? <p>{t('pj.noLabels')}</p> : <ul>{taskLabelUsages.map((item) => <li key={item.label}><span><strong>#{item.label}</strong><small>{t(item.taskCount === 1 ? 'pj.taskOne' : 'pj.taskMany', { n: item.taskCount })}</small></span><button type="button" disabled={busy} onClick={() => { setRenameLabelFrom(item.label); setRenameLabelTo(''); document.querySelector('.task-label-manager form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>{t('pj.rename')}</button><button type="button" disabled={busy} onClick={() => void deleteWorkspaceTaskLabel(item.label)}>{t('pj.removeEverywhere')}</button></li>)}</ul>}
+          <p>{t('pj.labelsHint')}</p>
         </details>
-        <div className="project-task-tools"><div className="project-task-tools__top"><span>{boardTasks.length} tasks in this view</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice('Selected the first 500 visible tasks; narrow the view to select a different batch.'); }}>Select visible (up to 500)</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>Clear selection</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>Export CSV</button></div></div>
-          {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{selectedTaskIds.length} selected</strong><label>Status<select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">Keep current</option>{columns.map((column) => <option key={column.status} value={column.status}>{column.title}</option>)}</select></label><label>Priority<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">Keep current</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label>Assign to<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">Keep current</option><option value="__clear__">Unassign</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>Start date<select value={bulkStartMode} onChange={(event) => setBulkStartMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">Keep current</option><option value="SET">Set date</option><option value="CLEAR">Clear date</option></select></label>{bulkStartMode === 'SET' && <label>New start date<input type="date" value={bulkStartDate} onChange={(event) => setBulkStartDate(event.target.value)} /></label>}<label>Due date<select value={bulkDueMode} onChange={(event) => setBulkDueMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">Keep current</option><option value="SET">Set date</option><option value="CLEAR">Clear date</option></select></label>{bulkDueMode === 'SET' && <label>New due date<input type="date" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>}<label>Labels<select value={bulkLabelMode} onChange={(event) => setBulkLabelMode(event.target.value as 'KEEP' | 'ADD' | 'REMOVE' | 'REPLACE')}><option value="KEEP">Keep current</option><option value="ADD">Add labels</option><option value="REMOVE">Remove labels</option><option value="REPLACE">Replace labels</option></select></label>{bulkLabelMode !== 'KEEP' && <label>Label names<input value={bulkLabels} onChange={(event) => setBulkLabels(event.target.value)} placeholder="planning, launch" maxLength={330} /></label>}{bulkLabelMode === 'REPLACE' && <small className="project-task-bulk__hint">Leave empty to remove every label from the selection.</small>}<button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Apply changes'}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? 'Working…' : 'Duplicate with checklists'}</button>{selectedTaskIds.length > 100 && <small>Choose 100 or fewer tasks to duplicate them.</small>}</form>}
-          <form className="project-task-import" onSubmit={importTasksCsv}><label>Import task CSV<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{importRows.length} rows · {importMode === 'UPSERT' ? `${importRows.filter((task) => task.id).length} matching IDs update, ${importRows.filter((task) => !task.id).length} new tasks create` : `${importRows.some((task) => task.projectId !== undefined) ? 'new tasks will use the project and assignee values in the CSV' : selectedProjectName ? `new tasks will be added to ${selectedProjectName}` : 'new tasks will be added to the workspace'}`}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><label>Import behavior<select value={importMode} onChange={(event) => setImportMode(event.target.value as 'CREATE' | 'UPSERT')}><option value="CREATE">Create new tasks</option><option value="UPSERT" disabled={!importRows.some((task) => task.id)}>Update matching task IDs and create new rows</option></select></label>{importMode === 'UPSERT' && <small>Rows with IDs update tasks in this workspace. Rows without IDs create tasks. AVEN checks project and assignee IDs before saving.</small>}<button type="submit" disabled={busy || !importRows.length}>{busy ? 'Importing…' : importMode === 'UPSERT' ? 'Sync CSV changes' : 'Import tasks'}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); setImportMode('CREATE'); }}>Cancel</button></div>}<small>CSV columns: title, description, status, priority, dueAt, labels. AVEN exports also include task, project, and assignee IDs for round-trip updates. Separate multiple labels with semicolons. Up to 200 rows per import.</small></form>
+        <div className="project-task-tools"><div className="project-task-tools__top"><span>{t('pj.inView', { n: boardTasks.length })}</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice(t('pj.selectedFirst500')); }}>{t('pj.selectVisible')}</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>{t('pj.clearSelection')}</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>{t('pj.exportCsv')}</button></div></div>
+          {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{t('pj.selectedN', { n: selectedTaskIds.length })}</strong><label>{t('pj.status')}<select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">{t('pj.keepCurrent')}</option>{columns.map((column) => <option key={column.status} value={column.status}>{t(column.title)}</option>)}</select></label><label>{t('pj.priority')}<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">{t('pj.keepCurrent')}</option><option value="LOW">{prio('LOW')}</option><option value="MEDIUM">{prio('MEDIUM')}</option><option value="HIGH">{prio('HIGH')}</option><option value="URGENT">{prio('URGENT')}</option></select></label><label>{t('pj.assignTo')}<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">{t('pj.keepCurrent')}</option><option value="__clear__">{t('pj.unassign')}</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>{t('pj.startDate')}<select value={bulkStartMode} onChange={(event) => setBulkStartMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">{t('pj.keepCurrent')}</option><option value="SET">{t('pj.setDate')}</option><option value="CLEAR">{t('pj.clearDate')}</option></select></label>{bulkStartMode === 'SET' && <label>{t('pj.newStartDate')}<input type="date" value={bulkStartDate} onChange={(event) => setBulkStartDate(event.target.value)} /></label>}<label>{t('pj.dueDate')}<select value={bulkDueMode} onChange={(event) => setBulkDueMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">{t('pj.keepCurrent')}</option><option value="SET">{t('pj.setDate')}</option><option value="CLEAR">{t('pj.clearDate')}</option></select></label>{bulkDueMode === 'SET' && <label>{t('pj.newDueDate')}<input type="date" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>}<label>{t('pj.labels')}<select value={bulkLabelMode} onChange={(event) => setBulkLabelMode(event.target.value as 'KEEP' | 'ADD' | 'REMOVE' | 'REPLACE')}><option value="KEEP">{t('pj.keepCurrent')}</option><option value="ADD">{t('pj.b.add')}</option><option value="REMOVE">{t('pj.b.remove')}</option><option value="REPLACE">{t('pj.b.replace')}</option></select></label>{bulkLabelMode !== 'KEEP' && <label>{t('pj.labelNames')}<input value={bulkLabels} onChange={(event) => setBulkLabels(event.target.value)} placeholder={t('pj.labelNamesPh')} maxLength={330} /></label>}{bulkLabelMode === 'REPLACE' && <small className="project-task-bulk__hint">{t('pj.bulkHint')}</small>}<button type="submit" disabled={busy}>{busy ? t('pj.updating') : t('pj.applyChanges')}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? t('pj.working') : t('pj.dupChecklists')}</button>{selectedTaskIds.length > 100 && <small>{t('pj.dupLimit')}</small>}</form>}
+          <form className="project-task-import" onSubmit={importTasksCsv}><label>{t('pj.importCsv')}<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{t('pj.rows', { n: importRows.length })} · {importMode === 'UPSERT' ? t('pj.importUpsert', { u: importRows.filter((task) => task.id).length, c: importRows.filter((task) => !task.id).length }) : (importRows.some((task) => task.projectId !== undefined) ? t('pj.importCsvValues') : selectedProjectName ? t('pj.importToProject', { name: selectedProjectName }) : t('pj.importToWs'))}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><label>{t('pj.importBehavior')}<select value={importMode} onChange={(event) => setImportMode(event.target.value as 'CREATE' | 'UPSERT')}><option value="CREATE">{t('pj.importCreate')}</option><option value="UPSERT" disabled={!importRows.some((task) => task.id)}>{t('pj.importSync')}</option></select></label>{importMode === 'UPSERT' && <small>{t('pj.importSyncHint')}</small>}<button type="submit" disabled={busy || !importRows.length}>{busy ? t('pj.importing') : importMode === 'UPSERT' ? t('pj.syncCsv') : t('pj.importTasks')}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); setImportMode('CREATE'); }}>{t('msg.cancel')}</button></div>}<small>{t('pj.csvHint')}</small></form>
         </div>
-        {loading ? <p className="productivity-message">Loading tasks…</p> : (
+        {loading ? <p className="productivity-message">{t('pj.loadingTasks')}</p> : (
           <div className="productivity-columns">{columns.map((column) => {
             const records = boardTasks.filter((task) => task.status === column.status);
-            return <section className="productivity-column" key={column.status} aria-label={`${column.title}, ${records.length} tasks`}>
-              <h3>{column.title}<span>{records.length}</span></h3>
-              {records.length === 0 ? <p className="productivity-column__empty">Nothing here yet</p> : records.map((task) => <article className="productivity-task" key={task.id}>
-                <label className="project-task-select"><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={(event) => { if (event.target.checked && selectedTaskIds.length >= 500) { setError('Bulk actions support up to 500 selected tasks.'); return; } setSelectedTaskIds((ids) => event.target.checked ? [...ids, task.id] : ids.filter((id) => id !== task.id)); }} /><span>Select task</span></label>
+            return <section className="productivity-column" key={column.status} aria-label={t('pj.columnAria', { title: t(column.title), n: records.length })}>
+              <h3>{t(column.title)}<span>{records.length}</span></h3>
+              {records.length === 0 ? <p className="productivity-column__empty">{t('pj.nothingHere')}</p> : records.map((task) => <article className="productivity-task" key={task.id}>
+                <label className="project-task-select"><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={(event) => { if (event.target.checked && selectedTaskIds.length >= 500) { setError('Bulk actions support up to 500 selected tasks.'); return; } setSelectedTaskIds((ids) => event.target.checked ? [...ids, task.id] : ids.filter((id) => id !== task.id)); }} /><span>{t('pj.selectTask')}</span></label>
                 <Link href={`/workspace/tasks/${task.id}`} className="productivity-task__title">{task.title}</Link><TaskBadges task={task} />
                 {task.project && <span className="productivity-task__project">{task.project.name}</span>}
-                {(task.dependsOn.some((item) => item.status !== 'COMPLETED') || task.blocks.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status))) && <div className="productivity-task__dependency-hints">{task.dependsOn.some((item) => item.status !== 'COMPLETED') && <span className="is-blocked">Blocked by {task.dependsOn.filter((item) => item.status !== 'COMPLETED').length} prerequisite{task.dependsOn.filter((item) => item.status !== 'COMPLETED').length === 1 ? '' : 's'}</span>}{task.blocks.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)) && <span>Blocks {task.blocks.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length} open task{task.blocks.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length === 1 ? '' : 's'}</span>}</div>}
+                {(task.dependsOn.some((item) => item.status !== 'COMPLETED') || task.blocks.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status))) && <div className="productivity-task__dependency-hints">{task.dependsOn.some((item) => item.status !== 'COMPLETED') && <span className="is-blocked">{t(task.dependsOn.filter((item) => item.status !== 'COMPLETED').length === 1 ? 'pj.blockedBy' : 'pj.blockedByMany', { n: task.dependsOn.filter((item) => item.status !== 'COMPLETED').length })}</span>}{task.blocks.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)) && <span>{t(task.blocks.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length === 1 ? 'pj.blocksOne' : 'pj.blocksMany', { n: task.blocks.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length })}</span>}</div>}
                 <TaskLabels labels={task.labels} taskTitle={task.title} disabled={busy} onSave={(labels) => void updateTask(task, 'labels', labels)} compact />
-                <label className="productivity-task__assignee">Assignee<select aria-label={`Assignee for ${task.title}`} value={task.assignee?.id ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'assigneeId', event.target.value)}><option value="">Unassigned</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
-                <div className="productivity-task__footer"><label className="visually-hidden" htmlFor={`priority-${task.id}`}>Priority for {task.title}</label><select className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`} id={`priority-${task.id}`} value={task.priority} disabled={busy} onChange={(event) => void updateTask(task, 'priority', event.target.value)}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select><label className="visually-hidden" htmlFor={`status-${task.id}`}>Status for {task.title}</label><select id={`status-${task.id}`} value={task.status} disabled={busy} onChange={(event) => void changeStatus(task, event.target.value)}>{columns.map((option) => <option key={option.status} value={option.status}>{option.title}</option>)}</select></div>
-                <div className="productivity-task__due"><label htmlFor={`due-${task.id}`}>Due date</label><input id={`due-${task.id}`} type="date" value={task.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'dueAt', event.target.value)} /><span className={task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'productivity-task__overdue' : ''}>{task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'Overdue' : ''}</span></div>
+                <label className="productivity-task__assignee">{t('pj.assignee')}<select aria-label={t('pj.assigneeAria', { title: task.title })} value={task.assignee?.id ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'assigneeId', event.target.value)}><option value="">{t('pj.unassigned')}</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
+                <div className="productivity-task__footer"><label className="visually-hidden" htmlFor={`priority-${task.id}`}>{t('pj.priorityFor', { title: task.title })}</label><select className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`} id={`priority-${task.id}`} value={task.priority} disabled={busy} onChange={(event) => void updateTask(task, 'priority', event.target.value)}><option value="LOW">{prio('LOW')}</option><option value="MEDIUM">{prio('MEDIUM')}</option><option value="HIGH">{prio('HIGH')}</option><option value="URGENT">{prio('URGENT')}</option></select><label className="visually-hidden" htmlFor={`status-${task.id}`}>{t('tasks.statusFor', { title: task.title })}</label><select id={`status-${task.id}`} value={task.status} disabled={busy} onChange={(event) => void changeStatus(task, event.target.value)}>{columns.map((option) => <option key={option.status} value={option.status}>{t(option.title)}</option>)}</select></div>
+                <div className="productivity-task__due"><label htmlFor={`due-${task.id}`}>{t('pj.dueLabel')}</label><input id={`due-${task.id}`} type="date" value={task.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'dueAt', event.target.value)} /><span className={task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'productivity-task__overdue' : ''}>{task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? t('pj.overdue') : ''}</span></div>
               </article>)}
             </section>;
           })}</div>

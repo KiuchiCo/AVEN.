@@ -3,6 +3,7 @@
 import { useAuth } from '@clerk/nextjs';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useT } from '../../../i18n';
 import { useWorkspaceSession } from '../../workspace-shell';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
@@ -13,11 +14,12 @@ type Summary = { imported: number; updated: number; removed: number; sent: numbe
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 function Connections() {
+  const t = useT();
   const { workspace } = useWorkspaceSession();
   const { getToken } = useAuth();
   const params = useSearchParams();
   const [data, setData] = useState<Overview | null>(null);
-  const [notice, setNotice] = useState(() => (params.get('connected') ? 'Calendar connected. Your events are being imported now.' : ''));
+  const [notice, setNotice] = useState(() => (params.get('connected') ? t('cn.connectedNotice') : ''));
   const [error, setError] = useState(() => params.get('error') ?? '');
   const [busy, setBusy] = useState('');
   const [send, setSend] = useState<Record<string, boolean>>({});
@@ -44,36 +46,36 @@ function Connections() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Something went wrong.'); }
     finally { setBusy(''); }
   }
-  const connect = (provider: Provider['key'], pushEnabled: boolean) => run(`connect-${provider}`, async () => { const { url } = await call<{ url: string }>('/connect', 'POST', { provider, pushEnabled }); window.location.assign(url); return 'Opening the sign-in page…'; });
-  const summary = (s: Summary) => { const parts = [s.imported && `${s.imported} added`, s.updated && `${s.updated} updated`, s.removed && `${s.removed} removed`, s.sent && `${s.sent} sent`, s.conflicts && `${s.conflicts} edited in both places`].filter(Boolean); return parts.length ? `Synced: ${parts.join(', ')}.` : 'Everything was already up to date.'; };
+  const connect = (provider: Provider['key'], pushEnabled: boolean) => run(`connect-${provider}`, async () => { const { url } = await call<{ url: string }>('/connect', 'POST', { provider, pushEnabled }); window.location.assign(url); return t('cn.opening'); });
+  const summary = (s: Summary) => { const parts = [s.imported && t('cn.s.added', { n: s.imported }), s.updated && t('cn.s.updated', { n: s.updated }), s.removed && t('cn.s.removed', { n: s.removed }), s.sent && t('cn.s.sent', { n: s.sent }), s.conflicts && t('cn.s.conflicts', { n: s.conflicts })].filter(Boolean); return parts.length ? t('cn.synced', { parts: parts.join(', ') }) : t('cn.upToDate'); };
 
-  if (!allowed) return <section className="workspace-settings-page"><header><p className="workspace-page-eyebrow">SETTINGS</p><h1>Connected apps</h1><p>Only workspace owners and administrators can connect calendars.</p></header></section>;
+  if (!allowed) return <section className="workspace-settings-page"><header><p className="workspace-page-eyebrow">{t('set.eyebrow')}</p><h1>{t('cn.title')}</h1><p>{t('cn.onlyAdmins')}</p></header></section>;
   return <section className="workspace-settings-page connections-page">
-    <header><p className="workspace-page-eyebrow">SETTINGS</p><h1>Connected apps</h1><p>Bring events from Google Calendar or Outlook into this workspace’s calendar.</p></header>
-    <p className="workspace-settings-note"><strong>Everyone in this workspace will see the events you import.</strong> Connect a calendar you’re happy to share, and use a shared workspace only for work calendars.</p>
+    <header><p className="workspace-page-eyebrow">{t('set.eyebrow')}</p><h1>{t('cn.title')}</h1><p>{t('cn.desc')}</p></header>
+    <p className="workspace-settings-note"><strong>{t('cn.shareNote')}</strong>{t('cn.shareNote2')}</p>
     {notice && <p className="workspace-settings-status" role="status">{notice}</p>}
     {error && <p className="workspace-settings-status" role="alert">{error}</p>}
-    {!data ? <p>Loading…</p> : <>
+    {!data ? <p>{t('cn.loading')}</p> : <>
       {data.providers.map((provider) => {
         const existing = data.connections.filter((connection) => connection.provider === provider.key);
         return <div className="workspace-settings-card" key={provider.key}>
-          <div><h2>{provider.label}</h2>{provider.configured ? <p>{existing.length ? 'Connected. You can add another account.' : 'Not connected yet.'}</p> : <p>Awaiting credentials. An administrator needs to create a {provider.key === 'GOOGLE' ? 'Google Cloud' : 'Microsoft Entra'} OAuth app and set <code>{provider.setup}</code> and <code>TOKEN_ENCRYPTION_KEY</code> for the API. Use this redirect address: <code>{data.redirectUri}</code></p>}</div>
+          <div><h2>{provider.label}</h2>{provider.configured ? <p>{existing.length ? t('cn.connectedAdd') : t('cn.notConnected')}</p> : <p>{t('cn.awaiting', { app: provider.key === 'GOOGLE' ? t('cn.appGoogle') : t('cn.appMicrosoft'), setup: provider.setup, uri: data.redirectUri })}</p>}</div>
           {existing.map((connection) => <div className="connection-row" key={connection.id}>
-            <div><strong>{connection.accountEmail}</strong><small>Connected by {connection.connectedBy.displayName} · {connection.status === 'ACTIVE' ? (connection.lastSyncedAt ? `last synced ${when.format(new Date(connection.lastSyncedAt))}` : 'waiting for the first sync') : 'needs to be reconnected'}</small>{connection.lastError && <small className="connection-error">{connection.lastError}</small>}</div>
-            <label className="connection-toggle"><input type="checkbox" checked={connection.pushEnabled} disabled={busy !== ''} onChange={(event) => void run(`push-${connection.id}`, async () => { await call(`/${connection.id}`, 'PATCH', { pushEnabled: event.target.checked }); })} /> Also send events made in AVEN</label>
+            <div><strong>{connection.accountEmail}</strong><small>{t('cn.connectedBy', { name: connection.connectedBy.displayName, status: connection.status === 'ACTIVE' ? (connection.lastSyncedAt ? t('cn.lastSynced', { when: when.format(new Date(connection.lastSyncedAt)) }) : t('cn.waitingFirst')) : t('cn.reconnectNeeded') })}</small>{connection.lastError && <small className="connection-error">{connection.lastError}</small>}</div>
+            <label className="connection-toggle"><input type="checkbox" checked={connection.pushEnabled} disabled={busy !== ''} onChange={(event) => void run(`push-${connection.id}`, async () => { await call(`/${connection.id}`, 'PATCH', { pushEnabled: event.target.checked }); })} /> {t('cn.alsoSend')}</label>
             <div className="connection-actions">
-              {connection.status === 'ACTIVE' ? <button disabled={busy !== ''} onClick={() => void run(`sync-${connection.id}`, async () => summary(await call<Summary>(`/${connection.id}/sync`, 'POST')))}>{busy === `sync-${connection.id}` ? 'Syncing…' : 'Sync now'}</button> : <button disabled={busy !== ''} onClick={() => void connect(provider.key, connection.pushEnabled)}>Reconnect</button>}
-              <button disabled={busy !== ''} onClick={() => { if (window.confirm(`Disconnect ${connection.accountEmail}? Events already imported stay in AVEN but stop updating.`)) void run(`disconnect-${connection.id}`, async () => { await call(`/${connection.id}`, 'DELETE'); return 'Disconnected.'; }); }}>Disconnect</button>
+              {connection.status === 'ACTIVE' ? <button disabled={busy !== ''} onClick={() => void run(`sync-${connection.id}`, async () => summary(await call<Summary>(`/${connection.id}/sync`, 'POST')))}>{busy === `sync-${connection.id}` ? t('cn.syncing') : t('cn.syncNow')}</button> : <button disabled={busy !== ''} onClick={() => void connect(provider.key, connection.pushEnabled)}>{t('cn.reconnect')}</button>}
+              <button disabled={busy !== ''} onClick={() => { if (window.confirm(t('cn.confirmDisconnect', { email: connection.accountEmail }))) void run(`disconnect-${connection.id}`, async () => { await call(`/${connection.id}`, 'DELETE'); return t('cn.disconnected'); }); }}>{t('cn.disconnect')}</button>
             </div>
           </div>)}
-          {provider.configured && <div className="connection-add"><label className="connection-toggle"><input type="checkbox" checked={send[provider.key] ?? false} onChange={(event) => setSend({ ...send, [provider.key]: event.target.checked })} /> Also send events made in AVEN to this calendar</label><button className="workspace-settings-save" disabled={busy !== ''} onClick={() => void connect(provider.key, send[provider.key] ?? false)}>{existing.length ? 'Add another account' : `Connect ${provider.label}`}</button></div>}
+          {provider.configured && <div className="connection-add"><label className="connection-toggle"><input type="checkbox" checked={send[provider.key] ?? false} onChange={(event) => setSend({ ...send, [provider.key]: event.target.checked })} /> {t('cn.alsoSendThis')}</label><button className="workspace-settings-save" disabled={busy !== ''} onClick={() => void connect(provider.key, send[provider.key] ?? false)}>{existing.length ? t('cn.addAnother') : t('cn.connect', { label: provider.label })}</button></div>}
         </div>;
       })}
-      <p className="workspace-settings-note">Imported events cover the last 30 days and the next 6 months. An event made in AVEN goes to one calendar only, and repeating events made in AVEN aren’t sent, because calendars use their own repeat rules.</p>
+      <p className="workspace-settings-note">{t('cn.foot')}</p>
     </>}
   </section>;
 }
 
 export default function ConnectionsPage() {
-  return <Suspense fallback={<p>Loading…</p>}><Connections /></Suspense>;
+  return <Suspense fallback={<p>…</p>}><Connections /></Suspense>;
 }
