@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '../i18n';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -104,6 +105,7 @@ function expandCalendarEvent(event: CalendarEvent, rangeStart: Date, rangeEnd: D
 }
 
 export function DocumentsWorkspace() {
+  const t = useT();
   const router = useRouter();
   const { getToken } = useAuth();
   const { workspace } = useWorkspaceSession();
@@ -165,7 +167,7 @@ export function DocumentsWorkspace() {
   }
 
   async function deleteDocument(document: DocumentRecord) {
-    if (!window.confirm(`Delete “${document.title}”? Its saved versions and comments will also be removed.`)) return;
+    if (!window.confirm(t('doc.confirm', { title: document.title }))) return;
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/documents/${document.id}`, { method: 'DELETE' });
@@ -176,27 +178,27 @@ export function DocumentsWorkspace() {
 
   return (
     <div className="workspace-section-page connected-page">
-      <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
-      <h1>Documents</h1>
-      <p className="workspace-section-page__description">Write notes and keep them connected to project work.</p>
+      <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
+      <h1>{t('nav.documents')}</h1>
+      <p className="workspace-section-page__description">{t('doc.desc')}</p>
       {error && <p className="productivity-error" role="alert">{error}</p>}
       <div className="connected-layout">
         <form className="productivity-form connected-compose" onSubmit={createDocument}>
-          <h2>New document</h2>
-          <label>Start from<select name="template" defaultValue="" onChange={(event) => { const choice = documentTemplates.find((item) => item.id === event.target.value); if (choice) setTemplateHint(choice.description); else setTemplateHint(''); }}><option value="">Blank document</option>{documentTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>{templateHint && <small>{templateHint}</small>}</label>
-          <label>Title<input name="title" maxLength={200} placeholder="Defaults to the template name" required={!templateHint} /></label>
-          <label>Project <span>(optional)</span><select name="projectId" defaultValue=""><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-          <label>Content<textarea name="content" maxLength={20000} rows={8} placeholder="Add a note, plan, or decision…" /></label>
-          <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save document'}</button>
+          <h2>{t('doc.newTitle')}</h2>
+          <label>{t('doc.startFrom')}<select name="template" defaultValue="" onChange={(event) => { const choice = documentTemplates.find((item) => item.id === event.target.value); if (choice) setTemplateHint(choice.description); else setTemplateHint(''); }}><option value="">{t('doc.blank')}</option>{documentTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>{templateHint && <small>{templateHint}</small>}</label>
+          <label>{t('doc.title')}<input name="title" maxLength={200} placeholder={t('doc.titlePh')} required={!templateHint} /></label>
+          <label>{t('doc.project')} <span>{t('doc.optional')}</span><select name="projectId" defaultValue=""><option value="">{t('doc.noProject')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+          <label>{t('doc.content')}<textarea name="content" maxLength={20000} rows={8} placeholder={t('doc.contentPh')} /></label>
+          <button type="submit" disabled={busy}>{busy ? t('set.saving') : t('doc.save')}</button>
         </form>
         <section className="connected-record-list" aria-labelledby="document-list-title">
-          <div className="workspace-section-heading"><div><p className="workspace-eyebrow">SAVED TO AVEN</p><h2 id="document-list-title">Your documents</h2></div><span>{documents.length}</span></div>
-          {loading ? <p className="productivity-message">Loading documents…</p> : documents.length === 0 ? <p className="productivity-message">No documents yet. Create your first note and optionally link it to a project.</p> : (
+          <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{t('doc.saved')}</p><h2 id="document-list-title">{t('doc.yours')}</h2></div><span>{documents.length}</span></div>
+          {loading ? <p className="productivity-message">{t('doc.loading')}</p> : documents.length === 0 ? <p className="productivity-message">{t('doc.empty')}</p> : (
             <div className="connected-record-stack">{documents.map((document) => (
               <article className="connected-record" key={document.id}>
-                <div className="connected-record__meta"><span>DOCUMENT</span>{document.project && <span className="connected-link-pill">{document.project.name}</span>}<Link className="connected-record__edit" href={`/workspace/documents/${document.id}`}>Open editor →</Link><button className="connected-record__edit" type="button" disabled={busy} onClick={() => void deleteDocument(document)}>Delete</button></div>
-                <h3>{document.title}</h3><p>{documentPreview(document.content) || 'This document is empty.'}</p>
-                <small>Updated {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(document.updatedAt))}</small>
+                <div className="connected-record__meta"><span>{t('doc.kind')}</span>{document.project && <span className="connected-link-pill">{document.project.name}</span>}<Link className="connected-record__edit" href={`/workspace/documents/${document.id}`}>{t('doc.open')}</Link><button className="connected-record__edit" type="button" disabled={busy} onClick={() => void deleteDocument(document)}>{t('wb.delete')}</button></div>
+                <h3>{document.title}</h3><p>{documentPreview(document.content) || t('doc.emptyDoc')}</p>
+                <small>{t('doc.updated', { date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(document.updatedAt)) })}</small>
               </article>
             ))}</div>
           )}

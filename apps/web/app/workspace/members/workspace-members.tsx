@@ -2,16 +2,19 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
 
 type Member = { userId: string; displayName: string; email: string; role: string; createdAt: string };
 type Invitation = { id: string; email: string; role: string; expiresAt: string; createdAt: string };
 type WorkspaceData = { members: Member[]; invitations: Invitation[] };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
-const roleLabels: Record<string, string> = { OWNER: 'Owner', ADMINISTRATOR: 'Administrator', MANAGER: 'Manager', MEMBER: 'Member', GUEST: 'Guest' };
+const roleKeys = { OWNER: 'role.owner', ADMINISTRATOR: 'role.administrator', MANAGER: 'role.manager', MEMBER: 'role.member', GUEST: 'role.guest' } as const;
 
 export function WorkspaceMembers() {
   const { getToken } = useAuth();
+  const t = useT();
+  const roleLabel = (value: string) => (value in roleKeys ? t(roleKeys[value as keyof typeof roleKeys]) : value);
   const { user, workspace } = useWorkspaceSession();
   const [data, setData] = useState<WorkspaceData>({ members: [], invitations: [] });
   const [email, setEmail] = useState('');
@@ -96,7 +99,7 @@ export function WorkspaceMembers() {
     setBusy(true); setError(''); setNotice('');
     try {
       await request(`/workspaces/${workspace.id}/members/${member.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) });
-      setNotice(`Updated ${member.displayName}'s role to ${roleLabels[role] ?? role}.`);
+      setNotice(t('mem.roleUpdated', { name: member.displayName, role: roleLabel(role) }));
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update this member role.'); }
     finally { setBusy(false); }
@@ -107,45 +110,45 @@ export function WorkspaceMembers() {
     setBusy(true); setError(''); setNotice('');
     try {
       await request(`/workspaces/${workspace.id}/members/${member.userId}`, { method: 'DELETE' });
-      setNotice(`${member.displayName} was removed from the workspace.`);
+      setNotice(t('mem.removed', { name: member.displayName }));
       await reload();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove this member.'); }
     finally { setBusy(false); }
   }
 
   return <div className="workspace-section-page members-page">
-    <p className="workspace-eyebrow">YOUR WORKSPACE · {workspace.name}</p>
-    <h1>People</h1>
-    <p className="workspace-section-page__description">Invite teammates, manage roles, and review outstanding invitations.</p>
+    <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
+    <h1>{t('nav.people')}</h1>
+    <p className="workspace-section-page__description">{t('mem.desc')}</p>
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {notice && <p className="members-notice" role="status">{notice}</p>}
     <div className="members-layout">
       <section className="members-panel" aria-labelledby="members-list-title">
-        <header><div><p className="workspace-eyebrow">WORKSPACE TEAM</p><h2 id="members-list-title">Members <span>{data.members.length}</span></h2></div></header>
-        {loading ? <p className="productivity-message">Loading people…</p> : <ul className="members-list">{data.members.map((member) => {
+        <header><div><p className="workspace-eyebrow">{t('mem.team')}</p><h2 id="members-list-title">{t('mem.members')} <span>{data.members.length}</span></h2></div></header>
+        {loading ? <p className="productivity-message">{t('mem.loading')}</p> : <ul className="members-list">{data.members.map((member) => {
           const isSelf = member.userId === user.id;
           const currentRole = roleDrafts[member.userId] ?? member.role;
-          return <li key={member.userId}><span className="members-avatar" aria-hidden="true">{member.displayName.trim().slice(0, 1).toUpperCase()}</span><div><strong>{member.displayName}{isSelf ? ' · You' : ''}</strong><small>{member.email}</small></div>
-            {canManageMembers && !isSelf && member.role !== 'OWNER' ? <div className="members-row-actions"><select aria-label={`Role for ${member.displayName}`} value={currentRole} onChange={(event) => setRoleDrafts((current) => ({ ...current, [member.userId]: event.target.value }))}><option value="ADMINISTRATOR">Administrator</option><option value="MANAGER">Manager</option><option value="MEMBER">Member</option><option value="GUEST">Guest</option></select><button type="button" disabled={busy || currentRole === member.role} onClick={() => void updateRole(member)}>Save</button><button type="button" className="members-revoke" disabled={busy} onClick={() => void removeMember(member)}>Remove</button></div> : <span className="members-role">{roleLabels[member.role] ?? member.role}</span>}
+          return <li key={member.userId}><span className="members-avatar" aria-hidden="true">{member.displayName.trim().slice(0, 1).toUpperCase()}</span><div><strong>{member.displayName}{isSelf ? t('mem.you') : ''}</strong><small>{member.email}</small></div>
+            {canManageMembers && !isSelf && member.role !== 'OWNER' ? <div className="members-row-actions"><select aria-label={t('mem.roleFor', { name: member.displayName })} value={currentRole} onChange={(event) => setRoleDrafts((current) => ({ ...current, [member.userId]: event.target.value }))}><option value="ADMINISTRATOR">{t('role.administrator')}</option><option value="MANAGER">{t('role.manager')}</option><option value="MEMBER">{t('role.member')}</option><option value="GUEST">{t('role.guest')}</option></select><button type="button" disabled={busy || currentRole === member.role} onClick={() => void updateRole(member)}>{t('mem.save')}</button><button type="button" className="members-revoke" disabled={busy} onClick={() => void removeMember(member)}>{t('mem.remove')}</button></div> : <span className="members-role">{roleLabel(member.role)}</span>}
           </li>;
         })}</ul>}
       </section>
 
       <section className="members-panel members-invite-panel" aria-labelledby="invite-title">
-        <header><div><p className="workspace-eyebrow">GROW YOUR TEAM</p><h2 id="invite-title">Invite someone</h2></div><span aria-hidden="true">＋</span></header>
+        <header><div><p className="workspace-eyebrow">{t('mem.grow')}</p><h2 id="invite-title">{t('mem.invite')}</h2></div><span aria-hidden="true">＋</span></header>
         {canInvite ? <>
           <form className="members-invite-form" onSubmit={(event) => void createInvite(event)}>
-            <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={320} placeholder="teammate@example.com" /></label>
-            <label>Workspace role<select value={role} onChange={(event) => setRole(event.target.value)}><option value="ADMINISTRATOR">Administrator</option><option value="MANAGER">Manager</option><option value="MEMBER">Member</option><option value="GUEST">Guest</option></select></label>
-            <small>Invite links expire after 7 days and can only be accepted by the invited email address.</small>
-            <button type="submit" disabled={busy || loading}>{busy ? 'Creating…' : 'Create invitation link'}</button>
+            <label>{t('mem.email')}<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={320} placeholder="teammate@example.com" /></label>
+            <label>{t('mem.workspaceRole')}<select value={role} onChange={(event) => setRole(event.target.value)}><option value="ADMINISTRATOR">{t('role.administrator')}</option><option value="MANAGER">{t('role.manager')}</option><option value="MEMBER">{t('role.member')}</option><option value="GUEST">{t('role.guest')}</option></select></label>
+            <small>{t('mem.expiry')}</small>
+            <button type="submit" disabled={busy || loading}>{busy ? t('mem.creating') : t('mem.create')}</button>
           </form>
-          {inviteLink && <div className="members-invite-link" role="status"><strong>Invitation ready</strong><p>{emailOutcome === 'sent' ? `We emailed ${inviteeEmail} the link. You can also share it yourself.` : emailOutcome === 'failed' ? `We couldn’t email ${inviteeEmail}, so share this link with them yourself.` : `Share this link with ${inviteeEmail}. Email isn’t set up, so nothing was sent.`} It is shown once.</p><code>{inviteLink}</code><button type="button" onClick={() => void copyInvite()}>{copied ? 'Copied' : 'Copy link'}</button></div>}
-        </> : <p className="members-permission-note">Only workspace owners and administrators can invite people.</p>}
+          {inviteLink && <div className="members-invite-link" role="status"><strong>{t('mem.ready')}</strong><p>{emailOutcome === 'sent' ? t('mem.sent', { email: inviteeEmail }) : emailOutcome === 'failed' ? t('mem.failed', { email: inviteeEmail }) : t('mem.notSent', { email: inviteeEmail })} {t('mem.shownOnce')}</p><code>{inviteLink}</code><button type="button" onClick={() => void copyInvite()}>{copied ? t('mem.copied') : t('mem.copy')}</button></div>}
+        </> : <p className="members-permission-note">{t('mem.onlyAdmins')}</p>}
       </section>
 
-      <section className="members-panel members-pending-panel" aria-labelledby="pending-title"><header><div><p className="workspace-eyebrow">AWAITING ACCEPTANCE</p><h2 id="pending-title">Pending invitations <span>{data.invitations.length}</span></h2></div></header>
-        {loading ? <p className="productivity-message">Loading invitations…</p> : data.invitations.length ? <ul className="members-list">{data.invitations.map((invite) => <li key={invite.id}><span className="members-avatar is-pending" aria-hidden="true">✉</span><div><strong>{invite.email}</strong><small>{roleLabels[invite.role] ?? invite.role} · expires {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(invite.expiresAt))}</small></div>{canInvite && <button type="button" className="members-revoke" disabled={busy} onClick={() => void revokeInvite(invite.id)}>Revoke</button>}</li>)}</ul> : <p className="members-empty">No pending invitations.</p>}
+      <section className="members-panel members-pending-panel" aria-labelledby="pending-title"><header><div><p className="workspace-eyebrow">{t('mem.awaiting')}</p><h2 id="pending-title">{t('mem.pending')} <span>{data.invitations.length}</span></h2></div></header>
+        {loading ? <p className="productivity-message">{t('mem.loadingInv')}</p> : data.invitations.length ? <ul className="members-list">{data.invitations.map((invite) => <li key={invite.id}><span className="members-avatar is-pending" aria-hidden="true">✉</span><div><strong>{invite.email}</strong><small>{t('mem.expires', { role: roleLabel(invite.role), date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(invite.expiresAt)) })}</small></div>{canInvite && <button type="button" className="members-revoke" disabled={busy} onClick={() => void revokeInvite(invite.id)}>{t('mem.revoke')}</button>}</li>)}</ul> : <p className="members-empty">{t('mem.noPending')}</p>}
       </section>
     </div>
   </div>;
