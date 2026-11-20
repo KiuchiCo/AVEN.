@@ -2365,4 +2365,6 @@ export const es: Dictionary = {
   'ed.relatedEmpty': "Aún no hay otros documentos.",
   'ed.sameProject': "En {name}",
   'ed.recentlyEdited': "Editados recientemente",
+  'ed.otherTab': "También tienes este documento abierto en otra ventana. Los cambios allí aparecen aquí al escribir.",
+  'ed.localNote': "Este documento se creó sin conexión y se guarda en este dispositivo. Se creará en tu espacio, con todo lo escrito, en cuanto vuelvas a tener conexión.",
 };

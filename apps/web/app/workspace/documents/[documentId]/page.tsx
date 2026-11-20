@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useT } from '../../../i18n';
 import type { Key } from '../../../i18n/en';
@@ -19,6 +19,7 @@ import { FavouriteStar } from '../../favourites';
 import { readEvents } from '../../messages/sse';
 import { mergeBlocks, reconcileDraft } from './block-merge';
 import { LiveTextEngine, type CursorEvent, type RemoteCursor, type TextEvent } from './live-text';
+import { isLocalId, readLocalDocument, removeLocalDocument } from './local-documents';
 import { draftKey, readDraft, removeDraft, writeDraft } from './offline-draft';
 
 import type { Block } from './editor-model';
@@ -51,6 +52,9 @@ function encodeBlocks(blocks: Block[]) { return JSON.stringify({ format: 'aven-d
 export default function DocumentEditorPage() {
   const t = useT();
   const { documentId } = useParams<{ documentId: string }>();
+  const router = useRouter();
+  /** A document made while offline: kept on this device under a temporary id until it can be created. */
+  const local = isLocalId(documentId);
   const { getToken } = useAuth();
   const { workspace, user } = useWorkspaceSession();
   const [document, setDocument] = useState<Document | null>(null);
@@ -78,7 +82,7 @@ export default function DocumentEditorPage() {
   const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor[]>>({});
   const liveEngine = useRef<LiveTextEngine | null>(null);
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE' | 'RELATED'>('OUTLINE');
-  const [viewers, setViewers] = useState<{ id: string; name: string; blockId: string | null }[]>([]);
+  const [viewers, setViewers] = useState<{ id: string; name: string; blockId: string | null; connections?: number }[]>([]);
   const revision = useRef(0);
   const announced = useRef<{ sent: string | null; timer?: number }>({ sent: null });
   const live = useRef<{ document: Document | null; blocks: Block[]; title: string; dirty: boolean; saving: boolean }>({ document: null, blocks: [], title: '', dirty: false, saving: false });
@@ -104,12 +108,13 @@ export default function DocumentEditorPage() {
   const announceFocus = useCallback((blockId: string | null) => {
     const state = announced.current;
     window.clearTimeout(state.timer);
+    if (local) return;
     state.timer = window.setTimeout(() => {
       if (state.sent === blockId) return;
       state.sent = blockId;
       void request(`/workspaces/${workspace.id}/documents/${documentId}/focus`, { method: 'POST', body: JSON.stringify({ blockId }) }).catch(() => { state.sent = null; });
     }, 250);
-  }, [documentId, request, workspace.id]);
+  }, [documentId, local, request, workspace.id]);
   useEffect(() => { const state = announced.current; return () => window.clearTimeout(state.timer); }, []);
 
   const reloadCollaboration = useCallback(async () => {
@@ -168,7 +173,7 @@ export default function DocumentEditorPage() {
   }, [t]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || local) return;
     const abort = new AbortController(); let timer: number | undefined;
     const sync = async (who: string, attempt = 0, replaced = false): Promise<void> => {
       if (live.current.saving && attempt < 6) { timer = window.setTimeout(() => { void sync(who, attempt + 1, replaced); }, 700); return; }
@@ -183,7 +188,7 @@ export default function DocumentEditorPage() {
           const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
           if (!response.ok || !response.body) return;
           if (attempt > 0) liveEngine.current?.resyncAll(); // events may have been missed while the connection was down
-          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string }; replaced?: boolean } | ({ type: 'text' } & TextEvent) | ({ type: 'cursor' } & CursorEvent)>(response.body)) {
+          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null; connections?: number }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string }; replaced?: boolean } | ({ type: 'text' } & TextEvent) | ({ type: 'cursor' } & CursorEvent)>(response.body)) {
             if (event.type === 'presence') { setViewers(event.viewers); liveEngine.current?.keepCursorsOf(new Set(event.viewers.map((viewer) => viewer.id))); }
             else if (event.type === 'text') liveEngine.current?.handle(event);
             else if (event.type === 'cursor') liveEngine.current?.handleCursor(event);
@@ -194,10 +199,22 @@ export default function DocumentEditorPage() {
       }
     })();
     return () => { abort.abort(); window.clearTimeout(timer); };
-  }, [applyRemote, documentId, getToken, hydrated, request, t, user.id, workspace.id]);
+  }, [applyRemote, documentId, getToken, hydrated, local, request, t, user.id, workspace.id]);
 
   useEffect(() => {
     let cancelled = false;
+    if (local) {
+      void Promise.resolve().then(() => {
+        if (cancelled) return;
+        const found = readLocalDocument(window.localStorage, { userId: user.id, workspaceId: workspace.id }, documentId);
+        if (found) {
+          setDocument({ id: found.id, title: found.title, content: found.content, updatedAt: '', project: found.projectId ? { id: found.projectId, name: '' } : null });
+          setTitle(found.title); setBlocks(parseBlocks(found.content)); setHydrated(true); revision.current += 1; setDirty(true);
+        }
+        setLoading(false);
+      });
+      return () => { cancelled = true; };
+    }
     void Promise.all([
       request(`/workspaces/${workspace.id}/documents/${documentId}`) as Promise<Document>,
       request(`/workspaces/${workspace.id}/documents/${documentId}/versions`) as Promise<Version[]>,
@@ -233,7 +250,7 @@ export default function DocumentEditorPage() {
     }).catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not open document.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [documentId, request, t, user.id, workspace.id, workspace.role]);
+  }, [documentId, local, request, t, user.id, workspace.id, workspace.role]);
 
   const saveDocument = useCallback(async (): Promise<boolean> => {
     if (!document || saving) return false;
@@ -242,6 +259,20 @@ export default function DocumentEditorPage() {
     // A document always has a name on the server; an empty title stays empty on screen but is saved as "Untitled", so it can never block saving the text.
     const payload = { title: title.trim() || 'Untitled', content: encodeBlocks(blocks), silent: true, baseUpdatedAt: document.updatedAt };
     setSaving(true); setError(''); setSuccess('');
+    if (local) {
+      // First save of a document made offline: create it for real with what it holds now, then move to its own address.
+      try {
+        const created = await request(`/workspaces/${workspace.id}/documents`, { method: 'POST', body: JSON.stringify({ title: payload.title, content: payload.content, projectId: document.project?.id }) }) as Document;
+        setOffline(false);
+        removeLocalDocument(window.localStorage, { userId: user.id, workspaceId: workspace.id }, document.id);
+        router.replace(`/workspace/documents/${created.id}`);
+        return true;
+      } catch (reason) {
+        setOffline(reason instanceof OfflineError);
+        if (!(reason instanceof OfflineError)) setError(reason instanceof Error ? reason.message : 'Could not create the document.');
+        return false;
+      } finally { setSaving(false); }
+    }
     try {
       const updated = await request(`/workspaces/${workspace.id}/documents/${document.id}`, { method: 'PATCH', body: JSON.stringify(payload) }) as Document;
       setDocument(updated); setOffline(false);
@@ -258,7 +289,7 @@ export default function DocumentEditorPage() {
       return false;
     }
     finally { setSaving(false); }
-  }, [applyRemote, blocks, dirty, document, request, saving, t, title, workspace.id]);
+  }, [applyRemote, blocks, dirty, document, local, request, router, saving, t, title, user.id, workspace.id]);
 
   useEffect(() => {
     if (!hydrated || !dirty || saving || error || conflict || offline) return;
@@ -377,10 +408,10 @@ export default function DocumentEditorPage() {
     announceFocus(report.id);
     if (!report.id || !report.inline || readOnlyRole(workspace.role)) return;
     const block = live.current.blocks.find((item) => item.id === report.id);
-    const id = report.id; const joined = block && isLiveText(block.type) ? engine?.join(id) : undefined;
+    const id = report.id; const joined = !local && block && isLiveText(block.type) ? engine?.join(id) : undefined;
     // The caret is shared once the block's live text is joined, otherwise there is nothing for its position to refer to.
     was.timer = window.setTimeout(() => { void Promise.resolve(joined).then(() => engine?.reportCursor(id, report.start, report.end)); }, 250);
-  }, [announceFocus, workspace.role]);
+  }, [announceFocus, local, workspace.role]);
 
   const editorCursors = useMemo(() => Object.fromEntries(Object.entries(remoteCursors).map(([id, list]) => [id, list.map((cursor) => ({ ...cursor, colour: presenceColour(cursor.userId) }))])), [remoteCursors]);
   const editorOthers = useMemo(() => { const out: Record<string, { name: string; colour: string }> = {}; for (const viewer of viewers) if (viewer.id !== user.id && viewer.blockId) out[viewer.blockId] = { name: out[viewer.blockId] ? `${out[viewer.blockId].name}, ${viewer.name}` : viewer.name, colour: presenceColour(viewer.id) }; return out; }, [viewers, user.id]);
@@ -518,13 +549,15 @@ export default function DocumentEditorPage() {
 
   return <div className="workspace-section-page document-studio">
     <div className="document-studio__crumb"><Link href="/workspace/documents">{t('ed.crumbDocuments')}</Link><span>›</span><span>{document?.project?.name ?? workspace.name}</span><span>›</span><strong>{document?.title ?? t('ed.document')}</strong><span className="document-studio__save-state">{saving ? t('ed.saving') : dirty ? t('ed.unsaved') : success || t('ed.allSaved')}</span></div>
+    {viewers.some((viewer) => viewer.id === user.id && (viewer.connections ?? 1) > 1) && <p className="document-presence" role="status">{t('ed.otherTab')}</p>}
     {viewers.filter((viewer) => viewer.id !== user.id).length > 0 && <p className="document-presence" role="status">{t('ed.alsoHere', { names: viewers.filter((viewer) => viewer.id !== user.id).map((viewer) => viewer.name).join(', ') })}</p>}
     {conflict && <div className="productivity-error document-conflict" role="alertdialog" aria-labelledby="document-conflict-title">
       <strong id="document-conflict-title">{t('ed.conflictTitle')}</strong>
       <p>{t('ed.conflictBody')}</p>
       <div><button type="button" disabled={saving} onClick={() => void keepMyChanges()}>{t('ed.keepMine')}</button><button type="button" disabled={saving} onClick={useTheirVersion}>{t('ed.loadTheirs')}</button></div>
     </div>}
-    {offline && dirty && <p className="productivity-error" role="status">{t('ed.offlineKept')}</p>}
+    {local && <p className="productivity-error" role="status">{t('ed.localNote')}</p>}
+    {offline && dirty && !local && <p className="productivity-error" role="status">{t('ed.offlineKept')}</p>}
     {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>{t('ed.retry')}</button></p>}
     {loading ? <p className="productivity-message">{t('ed.opening')}</p> : !document ? <div className="workspace-section-empty"><h2>{t('ed.unavailable')}</h2><p>{t('ed.unavailableBody')}</p><Link href="/workspace/documents">{t('ed.back')}</Link></div> : <>
       <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={entryId} onChange={(event) => setEntryId(event.target.value)}>{(['basic', 'media', 'database', 'advanced'] as const).map((category) => <optgroup key={category} label={t(`blk.cat.${category}` as Key)}>{blockCatalog.filter((entry) => entry.category === category).map((entry) => <option key={entry.id} value={entry.id}>{t(`blk.${entry.id}` as Key)}</option>)}</optgroup>)}</select></label><button type="button" onClick={() => addEntry(blockCatalog.find((item) => item.id === entryId))}>{t('ed.addBlock')}</button><button type="button" onClick={() => setBrowserOpen(true)}><BlockIcon id="database-gallery" size={16} />{t('blk.browse')}</button>{aiReady && <button type="button" onClick={() => editorApi.current?.askAi()}>{t('ed.ai')} · {t('ed.ai.askDoc')}</button>}<span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
@@ -540,7 +573,7 @@ export default function DocumentEditorPage() {
           <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}<span className="document-studio__meta"> · {t('ed.meta', { words: words.toLocaleString(), minutes: Math.max(1, Math.round(words / 220)) })}</span></p>
           <DocEditor title={title} blocks={blocks} readOnly={readOnlyRole(workspace.role)} env={editorEnv} cursors={editorCursors} others={editorOthers} onLocalChange={handleEditorChange} onSelection={handleSelection} onCreateTask={(block) => void createTaskFromBlock(block)} onComment={(block, quote) => { setCommentTarget({ blockId: block.id, quote }); setActivePanel('COMMENTS'); }} onMoveOut={(block) => void startMove(block)} onNotice={setSuccess} onAssist={aiReady ? assist : null} onError={setError} apiRef={editorApi} />
         </main>
-        <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(['OUTLINE', 'RELATED', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'RELATED' ? t('ed.tab.related') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
+        <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(local ? ['OUTLINE'] as const : ['OUTLINE', 'RELATED', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'RELATED' ? t('ed.tab.related') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
           {activePanel === 'SHARE' && <SharePanel documentId={document.id} />}
           {activePanel === 'FILES' && <section className="document-studio__panel"><AttachmentsPanel target={{ documentId: document.id }} /></section>}
           {activePanel === 'RELATED' && <section className="document-studio__panel"><h2>{t('ed.tab.related')}</h2>{others === null ? <p>{t('ed.opening')}</p> : others.length === 0 ? <p>{t('ed.relatedEmpty')}</p> : <>

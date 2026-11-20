@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabels } from './task-labels';
 import { documentTemplates, encodeTemplate } from './documents/templates';
+import { createLocalDocument } from './documents/[documentId]/local-documents';
 import { Icon } from './home-icons';
 import { EmptyState, PageHeader, Panel, PillTabs } from './ui';
 import { FavouriteStar, useFavourites } from './favourites';
@@ -113,7 +114,7 @@ export function DocumentsWorkspace() {
   const t = useT();
   const router = useRouter();
   const { getToken } = useAuth();
-  const { workspace } = useWorkspaceSession();
+  const { workspace, user } = useWorkspaceSession();
   const [projects, setProjects] = useState<Project[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,7 +171,14 @@ export function DocumentsWorkspace() {
       }) as DocumentRecord;
       formElement.reset();
       router.push(`/workspace/documents/${created.id}`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create the document.'); }
+    } catch (reason) {
+      // No connection: the document is made on this device and created for real as soon as the connection returns.
+      if (reason instanceof TypeError) {
+        const id = createLocalDocument(window.localStorage, { userId: user.id, workspaceId: workspace.id }, { title: String(form.get('title') || template?.title || ''), content: template ? encodeTemplate(template, String(form.get('content') ?? '')) : String(form.get('content') ?? ''), projectId: String(form.get('projectId') || '') || null }, () => crypto.randomUUID());
+        if (id) { formElement.reset(); router.push(`/workspace/documents/${id}`); return; }
+      }
+      setError(reason instanceof Error ? reason.message : 'Could not create the document.');
+    }
     finally { setBusy(false); }
   }
 

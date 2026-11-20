@@ -2365,4 +2365,6 @@ export const fr: Dictionary = {
   'ed.relatedEmpty': "Pas encore d'autres documents.",
   'ed.sameProject': "Dans {name}",
   'ed.recentlyEdited': "Modifiés récemment",
+  'ed.otherTab': "Vous avez aussi ce document ouvert dans une autre fenêtre. Les modifications y apparaissent ici en direct.",
+  'ed.localNote': "Ce document a été créé hors ligne et reste sur cet appareil. Il sera créé dans votre espace, avec tout ce qui est écrit, dès que vous serez de nouveau en ligne.",
 };

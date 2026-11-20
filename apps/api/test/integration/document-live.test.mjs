@@ -24,6 +24,16 @@ describe('live documents', { skip }, () => {
   });
   after(async () => { await t?.close(); });
 
+  test('presence says how many windows a person has the document open in', async () => {
+    const first = await listen(t, 'zoe', `${path()}/stream`);
+    await until(() => first.events.some((e) => e.type === 'presence'));
+    const second = await listen(t, 'zoe', `${path()}/stream`);
+    await until(() => first.events.filter((e) => e.type === 'presence').at(-1).viewers.find((v) => v.name === 'zoe')?.connections === 2);
+    second.close();
+    await until(() => first.events.filter((e) => e.type === 'presence').at(-1).viewers.find((v) => v.name === 'zoe')?.connections === 1);
+    first.close();
+  });
+
   test('viewers see each other come and go, and hear when someone saves', async () => {
     const zoe = await listen(t, 'zoe', `${path()}/stream`);
     assert.equal(zoe.status, 200);

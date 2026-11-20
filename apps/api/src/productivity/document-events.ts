@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 export type Viewer = { id: string; name: string };
 /** Who has the document open, and the block each person last put their cursor in (null when none). */
-export type PresentViewer = Viewer & { blockId: string | null };
+export type PresentViewer = Viewer & { blockId: string | null; /** How many windows this person has the document open in. */ connections: number };
 export type DocumentEvent =
   | { type: 'presence'; viewers: PresentViewer[] }
   /** `replaced` is set when the whole content was swapped (a restored version): open editors must drop what they hold, not keep it. */
@@ -43,7 +43,7 @@ export class DocumentEvents {
 
   viewers(documentId: string): PresentViewer[] {
     const seen = new Map<string, PresentViewer>();
-    for (const { viewer } of this.listeners.get(documentId) ?? []) seen.set(viewer.id, { ...viewer, blockId: this.focus.get(documentId)?.get(viewer.id) ?? null });
+    for (const { viewer } of this.listeners.get(documentId) ?? []) seen.set(viewer.id, { ...viewer, blockId: this.focus.get(documentId)?.get(viewer.id) ?? null, connections: (seen.get(viewer.id)?.connections ?? 0) + 1 });
     return [...seen.values()];
   }
 

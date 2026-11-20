@@ -2365,4 +2365,6 @@ export const de: Dictionary = {
   'ed.relatedEmpty': "Noch keine weiteren Dokumente.",
   'ed.sameProject': "In {name}",
   'ed.recentlyEdited': "Zuletzt bearbeitet",
+  'ed.otherTab': "Du hast dieses Dokument auch in einem anderen Fenster geöffnet. Änderungen dort erscheinen hier live.",
+  'ed.localNote': "Dieses Dokument wurde offline erstellt und bleibt auf diesem Gerät. Es wird in deinem Arbeitsbereich angelegt, sobald du wieder online bist.",
 };

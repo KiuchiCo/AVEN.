@@ -2364,6 +2364,8 @@ export const en = {
   'ed.relatedEmpty': "No other documents yet.",
   'ed.sameProject': "In {name}",
   'ed.recentlyEdited': "Recently edited",
+  'ed.otherTab': "You also have this document open in another window. Edits there appear here as you type.",
+  'ed.localNote': "This document was made offline and is kept on this device. It is created in your workspace, with everything written so far, as soon as you are back online.",
 } as const;
 
 export type Key = keyof typeof en;
