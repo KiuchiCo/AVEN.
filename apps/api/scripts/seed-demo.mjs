@@ -36,6 +36,8 @@ if (existsSync(manifestPath)) { console.log('Demo data is already seeded. Run wi
 let seed = 20261121; const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
 const pick = (list) => list[Math.floor(rnd() * list.length)];
 const day = 86_400_000; const now = Date.now();
+// Task and project due dates are stored as UTC midnight (that is what the date pickers save), so the seed does the same.
+const dayAt = (days) => { const d = new Date(now + days * day); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); };
 const at = (days, hour = 10) => { const d = new Date(now + days * day); d.setHours(hour, Math.floor(rnd() * 4) * 15, 0, 0); return d; };
 
 const made = {};
@@ -73,7 +75,7 @@ for (const workspace of await prisma.workspace.findMany({ include: { members: tr
   // Projects, milestones, tasks.
   const projects = []; const tasks = [];
   for (const [index, [name, status, dueIn, budget, spent, description]] of projectSpecs.entries()) {
-    const project = await mk('project', { workspaceId: workspace.id, createdById: demo(index).id, name, status, description, dueAt: dueIn === null ? null : at(dueIn), budgetTotalCents: budget, budgetSpentCents: spent });
+    const project = await mk('project', { workspaceId: workspace.id, createdById: demo(index).id, name, status, description, dueAt: dueIn === null ? null : dayAt(dueIn), budgetTotalCents: budget, budgetSpentCents: spent });
     projects.push(project);
     for (const [m, title] of ['Kick-off', 'First draft', 'Launch'].entries()) if (name !== 'Empty Project (no tasks)') await mk('projectMilestone', { workspaceId: workspace.id, projectId: project.id, title, dueAt: at((dueIn ?? 10) - 14 + m * 7), completedAt: status === 'COMPLETED' || (m === 0 && status === 'IN_PROGRESS') ? at(-5) : null });
   }
@@ -87,7 +89,7 @@ for (const workspace of await prisma.workspace.findMany({ include: { members: tr
       workspaceId: workspace.id, projectId: i % 11 === 0 ? null : project.id, createdById: demo(i).id, assigneeId: assignee,
       title: i === 3 ? longTitle : `${taskTitles[i % taskTitles.length]}${i >= taskTitles.length ? ` (${Math.floor(i / taskTitles.length) + 1})` : ''}`,
       description: i % 3 === 0 ? null : 'Context and acceptance criteria go here. This is placeholder text to exercise multi-line descriptions in the task page and board cards.',
-      status, priority: pick(priorities), labels: [...new Set([pick(labelsPool), ...(rnd() > 0.6 ? [pick(labelsPool)] : [])])], startAt: due === null ? null : at(due - 5), dueAt: due === null ? null : at(due), completedAt: status === 'COMPLETED' ? at(-Math.ceil(rnd() * 10)) : null,
+      status, priority: pick(priorities), labels: [...new Set([pick(labelsPool), ...(rnd() > 0.6 ? [pick(labelsPool)] : [])])], startAt: due === null ? null : dayAt(due - 5), dueAt: due === null ? null : dayAt(due), completedAt: status === 'COMPLETED' ? at(-Math.ceil(rnd() * 10)) : null,
       ...(i % 17 === 5 ? { recurrence: 'WEEKLY', recurrenceInterval: 1 } : {}),
     });
     tasks.push(task);
@@ -126,8 +128,8 @@ for (const workspace of await prisma.workspace.findMany({ include: { members: tr
   const features = ['Single sign-on', 'Offline mode', 'Dark mode', 'Public API', 'Mobile widgets', 'Calendar sync', 'Smart search', 'Template gallery', 'Audit export', 'Billing portal', 'Keyboard shortcuts', 'Import from CSV'];
   for (const [i, name] of features.entries()) await mk('databaseRecord', { workspaceId: workspace.id, databaseId: roadmap.id, values: { name, status: ['Planning', 'In progress', 'Done', 'Blocked'][i % 4], owner: pick(people)[0], budget: 1000 * (i + 1), due: at(i * 6 - 10).toISOString().slice(0, 10), shipped: i % 4 === 2 } });
   for (const [name, layout, groupBy, date] of [['Board by status', 'BOARD', 'status', ''], ['Timeline', 'TIMELINE', 'status', 'due'], ['Over budget first', 'TABLE', 'status', '']]) await mk('databaseView', { workspaceId: workspace.id, databaseId: roadmap.id, name, layout, groupByPropertyId: groupBy, datePropertyId: date, sortPropertyId: name === 'Over budget first' ? 'budget' : 'updatedAt', sortDirection: 'DESC' });
-  const contacts = await mk('workspaceDatabase', { workspaceId: workspace.id, name: 'Contacts', description: null, properties: [{ id: 'name', name: 'Name', type: 'text' }, { id: 'status', name: 'Status', type: 'status' }, { id: 'company', name: 'Company', type: 'text' }] });
-  for (const [i, [name]] of people.entries()) await mk('databaseRecord', { workspaceId: workspace.id, databaseId: contacts.id, values: { name, status: i % 2 ? 'Customer' : 'Lead', company: ['Acme', 'Globex', 'Initech'][i % 3] } });
+  const contacts = await mk('workspaceDatabase', { workspaceId: workspace.id, name: 'Contacts', description: null, properties: [{ id: 'name', name: 'Name', type: 'text' }, { id: 'status', name: 'Status', type: 'status' }, { id: 'company', name: 'Company', type: 'text' }, { id: 'location', name: 'Location', type: 'text' }] });
+  for (const [i, [name]] of people.entries()) await mk('databaseRecord', { workspaceId: workspace.id, databaseId: contacts.id, values: { name, status: i % 2 ? 'Customer' : 'Lead', company: ['Acme', 'Globex', 'Initech'][i % 3], location: ['-33.8688, 151.2093', '51.5074, -0.1278', '35.6762, 139.6503', '40.7128, -74.0060', 'not a place'][i % 5] } });
   await mk('workspaceDatabase', { workspaceId: workspace.id, name: 'Empty database', properties: [{ id: 'name', name: 'Name', type: 'text' }, { id: 'status', name: 'Status', type: 'status' }] });
 
   // Automations (rules + runs) and workflows.

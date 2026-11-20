@@ -14,7 +14,7 @@ test('findSlash needs a slash at the start or after a space', () => {
 });
 
 test('filterSlash ranks names first and finds by keyword', () => {
-  assert.equal(filterSlash('', label).length, 48);
+  assert.equal(filterSlash('', label).length, 49);
   assert.equal(filterSlash('h1', label)[0].type, 'HEADING_1');
   assert.equal(filterSlash('toggle heading 2', label)[0].id, 'toggle-heading-2');
   assert.equal(filterSlash('donut', label)[0].id, 'chart-donut');

@@ -8,7 +8,7 @@ import { blockCatalog, type CatalogEntry } from './block-catalog.ts';
 export type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'HEADING_3' | 'HEADING_4' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'TOGGLE'
   | 'DIVIDER' | 'TABLE' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'BOOKMARK' | 'PAGE_LINK' | 'DATABASE' | 'DATABASE_LINK' | 'TOC' | 'BREADCRUMB' | 'BUTTON'
   | 'EQUATION' | 'MERMAID' | 'TABS' | 'SYNCED' | 'MEETING';
-export type DatabaseView = 'TABLE' | 'BOARD' | 'GALLERY' | 'LIST' | 'BAR_V' | 'BAR_H' | 'DONUT' | 'NUMBER' | 'CALENDAR' | 'TIMELINE' | 'FEED' | 'DASHBOARD' | 'LINE';
+export type DatabaseView = 'TABLE' | 'BOARD' | 'GALLERY' | 'LIST' | 'BAR_V' | 'BAR_H' | 'DONUT' | 'NUMBER' | 'CALENDAR' | 'TIMELINE' | 'FEED' | 'DASHBOARD' | 'LINE' | 'MAP';
 export type TabPane = { title: string; body: string };
 /** `text` is the block's main text (a caption for media, the title of a toggle, the label of a button). Other fields belong to specific block types. */
 export type Block = {

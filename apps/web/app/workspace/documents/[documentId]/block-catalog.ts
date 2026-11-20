@@ -45,6 +45,7 @@ export const blockCatalog: CatalogEntry[] = [
   { id: 'database-feed', type: 'DATABASE', patch: { view: 'FEED' }, category: 'database', keywords: ['feed view', 'stream', 'updates', 'database'] },
   { id: 'database-dashboard', type: 'DATABASE', patch: { view: 'DASHBOARD' }, category: 'database', keywords: ['dashboard view', 'overview', 'summary', 'database'] },
   { id: 'chart-line', type: 'DATABASE', patch: { view: 'LINE' }, category: 'database', keywords: ['line chart', 'trend', 'over time', 'chart', 'graph'] },
+  { id: 'database-map', type: 'DATABASE', patch: { view: 'MAP' }, category: 'database', keywords: ['map view', 'places', 'locations', 'coordinates', 'database'] },
   { id: 'database-inline', type: 'DATABASE', patch: { view: 'TABLE', create: true }, category: 'database', keywords: ['database inline', 'new database', 'inline'] },
   { id: 'database-full-page', type: 'DATABASE_LINK', patch: { create: true }, category: 'database', keywords: ['database full page', 'new database', 'full page'] },
   { id: 'database-linked', type: 'DATABASE', patch: { view: 'TABLE', linked: true }, category: 'database', keywords: ['linked view', 'linked database', 'existing'] },

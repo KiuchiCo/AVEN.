@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../../../i18n';
 import type { Key } from '../../../i18n/en';
 import { useWorkspaceSession } from '../../workspace-shell';
@@ -10,6 +10,7 @@ import { useFilesApi } from '../../files/use-files-api';
 import type { FileRecord } from '../../files/types';
 import { BlockIcon } from '../../block-icons';
 import { safeHref, type DatabaseView, type TabPane } from './editor-model';
+import { fitMap, parseCoordinate, worldPixel } from './map-math';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -156,7 +157,7 @@ export function ButtonBlock({ label, taskTitle, readOnly, running, onLabel, onTa
 type Property = { id: string; name: string; type: string };
 type DbRecord = { id: string; values: Record<string, unknown> };
 type Db = { id: string; name: string; properties: Property[]; records: DbRecord[] };
-const viewIcons = { TABLE: 'database-table', BOARD: 'database-board', GALLERY: 'database-gallery', LIST: 'database-list', BAR_V: 'chart-bar-vertical', BAR_H: 'chart-bar-horizontal', DONUT: 'chart-donut', NUMBER: 'chart-number', CALENDAR: 'database-calendar', TIMELINE: 'database-timeline', FEED: 'database-feed', DASHBOARD: 'database-dashboard', LINE: 'chart-line' } as const;
+const viewIcons = { TABLE: 'database-table', BOARD: 'database-board', GALLERY: 'database-gallery', LIST: 'database-list', BAR_V: 'chart-bar-vertical', BAR_H: 'chart-bar-horizontal', DONUT: 'chart-donut', NUMBER: 'chart-number', MAP: 'database-map', CALENDAR: 'database-calendar', TIMELINE: 'database-timeline', FEED: 'database-feed', DASHBOARD: 'database-dashboard', LINE: 'chart-line' } as const;
 const viewOrder = Object.keys(viewIcons) as DatabaseView[];
 const show = (value: unknown) => (Array.isArray(value) ? value.join(', ') : value === null || value === undefined ? '' : typeof value === 'boolean' ? (value ? '✓' : '') : String(value));
 
@@ -182,6 +183,32 @@ export function countByMonth(days: Date[]): { month: string; count: number }[] {
   for (const day of days) { const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}`; counts.set(key, (counts.get(key) ?? 0) + 1); }
   return [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([month, count]) => ({ month, count }));
 }
+function MapTile({ src, x, y }: { src: string; x: number; y: number }) {
+  // eslint-disable-next-line @next/next/no-img-element -- map tiles are plain remote images positioned by hand
+  return <img src={src} alt="" width={256} height={256} loading="lazy" referrerPolicy="origin" style={{ left: x, top: y }} />;
+}
+/** A map of records with coordinates, drawn from OpenStreetMap tiles. The tiles are the only thing fetched from outside AVEN. */
+function TileMap({ points }: { points: { id: string; title: string; lat: number; lng: number }[] }) {
+  const t = useT();
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(640); const [zoomShift, setZoomShift] = useState(0); const height = 320;
+  useEffect(() => { const node = box.current; if (!node) return; const update = () => setWidth(Math.max(200, Math.round(node.getBoundingClientRect().width))); update(); const observer = new ResizeObserver(update); observer.observe(node); return () => observer.disconnect(); }, []);
+  const fit = useMemo(() => fitMap(points, width, height), [points, width]);
+  const zoom = Math.max(0, Math.min(18, fit.zoom + zoomShift));
+  const centre = useMemo(() => { const factor = 2 ** (zoom - fit.zoom); return { x: fit.cx * factor, y: fit.cy * factor }; }, [fit, zoom]);
+  const left = centre.x - width / 2, top = centre.y - height / 2, count = 2 ** zoom;
+  const tiles: { key: string; src: string; x: number; y: number }[] = [];
+  for (let tx = Math.floor(left / 256); tx <= Math.floor((left + width) / 256); tx += 1) for (let ty = Math.floor(top / 256); ty <= Math.floor((top + height) / 256); ty += 1) if (ty >= 0 && ty < count) tiles.push({ key: `${tx}/${ty}`, src: `https://tile.openstreetmap.org/${zoom}/${((tx % count) + count) % count}/${ty}.png`, x: tx * 256 - left, y: ty * 256 - top });
+  return <figure className="document-map">
+    <div className="document-map__frame" ref={box} style={{ height }} role="img" aria-label={t('bl.view.MAP')}>
+      {tiles.map((tile) => <MapTile key={tile.key} src={tile.src} x={tile.x} y={tile.y} />)}
+      {points.map((point) => { const pixel = worldPixel(point.lat, point.lng, zoom); return <span key={point.id} className="document-map__pin" title={point.title} style={{ left: pixel.x - left, top: pixel.y - top }}><i /><b>{point.title}</b></span>; })}
+      <div className="document-map__zoom"><button type="button" aria-label={t('bl.zoomIn')} onClick={() => setZoomShift((value) => Math.min(value + 1, 6))}>+</button><button type="button" aria-label={t('bl.zoomOut')} onClick={() => setZoomShift((value) => Math.max(value - 1, -6))}>−</button></div>
+    </div>
+    <figcaption>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> · {t('bl.mapNote')}</figcaption>
+  </figure>;
+}
+
 function Donut({ groups, label }: { groups: { label: string; count: number }[]; label: string }) {
   const sum = groups.reduce((all, group) => all + group.count, 0); const circumference = 2 * Math.PI * 44;
   const arcs = groups.map((group, index) => ({ group, index, length: sum ? (group.count / sum) * circumference : 0, offset: groups.slice(0, index).reduce((all, earlier) => all + (sum ? (earlier.count / sum) * circumference : 0), 0) }));
@@ -238,6 +265,13 @@ export function DatabaseBlock({ databaseId, view, linked, create, readOnly, onCh
       : view === 'BAR_V' ? <div className="document-chart document-chart--v" role="img" aria-label={database.name}>{groups.map((group, index) => <div key={group.label}><i style={{ height: `${(group.count / total) * 100}%`, background: tones[index % tones.length] }} /><strong>{group.count}</strong><span>{group.label}</span></div>)}</div>
       : view === 'BAR_H' ? <HBars groups={groups} label={database.name} />
       : view === 'DONUT' ? <Donut groups={groups} label={database.name} />
+      : view === 'MAP' ? (() => {
+        const textProps = database.properties.filter((property) => property.type === 'text');
+        const rank = (property: Property) => database.records.filter((record) => parseCoordinate(record.values[property.id])).length + (/loc|coord|place|where|map/i.test(property.name) ? 0.5 : 0);
+        const place = [...textProps].sort((a, b) => rank(b) - rank(a))[0];
+        const points = place ? database.records.flatMap((record) => { const spot = parseCoordinate(record.values[place.id]); return spot ? [{ id: record.id, title: show(record.values[titleProperty?.id ?? '']) || t('db.untitled'), ...spot }] : []; }) : [];
+        return points.length ? <TileMap points={points} /> : <p className="document-image__missing">{t('bl.needLocation')}</p>;
+      })()
       : view === 'LINE' ? (dateProperty ? (dated.length ? <LineChart points={countByMonth(dated.map((entry) => entry.day))} label={database.name} /> : <p className="document-image__missing">{t('bl.noDates')}</p>) : <p className="document-image__missing">{t('bl.needDate')}</p>)
       : view === 'DASHBOARD' ? <div className="document-dashboard">
         <p className="document-database__number"><strong>{database.records.length}</strong><span>{database.name}</span></p>
@@ -350,6 +384,14 @@ export function TabsBlock({ tabs, readOnly, onChange }: { tabs: TabPane[]; readO
 
 // ---- Meeting notes ----------------------------------------------------------------------------------------------------------------
 
+type SpeechResultEvent = { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> };
+type SpeechRec = { continuous: boolean; interimResults: boolean; lang: string; onresult: ((event: SpeechResultEvent) => void) | null; onend: (() => void) | null; onerror: ((event: { error: string }) => void) | null; start: () => void; stop: () => void };
+const speechCtor = (): (new () => SpeechRec) | null => {
+  if (typeof window === 'undefined') return null;
+  const host = window as unknown as { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec };
+  return host.SpeechRecognition ?? host.webkitSpeechRecognition ?? null;
+};
+
 /** Structured notes for a meeting, with an optional voice recording kept in Files and the follow-ups turned into tasks. There is no automatic transcript. */
 export function MeetingBlock({ block, readOnly, running, onChange, onTasks }: { block: { text: string; body?: string; date?: string; attendees?: string; actions?: string; fileId?: string }; readOnly: boolean; running: boolean; onChange: (change: { text?: string; body?: string; date?: string; attendees?: string; actions?: string; fileId?: string }) => void; onTasks: (titles: string[]) => void }) {
   const t = useT();
@@ -357,6 +399,26 @@ export function MeetingBlock({ block, readOnly, running, onChange, onTasks }: { 
   const stored = useStoredUrl(block.fileId);
   const [recording, setRecording] = useState<MediaRecorder | null>(null);
   const [error, setError] = useState('');
+  const [transcribe, setTranscribe] = useState(true);
+  const [speechOk, setSpeechOk] = useState(false);
+  useEffect(() => { let live = true; void Promise.resolve().then(() => { if (live) setSpeechOk(speechCtor() !== null); }); return () => { live = false; }; }, []);
+  const notes = useRef(block.body ?? ''); const listening = useRef<SpeechRec | null>(null);
+  useEffect(() => { notes.current = block.body ?? ''; }, [block.body]);
+  function listen() {
+    const Recognition = speechCtor(); if (!Recognition) return;
+    const recognition = new Recognition();
+    recognition.continuous = true; recognition.interimResults = false; recognition.lang = document.documentElement.lang || navigator.language || 'en-US';
+    recognition.onresult = (event) => {
+      let heard = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) if (event.results[i].isFinal) heard += `${event.results[i][0].transcript.trim()} `;
+      if (heard.trim()) { const next = `${notes.current}${notes.current && !notes.current.endsWith('\n') ? '\n' : ''}${heard.trim()}`; notes.current = next; onChange({ body: next }); }
+    };
+    recognition.onerror = (event) => { if (event.error === 'not-allowed' || event.error === 'service-not-allowed') { listening.current = null; setError(t('bl.speechDenied')); } };
+    recognition.onend = () => { if (listening.current === recognition) { try { recognition.start(); } catch { listening.current = null; } } }; // the browser stops after a pause, so carry on while recording
+    listening.current = recognition;
+    try { recognition.start(); } catch { listening.current = null; }
+  }
+  function stopListening() { const recognition = listening.current; listening.current = null; try { recognition?.stop(); } catch { /* already stopped */ } }
   const actions = (block.actions ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
   async function start() {
     setError('');
@@ -365,12 +427,12 @@ export function MeetingBlock({ block, readOnly, running, onChange, onTasks }: { 
       const recorder = new MediaRecorder(stream); const chunks: Blob[] = [];
       recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
       recorder.onstop = () => {
-        stream.getTracks().forEach((track) => track.stop()); setRecording(null);
+        stream.getTracks().forEach((track) => track.stop()); setRecording(null); stopListening();
         const type = recorder.mimeType || 'audio/webm';
         const file = new File(chunks, `${block.text || t('blk.ai-meeting-notes')} ${block.date ?? ''}.${type.includes('mp4') ? 'm4a' : 'webm'}`.trim(), { type });
         void files.upload(file).then((saved) => onChange({ fileId: saved.id })).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not save the recording.'));
       };
-      recorder.start(); setRecording(recorder);
+      recorder.start(); setRecording(recorder); if (transcribe && speechOk) listen();
     } catch { setError(t('bl.micDenied')); }
   }
   return <div className="document-meeting">
@@ -382,10 +444,12 @@ export function MeetingBlock({ block, readOnly, running, onChange, onTasks }: { 
     <textarea value={block.body ?? ''} readOnly={readOnly} rows={5} maxLength={20000} placeholder={t('bl.meetingNotes')} aria-label={t('bl.meetingNotes')} onChange={(event) => onChange({ body: event.target.value })} />
     <textarea value={block.actions ?? ''} readOnly={readOnly} rows={3} maxLength={4000} placeholder={t('bl.meetingActions')} aria-label={t('bl.meetingActions')} onChange={(event) => onChange({ actions: event.target.value })} />
     <div className="document-image__actions">
+      {!readOnly && speechOk && !recording && <label className="document-meeting__check"><input type="checkbox" checked={transcribe} onChange={(event) => setTranscribe(event.target.checked)} />{t('bl.transcribe')}</label>}
       {!readOnly && (recording ? <button type="button" onClick={() => recording.stop()}>{t('bl.stopRecording')}</button> : <button type="button" onClick={() => void start()}>{t('bl.record')}</button>)}
       {!readOnly && <button type="button" disabled={running || actions.length === 0} onClick={() => onTasks(actions)}>{t('bl.actionsToTasks', { n: actions.length })}</button>}
     </div>
     {recording && <p className="document-image__missing" role="status">{t('bl.recording')}</p>}
+    {!readOnly && <p className="document-image__missing">{speechOk ? t('bl.transcribeNote') : t('bl.noTranscribe')}</p>}
     {stored.url && <audio className="document-media__audio" src={stored.url} controls preload="metadata" aria-label={t('bl.meetingRecording')} />}
     {error && <p className="workspace-settings-status" role="alert">{error}</p>}
   </div>;

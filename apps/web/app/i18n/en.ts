@@ -2260,6 +2260,17 @@ export const en = {
   'bl.syncCopied': "Sync code copied. Paste it into a synced block in another document.",
   'bl.syncCopyFailed': "Copy was blocked by the browser.",
   'bl.linkSync': "Paste a sync code to link",
+  'blk.database-map': "Map view",
+  'blk.database-map.d': "Show records with coordinates on a map.",
+  'bl.view.MAP': "Map",
+  'bl.needLocation': "Add a text property with coordinates such as -33.8688, 151.2093 to use the map.",
+  'bl.mapNote': "Map tiles load from OpenStreetMap, which sees the area shown.",
+  'bl.zoomIn': "Zoom in",
+  'bl.zoomOut': "Zoom out",
+  'bl.transcribe': "Transcribe speech into the notes while recording",
+  'bl.transcribeNote': "Live transcription uses your browser's speech service, which may send the audio to its provider. Review the text before relying on it.",
+  'bl.noTranscribe': "This browser can't transcribe speech live. Recording still works, and you can type the notes yourself.",
+  'bl.speechDenied': "Speech transcription was blocked. Allow the microphone and speech recognition for this site.",
 } as const;
 
 export type Key = keyof typeof en;
