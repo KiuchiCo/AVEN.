@@ -1,6 +1,10 @@
-import { InboxWorkspace } from '../workspace-productivity';
+'use client';
+
 import Link from 'next/link';
+import { useT } from '../../i18n';
+import { InboxWorkspace } from '../workspace-productivity';
 
 export default function InboxPage() {
-  return <><div className="task-labels-callout"><span>Need a label-based view?</span><Link href="/workspace/labels">Browse task labels →</Link></div><InboxWorkspace /></>;
+  const t = useT();
+  return <><div className="task-labels-callout"><span>{t('inbox.callout')}</span><Link href="/workspace/labels">{t('labels.browse')}</Link></div><InboxWorkspace /></>;
 }

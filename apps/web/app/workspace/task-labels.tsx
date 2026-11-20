@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '../i18n';
 import { useId, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 
@@ -12,6 +13,7 @@ type TaskLabelsProps = {
 };
 
 export function TaskLabels({ labels, taskTitle, disabled = false, onSave, compact = false }: TaskLabelsProps) {
+  const t = useT();
   const baseline = labels.join(', ');
   const [draft, setDraft] = useState<{ baseline: string; value: string } | null>(null);
   const value = draft?.baseline === baseline ? draft.value : baseline;
@@ -27,7 +29,7 @@ export function TaskLabels({ labels, taskTitle, disabled = false, onSave, compac
   return (
     <div className={`task-labels${compact ? ' task-labels--compact' : ''}`}>
       <div className="task-labels__items" aria-label={taskTitle ? `Labels for ${taskTitle}` : 'Task labels'}>
-        {labels.length ? labels.map((label) => <Link key={label} className="task-label" href={`/workspace/tasks?label=${encodeURIComponent(label)}`} title={`Show tasks labelled ${label}`}>#{label}</Link>) : <span className="task-labels__empty">No labels</span>}
+        {labels.length ? labels.map((label) => <Link key={label} className="task-label" href={`/workspace/tasks?label=${encodeURIComponent(label)}`} title={`Show tasks labelled ${label}`}>#{label}</Link>) : <span className="task-labels__empty">{t('lf.none')}</span>}
       </div>
       {onSave && <form className="task-labels__editor" onSubmit={submit}>
         <label className="visually-hidden" htmlFor={inputId}>Labels, comma separated{taskTitle ? ` for ${taskTitle}` : ''}</label>
@@ -40,5 +42,6 @@ export function TaskLabels({ labels, taskTitle, disabled = false, onSave, compac
 }
 
 export function TaskLabelFilter({ labels, value, onChange }: { labels: string[]; value: string; onChange: (label: string) => void }) {
-  return <label className="task-filter">Label<select aria-label="Filter tasks by label" value={value} onChange={(event) => onChange(event.target.value)}><option value="">All labels</option>{labels.map((label) => <option key={label} value={label}>#{label}</option>)}</select></label>;
+  const t = useT();
+  return <label className="task-filter">{t('lf.label')}<select aria-label={t('lf.aria')} value={value} onChange={(event) => onChange(event.target.value)}><option value="">{t('lf.all')}</option>{labels.map((label) => <option key={label} value={label}>#{label}</option>)}</select></label>;
 }
