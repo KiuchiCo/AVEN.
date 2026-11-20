@@ -6,6 +6,7 @@ import { useWorkspaceSession } from '../workspace-shell';
 import { conversationLabel, type Participant } from './conversation-names';
 import { formatBytes } from '../files/types';
 import { useFilesApi } from '../files/use-files-api';
+import { useT } from '../../i18n';
 import { Composer } from './composer';
 import { MessageBody } from './message-body';
 import { readEvents } from './sse';
@@ -19,6 +20,7 @@ type LiveEvent = { type: 'message' | 'message_updated'; channelId: string; messa
 const byName = (a: Channel, b: Channel) => (a.name ?? '').localeCompare(b.name ?? '');
 
 export function MessagesWorkspace() {
+  const t = useT();
   const { workspace, user } = useWorkspaceSession();
   const { getToken } = useAuth();
   const { download } = useFilesApi();
@@ -140,7 +142,7 @@ export function MessagesWorkspace() {
     catch (reason) { fail(reason); }
   }
   async function remove(message: Message) {
-    if (!activeId || !window.confirm('Delete this message?')) return;
+    if (!activeId || !window.confirm(t('msg.confirmDelete'))) return;
     try { await call(`/${activeId}/messages/${message.id}`, 'DELETE'); } catch (reason) { fail(reason); }
   }
   async function older() {
@@ -162,7 +164,14 @@ export function MessagesWorkspace() {
     if (hit.parentId) { openThread.current = hit.parentId; void loadThread(hit.channelId, hit.parentId); }
   }
 
-  const label = (channel: { kind: Channel['kind']; name: string | null; participants: Participant[] }) => conversationLabel(channel, user.id);
+  const label = (channel: { kind: Channel['kind']; name: string | null; participants: Participant[] }) => {
+    if (channel.kind === 'CHANNEL') return conversationLabel(channel, user.id);
+    const others = channel.participants.filter((person) => person.id !== user.id).map((person) => person.displayName);
+    if (!others.length) return t('msg.justYou');
+    if (others.length === 1) return others[0];
+    if (others.length === 2) return t('actor.and', { a: others[0], b: others[1] });
+    return t(others.length === 3 ? 'actor.othersOne' : 'actor.othersMany', { a: others[0], b: others[1], n: others.length - 2 });
+  };
   const channel = channels.find((item) => item.id === activeId);
   const visible = messages.filter((message) => message.channelId === activeId);
   const names = new Map(members.map((member) => [member.userId, member.displayName]));
@@ -170,49 +179,49 @@ export function MessagesWorkspace() {
   const peers = members.filter((member) => member.userId !== user.id && member.role !== 'GUEST');
   const publicChannels = channels.filter((item) => item.kind === 'CHANNEL').sort(byName);
   const privateChats = channels.filter((item) => item.kind !== 'CHANNEL').sort((a, b) => label(a).localeCompare(label(b)));
-  const dot = (id: string) => <span className={`chat-presence${online.includes(id) ? ' chat-presence--on' : ''}`} aria-label={online.includes(id) ? 'Online' : 'Offline'} />;
+  const dot = (id: string) => <span className={`chat-presence${online.includes(id) ? ' chat-presence--on' : ''}`} aria-label={online.includes(id) ? t('msg.online') : t('msg.offline')} />;
   const chatDot = (item: Channel) => item.kind === 'DIRECT' ? dot(item.participants.find((person) => person.id !== user.id)?.id ?? '') : null;
 
   const renderMessage = (message: Message, inThread: boolean) => <article key={message.id} className="chat-message">
-    <header><strong>{message.author.displayName}</strong><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</time>{message.editedAt && !message.deletedAt && <small>edited</small>}</header>
-    {message.deletedAt ? <p className="chat-deleted">This message was deleted.</p> : editing?.id === message.id ? <div className="chat-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label="Edit message" /><button onClick={() => void saveEdit()} disabled={!editing.body.trim()}>Save</button><button onClick={() => setEditing(null)}>Cancel</button></div> : <>{message.body && <p><MessageBody body={message.body} names={names} /></p>}{message.files?.length > 0 && <ul className="chat-files">{message.files.map((file) => <li key={file.id}><button type="button" onClick={() => void download(file).catch(fail)}>{file.name}</button> <small>{formatBytes(file.sizeBytes)}</small></li>)}</ul>}</>}
+    <header><strong>{message.author.displayName}</strong><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</time>{message.editedAt && !message.deletedAt && <small>{t('msg.edited')}</small>}</header>
+    {message.deletedAt ? <p className="chat-deleted">{t('msg.deleted')}</p> : editing?.id === message.id ? <div className="chat-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label={t('msg.editLabel')} /><button onClick={() => void saveEdit()} disabled={!editing.body.trim()}>{t('msg.save')}</button><button onClick={() => setEditing(null)}>{t('msg.cancel')}</button></div> : <>{message.body && <p><MessageBody body={message.body} names={names} /></p>}{message.files?.length > 0 && <ul className="chat-files">{message.files.map((file) => <li key={file.id}><button type="button" onClick={() => void download(file).catch(fail)}>{file.name}</button> <small>{formatBytes(file.sizeBytes)}</small></li>)}</ul>}</>}
     {!message.deletedAt && editing?.id !== message.id && <div className="chat-actions">
-      {!inThread && <button onClick={() => openReplies(message)}>{message.replyCount ? `${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}` : readOnly ? '' : 'Reply'}</button>}
-      {!readOnly && message.author.id === user.id && <button onClick={() => setEditing({ id: message.id, body: message.body })}>Edit</button>}
-      {!readOnly && (message.author.id === user.id || canModerate) && <button onClick={() => void remove(message)}>Delete</button>}
+      {!inThread && <button onClick={() => openReplies(message)}>{message.replyCount ? t(message.replyCount === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: message.replyCount }) : readOnly ? '' : t('msg.reply')}</button>}
+      {!readOnly && message.author.id === user.id && <button onClick={() => setEditing({ id: message.id, body: message.body })}>{t('msg.edit')}</button>}
+      {!readOnly && (message.author.id === user.id || canModerate) && <button onClick={() => void remove(message)}>{t('msg.delete')}</button>}
     </div>}
   </article>;
 
   return <section className={`chat${thread ? ' chat--thread' : ''}`}>
-    <aside className="chat-channels" aria-label="Conversations">
-      <form className="chat-search" onSubmit={search} role="search"><label className="visually-hidden" htmlFor="chat-search">Search messages</label><input id="chat-search" value={query} placeholder="Search messages" onChange={(event) => { setQuery(event.target.value); if (!event.target.value) setHits(null); }} /></form>
-      <h2>Channels <span className={`chat-live${live ? ' chat-live--on' : ''}`} title={live ? 'Live' : 'Reconnecting…'} role="status" aria-label={live ? 'Live updates on' : 'Reconnecting'} /></h2>
-      <ul>{publicChannels.map((item) => <li key={item.id}><button aria-current={item.id === activeId} onClick={() => { setHits(null); setThread(null); setActiveId(item.id); }}>{label(item)}{item.unread > 0 && <span className="chat-unread" aria-label={`${item.unread} unread`}>{item.unread}</span>}</button></li>)}</ul>
-      {!readOnly && <form onSubmit={createChannel}><label className="visually-hidden" htmlFor="new-channel">New channel name</label><input id="new-channel" value={newChannel} maxLength={40} placeholder="New channel" onChange={(event) => setNewChannel(event.target.value)} /><button disabled={!newChannel.trim()}>Add</button></form>}
-      <h2>Direct messages</h2>
+    <aside className="chat-channels" aria-label={t('msg.conversations')}>
+      <form className="chat-search" onSubmit={search} role="search"><label className="visually-hidden" htmlFor="chat-search">{t('msg.searchLabel')}</label><input id="chat-search" value={query} placeholder={t('msg.searchLabel')} onChange={(event) => { setQuery(event.target.value); if (!event.target.value) setHits(null); }} /></form>
+      <h2>{t('msg.channels')} <span className={`chat-live${live ? ' chat-live--on' : ''}`} title={live ? t('msg.live') : t('msg.reconnecting')} role="status" aria-label={live ? t('msg.liveOn') : t('msg.reconnectingShort')} /></h2>
+      <ul>{publicChannels.map((item) => <li key={item.id}><button aria-current={item.id === activeId} onClick={() => { setHits(null); setThread(null); setActiveId(item.id); }}>{label(item)}{item.unread > 0 && <span className="chat-unread" aria-label={t('shell.unread', { n: item.unread })}>{item.unread}</span>}</button></li>)}</ul>
+      {!readOnly && <form onSubmit={createChannel}><label className="visually-hidden" htmlFor="new-channel">{t('msg.newChannelLabel')}</label><input id="new-channel" value={newChannel} maxLength={40} placeholder={t('msg.newChannel')} onChange={(event) => setNewChannel(event.target.value)} /><button disabled={!newChannel.trim()}>{t('msg.add')}</button></form>}
+      <h2>{t('msg.dms')}</h2>
       <ul>{privateChats.map((item) => <li key={item.id}><button aria-current={item.id === activeId} onClick={() => { setHits(null); setThread(null); setActiveId(item.id); }}><span className="chat-name">{chatDot(item)}{label(item)}</span>{item.unread > 0 && <span className="chat-unread" aria-label={`${item.unread} unread`}>{item.unread}</span>}</button></li>)}</ul>
-      {!readOnly && (picking === null ? <button className="chat-new" onClick={() => setPicking([])} disabled={!peers.length}>{peers.length ? '＋ New message' : 'Invite people to message them'}</button> : <fieldset className="chat-picker"><legend>Message who?</legend>
+      {!readOnly && (picking === null ? <button className="chat-new" onClick={() => setPicking([])} disabled={!peers.length}>{peers.length ? t('msg.newMessage') : t('msg.invitePeople')}</button> : <fieldset className="chat-picker"><legend>{t('msg.messageWho')}</legend>
         {peers.map((member) => <label key={member.userId}><input type="checkbox" checked={picking.includes(member.userId)} disabled={!picking.includes(member.userId) && picking.length >= 7} onChange={(event) => setPicking((current) => (event.target.checked ? [...(current ?? []), member.userId] : (current ?? []).filter((id) => id !== member.userId)))} />{dot(member.userId)}{member.displayName}</label>)}
-        <div><button onClick={() => void startConversation()} disabled={!picking.length}>{picking.length > 1 ? 'Start group' : 'Open'}</button><button onClick={() => setPicking(null)}>Cancel</button></div></fieldset>)}
+        <div><button onClick={() => void startConversation()} disabled={!picking.length}>{picking.length > 1 ? t('msg.startGroup') : t('msg.open')}</button><button onClick={() => setPicking(null)}>{t('msg.cancel')}</button></div></fieldset>)}
     </aside>
     <div className="chat-main">
       {error && <p className="workspace-settings-status" role="alert">{error}</p>}
-      {hits ? <div className="chat-results"><header><h1>Search results</h1><button onClick={() => { setHits(null); setQuery(''); }}>Close</button></header>
-        {hits.length === 0 ? <p className="workspace-settings-note">No messages match “{query}”.</p> : <ul>{hits.map((hit) => <li key={hit.id}><button onClick={() => jump(hit)}><small>{label(hit.channel)} · {hit.author.displayName} · {new Date(hit.createdAt).toLocaleDateString()}</small><span>{hit.body.replace(/@\[([^\]]*)\]\([^)]*\)/g, '@$1').slice(0, 200)}</span></button></li>)}</ul>}</div>
-      : !channel ? <p className="workspace-settings-note">{channels.length ? 'Choose a conversation.' : readOnly ? 'No channels yet.' : 'Create the first channel to start talking.'}</p> : <>
+      {hits ? <div className="chat-results"><header><h1>{t('msg.results')}</h1><button onClick={() => { setHits(null); setQuery(''); }}>{t('msg.close')}</button></header>
+        {hits.length === 0 ? <p className="workspace-settings-note">{t('msg.noMatch', { q: query })}</p> : <ul>{hits.map((hit) => <li key={hit.id}><button onClick={() => jump(hit)}><small>{label(hit.channel)} · {hit.author.displayName} · {new Date(hit.createdAt).toLocaleDateString()}</small><span>{hit.body.replace(/@\[([^\]]*)\]\([^)]*\)/g, '@$1').slice(0, 200)}</span></button></li>)}</ul>}</div>
+      : !channel ? <p className="workspace-settings-note">{channels.length ? t('msg.choose') : readOnly ? t('msg.noChannels') : t('msg.createFirst')}</p> : <>
         <header><h1>{label(channel)}</h1>{channel.topic && <p>{channel.topic}</p>}{channel.kind === 'GROUP' && <p>{channel.participants.map((person) => person.displayName).join(', ')}</p>}</header>
         <div className="chat-thread" aria-live="polite">
-          {hasMore && <button className="chat-older" onClick={() => void older()}>Load earlier messages</button>}
+          {hasMore && <button className="chat-older" onClick={() => void older()}>{t('msg.older')}</button>}
           {visible.map((message) => renderMessage(message, false))}
           <div ref={endRef} />
         </div>
-        {readOnly ? <p className="workspace-settings-note">Guests can read channels but not post.</p> : <Composer label={`Message ${label(channel)}`} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds)} />}
+        {readOnly ? <p className="workspace-settings-note">{t('msg.guests')}</p> : <Composer label={t('msg.composerLabel', { name: label(channel) })} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds)} />}
       </>}
     </div>
-    {thread && channel && <aside className="chat-side" aria-label="Thread">
-      <header><h2>Thread</h2><button onClick={() => { openThread.current = null; setThread(null); }} aria-label="Close thread">Close</button></header>
-      <div className="chat-thread">{renderMessage(thread.root, true)}<p className="chat-side__count">{thread.replies.length} {thread.replies.length === 1 ? 'reply' : 'replies'}</p>{thread.replies.map((reply) => renderMessage(reply, true))}</div>
-      {!readOnly && <Composer label="Reply" members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds, thread.root.id)} compact />}
+    {thread && channel && <aside className="chat-side" aria-label={t('msg.thread')}>
+      <header><h2>{t('msg.thread')}</h2><button onClick={() => { openThread.current = null; setThread(null); }} aria-label={t('msg.closeThread')}>{t('msg.close')}</button></header>
+      <div className="chat-thread">{renderMessage(thread.root, true)}<p className="chat-side__count">{t(thread.replies.length === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: thread.replies.length })}</p>{thread.replies.map((reply) => renderMessage(reply, true))}</div>
+      {!readOnly && <Composer label={t('msg.reply')} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds, thread.root.id)} compact />}
     </aside>}
   </section>;
 }

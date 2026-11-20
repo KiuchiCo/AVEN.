@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState, type FormEvent } from 'react';
+import { useT } from '../../i18n';
 import { useFilesApi } from '../files/use-files-api';
 import { activeMention, mentionToken } from './mention-text';
 
@@ -8,6 +9,7 @@ type Member = { userId: string; displayName: string };
 
 /** A message box with an @mention picker. Enter sends, Shift+Enter adds a line. */
 export function Composer({ label, members, selfId, onSend, compact = false }: { label: string; members: Member[]; selfId: string; onSend: (body: string, fileIds: string[]) => Promise<void>; compact?: boolean }) {
+  const t = useT();
   const [draft, setDraft] = useState('');
   const [caret, setCaret] = useState(0);
   const [pick, setPick] = useState(0);
@@ -43,8 +45,8 @@ export function Composer({ label, members, selfId, onSend, compact = false }: { 
   return <form className="chat-compose" onSubmit={submit}>
     <label className="visually-hidden" htmlFor={`composer-${label}`}>{label}</label>
     <div className="chat-compose__field">
-      {options.length > 0 && <ul className="chat-mentions" role="listbox" aria-label="Mention someone">{options.map((member, index) => <li key={member.userId} role="option" aria-selected={index === pick}><button type="button" onMouseDown={(event) => { event.preventDefault(); choose(member); }}>{member.displayName}</button></li>)}</ul>}
-      <textarea ref={field} id={`composer-${label}`} value={draft} maxLength={4000} rows={compact ? 2 : 2} placeholder={`${label} · type @ to mention`}
+      {options.length > 0 && <ul className="chat-mentions" role="listbox" aria-label={t('msg.mention')}>{options.map((member, index) => <li key={member.userId} role="option" aria-selected={index === pick}><button type="button" onMouseDown={(event) => { event.preventDefault(); choose(member); }}>{member.displayName}</button></li>)}</ul>}
+      <textarea ref={field} id={`composer-${label}`} value={draft} maxLength={4000} rows={compact ? 2 : 2} placeholder={t('msg.placeholder', { label })}
         onChange={(event) => { setDraft(event.target.value); setCaret(event.target.selectionStart); setPick(0); }} onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
         onKeyDown={(event) => {
           if (options.length) {
@@ -56,8 +58,8 @@ export function Composer({ label, members, selfId, onSend, compact = false }: { 
           if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit(); }
         }} />
     </div>
-    {(files.length > 0 || problem) && <ul className="chat-compose__files" aria-label="Files to share">{files.map((file) => <li key={file.id}>{file.name} <button type="button" aria-label={`Remove ${file.name}`} onClick={() => setFiles(files.filter((item) => item.id !== file.id))}>×</button></li>)}{problem && <li role="alert">{problem}</li>}</ul>}
-    <label className="chat-compose__attach" aria-disabled={uploading || files.length >= 5}>{uploading ? 'Uploading…' : 'Attach'}<input type="file" multiple disabled={uploading || files.length >= 5} onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; if (selected.length) void attach(selected); }} /></label>
-    <button className="workspace-settings-save" disabled={(!draft.trim() && !files.length) || uploading}>Send</button>
+    {(files.length > 0 || problem) && <ul className="chat-compose__files" aria-label={t('msg.filesAria')}>{files.map((file) => <li key={file.id}>{file.name} <button type="button" aria-label={t('msg.removeFile', { name: file.name })} onClick={() => setFiles(files.filter((item) => item.id !== file.id))}>×</button></li>)}{problem && <li role="alert">{problem}</li>}</ul>}
+    <label className="chat-compose__attach" aria-disabled={uploading || files.length >= 5}>{uploading ? t('msg.uploading') : t('msg.attach')}<input type="file" multiple disabled={uploading || files.length >= 5} onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; if (selected.length) void attach(selected); }} /></label>
+    <button className="workspace-settings-save" disabled={(!draft.trim() && !files.length) || uploading}>{t('msg.send')}</button>
   </form>;
 }
