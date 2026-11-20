@@ -102,3 +102,16 @@ How it behaves, so nothing surprises you:
 - Outgoing webhooks from workflows refuse private and internal addresses (checked after DNS resolution, no redirects). `WORKFLOW_ALLOW_PRIVATE_WEBHOOKS` is refused in production.
 - Stripe webhooks are verified by signature with a five-minute replay window; each event is applied once.
 - Keep `.env` out of version control and rotate any key that has been pasted anywhere public.
+
+## 10. Desktop app
+
+`apps/desktop` is AVEN. in a native window (Electron). It loads your deployed web app, so it needs the network and holds no workspace data; sign-in and notifications are the web app's own. The window is sandboxed with no Node access, keeps links to other sites out of itself (they open in the system browser), and only lets Clerk's hosted sign-in pages load inside it (add others with `AVEN_ALLOWED_HOSTS=login.example.com,*.example.com`). Camera, microphone and location are refused.
+
+```bash
+npm run start --workspace @aven/desktop            # run it against http://localhost:3000 while developing
+AVEN_URL=https://aven.example.com npm run start --workspace @aven/desktop
+npm run smoke --workspace @aven/desktop            # load the app once, print what the page can see, exit (0 = loaded)
+AVEN_APP_URL=https://aven.example.com npm run package --workspace @aven/desktop   # unpacked app in apps/desktop/dist
+```
+
+Without `AVEN_APP_URL` a packaged app asks for the server address on first run (Menu → Change server… to change it later). **Not done:** installers (`.dmg`, `.exe`), code signing and notarisation (needs Apple and Windows certificates), auto-update, and web push (the desktop app uses the web app's in-page notifications only). Social sign-in (Google, Apple) may be refused by those providers inside an embedded window; email sign-in works. The build was verified on macOS (arm64) only, unsigned.

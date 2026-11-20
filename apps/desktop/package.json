@@ -1,0 +1,52 @@
+{
+  "name": "@aven/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AVEN. for desktop: the web app in a locked-down native window.",
+  "main": "src/main.cjs",
+  "author": "AVEN.",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "AVEN_DESKTOP_SMOKE=1 electron .",
+    "test": "node --test test/*.test.mjs",
+    "prepackage": "node scripts/write-config.cjs",
+    "package": "electron-builder --dir --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "app.aven.desktop",
+    "productName": "AVEN",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**",
+      "assets/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "config",
+        "to": "config",
+        "filter": [
+          "*.json"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.png"
+    },
+    "win": {
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "category": "Office",
+      "icon": "assets/icon.png"
+    },
+    "electronDist": "../../node_modules/electron/dist"
+  }
+}
