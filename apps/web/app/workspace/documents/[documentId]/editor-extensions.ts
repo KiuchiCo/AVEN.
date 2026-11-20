@@ -4,7 +4,7 @@
 import { Extension, Node } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { inlineRanges } from './editor-model.ts';
+import { hiddenIds, inlineRanges } from './editor-model.ts';
 import { findMatches, selectionInBlock } from './editor-sync.ts';
 
 export type LiveState = {
@@ -13,8 +13,12 @@ export type LiveState = {
   placeholders: Record<string, string>;
   /** Find in document: what is searched for and which match is the current one. */
   find: { query: string; current: number } | null;
+  /** Toggles that are closed, and which tab each tabs block is showing: the content they hide is folded away. */
+  folded: ReadonlySet<string>; tabs: Readonly<Record<string, number>>;
+  /** Blocks picked as whole blocks (Esc, then Shift + arrows), to act on together. */
+  picked: ReadonlySet<string>;
 };
-export const emptyLive = (): LiveState => ({ cursors: {}, others: {}, placeholders: {}, find: null });
+export const emptyLive = (): LiveState => ({ cursors: {}, others: {}, placeholders: {}, find: null, folded: new Set(), tabs: {}, picked: new Set() });
 
 export const Doc = Node.create({ name: 'doc', topNode: true, content: 'title block+' });
 export const Text = Node.create({ name: 'text', group: 'inline' });
@@ -29,7 +33,7 @@ const headingLevel = (type: string) => ({ HEADING_1: 1, HEADING_2: 2, HEADING_3:
 /** Paragraphs, headings, list items, to-dos, quotes, code and callouts: one node, told apart by `type`, with the text as its content. */
 export const TextBlock = Node.create({
   name: 'textBlock', group: 'block', content: 'text*', marks: '', defining: true,
-  addAttributes() { return { blockId: { default: null }, type: { default: 'PARAGRAPH' }, checked: { default: false }, indent: { default: 0 } }; },
+  addAttributes() { return { blockId: { default: null }, type: { default: 'PARAGRAPH' }, checked: { default: false }, indent: { default: 0 }, tab: { default: 0 } }; },
   parseHTML() { return [{ tag: 'div[data-block-id]' }]; },
   renderHTML({ node }) {
     const { blockId, type, checked, indent } = node.attrs as { blockId: string; type: string; checked: boolean; indent: number };
@@ -41,9 +45,9 @@ export const TextBlock = Node.create({
 
 const blockOf = (name: string, content: string, attrs: Record<string, { default: unknown }>) => Node.create({
   name, group: 'block', content, marks: '', defining: true,
-  addAttributes() { return { blockId: { default: null }, type: { default: 'PARAGRAPH' }, ...attrs }; },
+  addAttributes() { return { blockId: { default: null }, type: { default: 'PARAGRAPH' }, indent: { default: 0 }, tab: { default: 0 }, ...attrs }; },
   parseHTML() { return [{ tag: `div[data-node="${name}"]` }]; },
-  renderHTML({ node }) { return ['div', { id: `block-${node.attrs.blockId}`, class: `aven-block aven-${String(node.attrs.type).toLowerCase()}`, 'data-node': name, 'data-block-id': String(node.attrs.blockId), 'data-type': String(node.attrs.type) }, ...(content ? [['div', { class: 'aven-content' }, 0]] : [])] as never; },
+  renderHTML({ node }) { return ['div', { id: `block-${node.attrs.blockId}`, class: `aven-block aven-${String(node.attrs.type).toLowerCase()}`, 'data-node': name, 'data-block-id': String(node.attrs.blockId), 'data-type': String(node.attrs.type), 'data-indent': String(node.attrs.indent ?? 0) }, ...(content ? [['div', { class: 'aven-content' }, 0]] : [])] as never; },
 });
 export const ToggleBlock = blockOf('toggleBlock', 'text*', { level: { default: 0 }, body: { default: '' } });
 export const SourceBlock = blockOf('sourceBlock', 'text*', {});
@@ -51,11 +55,11 @@ export const SyncedBlock = blockOf('syncedBlock', 'text*', { syncId: { default: 
 export const AtomBlock = Node.create({
   name: 'atomBlock', group: 'block', atom: true, selectable: true, draggable: false,
   addAttributes() {
-    const keys = ['text', 'rows', 'fileId', 'level', 'body', 'url', 'docId', 'databaseId', 'view', 'create', 'linked', 'tabs', 'date', 'attendees', 'actions'];
-    return { blockId: { default: null }, type: { default: 'DIVIDER' }, ...Object.fromEntries(keys.map((key) => [key, { default: key === 'text' ? '' : undefined }])) };
+    const keys = ['text', 'rows', 'fileId', 'level', 'body', 'url', 'docId', 'databaseId', 'view', 'create', 'linked', 'tabs', 'date', 'attendees', 'actions', 'span'];
+    return { blockId: { default: null }, type: { default: 'DIVIDER' }, indent: { default: 0 }, tab: { default: 0 }, ...Object.fromEntries(keys.map((key) => [key, { default: key === 'text' ? '' : undefined }])) };
   },
   parseHTML() { return [{ tag: 'div[data-node="atomBlock"]' }]; },
-  renderHTML({ node }) { return ['div', { id: `block-${node.attrs.blockId}`, class: `aven-block aven-${String(node.attrs.type).toLowerCase()}`, 'data-node': 'atomBlock', 'data-block-id': String(node.attrs.blockId), 'data-type': String(node.attrs.type) }]; },
+  renderHTML({ node }) { return ['div', { id: `block-${node.attrs.blockId}`, class: `aven-block aven-${String(node.attrs.type).toLowerCase()}`, 'data-node': 'atomBlock', 'data-block-id': String(node.attrs.blockId), 'data-type': String(node.attrs.type), 'data-indent': String(node.attrs.indent ?? 0) }]; },
 });
 
 /** Every block keeps its own id: a split or a paste that copies one is given a fresh one, so ids stay unique. */
@@ -99,10 +103,15 @@ export const Decorations = Extension.create<{ live: () => LiveState }>({
           const out: Decoration[] = []; const counters: number[] = [];
           const live = getLive();
           const here = selectionInBlock(state);
+          const listed: { id: string; type: never; indent: number; tab: number }[] = [];
+          state.doc.forEach((node, _offset, index) => { if (index > 0) listed.push({ id: String(node.attrs.blockId), type: node.attrs.type as never, indent: (node.attrs.indent as number) ?? 0, tab: (node.attrs.tab as number) ?? 0 }); });
+          const hidden = live.folded.size || Object.keys(live.tabs).length || listed.some((entry) => (entry.type as string) === 'TABS') ? hiddenIds(listed, live.folded, live.tabs) : new Set<string>();
           state.doc.forEach((node, offset, index) => {
             if (index === 0) { if (node.content.size === 0) out.push(Decoration.node(offset, offset + node.nodeSize, { class: 'is-empty', 'data-placeholder': live.placeholders.TITLE ?? '' })); return; }
             const type = String(node.attrs.blockId ? node.attrs.type : '');
             const id = String(node.attrs.blockId);
+            if (hidden.has(id)) out.push(Decoration.node(offset, offset + node.nodeSize, { class: 'is-folded' }));
+            if (live.picked.has(id)) out.push(Decoration.node(offset, offset + node.nodeSize, { class: 'is-picked' }));
             const attrs: Record<string, string> = {}; let cls = '';
             if (node.type.name === 'textBlock') {
               if (type === 'NUMBERED') { const level = (node.attrs.indent as number) ?? 0; counters.length = level + 1; counters[level] = (counters[level] ?? 0) + 1; attrs['data-num'] = String(counters[level]); } else counters.length = 0;
@@ -112,7 +121,7 @@ export const Decorations = Extension.create<{ live: () => LiveState }>({
             } else counters.length = 0;
             if ((node.type.name === 'textBlock' || node.type.name === 'toggleBlock' || node.type.name === 'syncedBlock') && !noMarks.has(type)) {
               const active = here?.id === id;
-              for (const range of rangesOf(node)) out.push(Decoration.inline(offset + 1 + range.start, offset + 1 + range.end, { class: range.kind === 'mark' ? `md-mark${active ? ' md-mark--shown' : ''}` : `md-${range.kind}`, ...(range.href ? { 'data-href': range.href } : {}) }));
+              for (const range of rangesOf(node)) out.push(Decoration.inline(offset + 1 + range.start, offset + 1 + range.end, { class: range.kind === 'mark' ? `md-mark${active ? ' md-mark--shown' : ''}` : range.kind === 'colour' ? `md-colour md-c-${range.tone}` : `md-${range.kind}`, ...(range.href ? { 'data-href': range.href } : {}) }));
             }
             for (const cursor of live.cursors[id] ?? []) {
               const at = offset + 1 + Math.min(cursor.end, node.content.size);

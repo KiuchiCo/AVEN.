@@ -1,5 +1,6 @@
 'use client';
 
+import { cellText, cellValue, filterRecords, groupRecords, sortRecords, type Sort } from './table-logic';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -155,7 +156,7 @@ export function ButtonBlock({ label, taskTitle, readOnly, running, onLabel, onTa
 // ---- Database views and charts ------------------------------------------------------------------------------------------------
 
 type Property = { id: string; name: string; type: string };
-type DbRecord = { id: string; values: Record<string, unknown> };
+type DbRecord = { id: string; values: Record<string, unknown>; updatedAt?: string };
 type Db = { id: string; name: string; properties: Property[]; records: DbRecord[] };
 const viewIcons = { TABLE: 'database-table', BOARD: 'database-board', GALLERY: 'database-gallery', LIST: 'database-list', BAR_V: 'chart-bar-vertical', BAR_H: 'chart-bar-horizontal', DONUT: 'chart-donut', NUMBER: 'chart-number', MAP: 'database-map', CALENDAR: 'database-calendar', TIMELINE: 'database-timeline', FEED: 'database-feed', DASHBOARD: 'database-dashboard', LINE: 'chart-line' } as const;
 const viewOrder = Object.keys(viewIcons) as DatabaseView[];
@@ -249,6 +250,17 @@ export function DatabaseBlock({ databaseId, view, linked, create, readOnly, onCh
   const titleProperty = database?.properties.find((property) => property.id === 'name') ?? database?.properties[0];
   const [draft, setDraft] = useState('');
   /** Adds a record to the real database (the same one the Databases page shows); nothing is copied into the document. */
+  /** Saves one edited cell to the real record (shown straight away, put back if the server refuses). */
+  async function editCell(record: DbRecord, property: Property, value: string | number | boolean | null) {
+    if (!database) return;
+    const before = record.values[property.id];
+    const apply = (next: unknown) => setDatabases((current) => (current ?? []).map((item) => (item.id === database.id ? { ...item, records: item.records.map((row) => (row.id === record.id ? { ...row, values: { ...row.values, [property.id]: next } } : row)) } : item)));
+    apply(value); setError('');
+    try {
+      const saved = await api<DbRecord>(`/databases/${database.id}/records/${record.id}`, { method: 'PATCH', body: { values: { [property.id]: value }, baseUpdatedAt: record.updatedAt } });
+      setDatabases((current) => (current ?? []).map((item) => (item.id === database.id ? { ...item, records: item.records.map((row) => (row.id === record.id ? { ...row, updatedAt: saved.updatedAt ?? row.updatedAt } : row)) } : item)));
+    } catch (reason) { apply(before); setError(reason instanceof Error ? reason.message : t('bl.editFailed')); }
+  }
   async function addRecord() {
     if (!database || !titleProperty || !draft.trim()) return;
     setBusy(true); setError('');
@@ -303,12 +315,50 @@ export function DatabaseBlock({ databaseId, view, linked, create, readOnly, onCh
       : view === 'BOARD' ? <div className="document-database__board">{groups.map((group) => <section key={group.label}><h4>{group.label}<span>{group.count}</span></h4>{database.records.filter((record) => (show(record.values[database.properties.find((property) => property.type === 'status')?.id ?? ''] ) || '—') === group.label).map((record) => <article key={record.id}>{show(record.values[titleProperty?.id ?? '']) || t('db.untitled')}</article>)}</section>)}</div>
       : view === 'GALLERY' ? <div className="document-database__gallery">{database.records.map((record) => <article key={record.id}><strong>{show(record.values[titleProperty?.id ?? '']) || t('db.untitled')}</strong>{database.properties.filter((property) => property.id !== titleProperty?.id).slice(0, 3).map((property) => <p key={property.id}><span>{property.name}</span>{show(record.values[property.id])}</p>)}</article>)}</div>
       : view === 'LIST' ? <ul className="document-database__list">{database.records.map((record) => <li key={record.id}><strong>{show(record.values[titleProperty?.id ?? '']) || t('db.untitled')}</strong><span>{database.properties.filter((property) => property.id !== titleProperty?.id).slice(0, 2).map((property) => show(record.values[property.id])).filter(Boolean).join(' · ')}</span></li>)}</ul>
-      : <div className="document-table__scroll"><table className="document-database__table"><thead><tr>{database.properties.map((property) => <th key={property.id}>{property.name}</th>)}</tr></thead><tbody>{database.records.map((record) => <tr key={record.id}>{database.properties.map((property) => <td key={property.id}>{show(record.values[property.id])}</td>)}</tr>)}</tbody></table></div>}
+      : <DataTable database={database} readOnly={readOnly} onEdit={(record, property, value) => void editCell(record, property, value)} />}
     {database && database.records.length === 0 && <p className="document-image__missing">{t('db.addToSee')}</p>}
     {database && !readOnly && titleProperty && ['TABLE', 'BOARD', 'GALLERY', 'LIST', 'FEED', 'DASHBOARD'].includes(view) && <form className="document-database__new" onSubmit={(event) => { event.preventDefault(); void addRecord(); }}>
       <input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={200} placeholder={t('bl.newRecordPh')} aria-label={t('bl.newRecordPh')} />
       <button type="submit" disabled={!draft.trim() || busy}>{t('bl.addRecord')}</button>
     </form>}
+  </div>;
+}
+
+/** The table view of a database block: search, sort by a column, group by a column, and edit cells in place. Everything saves to the real records. */
+function DataTable({ database, readOnly, onEdit }: { database: Db; readOnly: boolean; onEdit: (record: DbRecord, property: Property, value: string | number | boolean | null) => void }) {
+  const t = useT();
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<Sort>(null);
+  const [group, setGroup] = useState<string | null>(null);
+  const shown = useMemo(() => sortRecords(filterRecords(database.records, database.properties, query), database.properties, sort), [database, query, sort]);
+  const groups = useMemo(() => groupRecords(shown, group), [shown, group]);
+  const statusOptions = (property: Property) => [...new Set(database.records.map((record) => cellText(record.values[property.id])).filter(Boolean))];
+  const nextSort = (property: string) => setSort((current) => (current?.property !== property ? { property, direction: 'asc' } : current.direction === 'asc' ? { property, direction: 'desc' } : null));
+  const cell = (record: DbRecord, property: Property) => {
+    const value = record.values[property.id]; const label = `${property.name}: ${cellText(record.values[database.properties[0]?.id]) || t('db.untitled')}`;
+    if (readOnly) return show(value);
+    if (property.type === 'checkbox') return <input type="checkbox" checked={value === true} aria-label={label} onChange={(event) => onEdit(record, property, event.target.checked)} />;
+    if (property.type === 'status' || property.type === 'select') return <select value={cellText(value)} aria-label={label} onChange={(event) => onEdit(record, property, event.target.value)}><option value="" />{[...new Set([...statusOptions(property), cellText(value)].filter(Boolean))].map((option) => <option key={option} value={option}>{option}</option>)}</select>;
+    if (property.type === 'number') return <input type="number" key={`${record.id}:${property.id}:${cellText(value)}`} defaultValue={value === undefined || value === null ? '' : String(value)} aria-label={label} onBlur={(event) => { const next = cellValue('number', event.target.value); if (next !== (value ?? null)) onEdit(record, property, next); }} />;
+    if (property.type === 'date') return <input type="date" key={`${record.id}:${property.id}:${cellText(value)}`} defaultValue={typeof value === 'string' ? value.slice(0, 10) : ''} aria-label={label} onBlur={(event) => { if (event.target.value !== (typeof value === 'string' ? value.slice(0, 10) : '')) onEdit(record, property, event.target.value); }} />;
+    if (property.type === 'text') return <input type="text" key={`${record.id}:${property.id}:${cellText(value)}`} defaultValue={cellText(value)} aria-label={label} onBlur={(event) => { if (event.target.value !== cellText(value)) onEdit(record, property, event.target.value); }} />;
+    return show(value);
+  };
+  const groupable = database.properties.filter((property) => property.type === 'status' || property.type === 'select' || property.type === 'text' || property.type === 'checkbox');
+  return <div className="document-datatable">
+    <div className="document-datatable__tools">
+      <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('bl.filterRows')} aria-label={t('bl.filterRows')} />
+      <label>{t('bl.groupBy')}<select value={group ?? ''} onChange={(event) => setGroup(event.target.value || null)}><option value="">{t('bl.noGroup')}</option>{groupable.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>
+      {(query || sort || group) && <button type="button" onClick={() => { setQuery(''); setSort(null); setGroup(null); }}>{t('bl.resetView')}</button>}
+      <span role="status">{shown.length === database.records.length ? t('bl.rowCount', { n: shown.length }) : t('bl.rowsShown', { n: shown.length, total: database.records.length })}</span>
+    </div>
+    <div className="document-table__scroll"><table className="document-database__table">
+      <thead><tr>{database.properties.map((property) => <th key={property.id} aria-sort={sort?.property === property.id ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}><button type="button" onClick={() => nextSort(property.id)}>{property.name}{sort?.property === property.id ? (sort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>)}</tr></thead>
+      {groups.map((part) => <tbody key={part.label || '·'}>
+        {group && <tr className="document-datatable__group"><th colSpan={database.properties.length} scope="colgroup">{part.label || t('bl.noValue')} <span>{part.records.length}</span></th></tr>}
+        {part.records.map((record) => <tr key={record.id}>{database.properties.map((property) => <td key={property.id}>{cell(record, property)}</td>)}</tr>)}
+      </tbody>)}
+    </table></div>
   </div>;
 }
 
@@ -380,19 +430,19 @@ export function MermaidPreview({ source }: { source: string }) {
 
 // ---- Tabs -----------------------------------------------------------------------------------------------------------------------
 
-export function TabsBlock({ tabs, readOnly, onChange }: { tabs: TabPane[]; readOnly: boolean; onChange: (tabs: TabPane[]) => void }) {
+export function TabsBlock({ tabs, active, readOnly, onActive, onRemove, onChange }: { tabs: TabPane[]; active: number; readOnly: boolean; onActive: (index: number) => void; onRemove: (index: number) => void; onChange: (tabs: TabPane[]) => void }) {
   const t = useT();
-  const [active, setActive] = useState(0);
   const index = Math.min(active, Math.max(0, tabs.length - 1));
   const set = (position: number, change: Partial<TabPane>) => onChange(tabs.map((tab, i) => (i === position ? { ...tab, ...change } : tab)));
+  // The text of a tab is made of ordinary blocks written below this strip (indented under it, one tab at a time); only the names are edited here.
   return <div className="document-tabs">
     <div className="document-tabs__bar" role="tablist" aria-label={t('blk.tabs')}>
-      {tabs.map((tab, position) => <button type="button" role="tab" aria-selected={position === index} key={position} className={position === index ? 'is-active' : ''} onClick={() => setActive(position)}>{tab.title || t('bl.tabUntitled', { n: position + 1 })}</button>)}
-      {!readOnly && tabs.length < 8 && <button type="button" className="document-tabs__add" aria-label={t('bl.addTab')} onClick={() => { onChange([...tabs, { title: '', body: '' }]); setActive(tabs.length); }}>＋</button>}
+      {tabs.map((tab, position) => <button type="button" role="tab" aria-selected={position === index} key={position} className={position === index ? 'is-active' : ''} onClick={() => onActive(position)}>{tab.title || t('bl.tabUntitled', { n: position + 1 })}</button>)}
+      {!readOnly && tabs.length < 8 && <button type="button" className="document-tabs__add" aria-label={t('bl.addTab')} onClick={() => { onChange([...tabs, { title: '', body: '' }]); onActive(tabs.length); }}>＋</button>}
     </div>
-    {tabs[index] && <div className="document-tabs__pane" role="tabpanel">
-      {!readOnly && <div className="document-bookmark__fields"><input value={tabs[index].title} maxLength={60} placeholder={t('bl.tabTitle')} aria-label={t('bl.tabTitle')} onChange={(event) => set(index, { title: event.target.value })} />{tabs.length > 1 && <button type="button" onClick={() => { onChange(tabs.filter((_, i) => i !== index)); setActive(Math.max(0, index - 1)); }}>{t('bl.removeTab')}</button>}</div>}
-      <textarea value={tabs[index].body} readOnly={readOnly} rows={4} maxLength={20000} placeholder={t('bl.tabBody')} aria-label={t('bl.tabBody')} onChange={(event) => set(index, { body: event.target.value })} />
+    {tabs[index] && !readOnly && <div className="document-tabs__pane" role="tabpanel">
+      <div className="document-bookmark__fields"><input value={tabs[index].title} maxLength={60} placeholder={t('bl.tabTitle')} aria-label={t('bl.tabTitle')} onChange={(event) => set(index, { title: event.target.value })} />{tabs.length > 1 && <button type="button" onClick={() => { onRemove(index); onChange(tabs.filter((_, i) => i !== index)); }}>{t('bl.removeTab')}</button>}</div>
+      <p className="document-image__missing">{t('bl.tabHint')}</p>
     </div>}
   </div>;
 }
@@ -408,7 +458,7 @@ const speechCtor = (): (new () => SpeechRec) | null => {
 };
 
 /** Structured notes for a meeting, with an optional voice recording kept in Files and the follow-ups turned into tasks. There is no automatic transcript. */
-export function MeetingBlock({ block, readOnly, running, onChange, onTasks }: { block: { text: string; body?: string; date?: string; attendees?: string; actions?: string; fileId?: string }; readOnly: boolean; running: boolean; onChange: (change: { text?: string; body?: string; date?: string; attendees?: string; actions?: string; fileId?: string }) => void; onTasks: (titles: string[]) => void }) {
+export function MeetingBlock({ block, readOnly, running, actionCount, onChange, onHeard, onTasks }: { block: { text: string; date?: string; attendees?: string; fileId?: string }; readOnly: boolean; running: boolean; actionCount: number; onChange: (change: { text?: string; date?: string; attendees?: string; fileId?: string }) => void; onHeard: (lines: string[]) => void; onTasks: () => void }) {
   const t = useT();
   const files = useFilesApi();
   const stored = useStoredUrl(block.fileId);
@@ -417,8 +467,7 @@ export function MeetingBlock({ block, readOnly, running, onChange, onTasks }: { 
   const [transcribe, setTranscribe] = useState(true);
   const [speechOk, setSpeechOk] = useState(false);
   useEffect(() => { let live = true; void Promise.resolve().then(() => { if (live) setSpeechOk(speechCtor() !== null); }); return () => { live = false; }; }, []);
-  const notes = useRef(block.body ?? ''); const listening = useRef<SpeechRec | null>(null);
-  useEffect(() => { notes.current = block.body ?? ''; }, [block.body]);
+  const listening = useRef<SpeechRec | null>(null);
   function listen() {
     const Recognition = speechCtor(); if (!Recognition) return;
     const recognition = new Recognition();
@@ -426,7 +475,7 @@ export function MeetingBlock({ block, readOnly, running, onChange, onTasks }: { 
     recognition.onresult = (event) => {
       let heard = '';
       for (let i = event.resultIndex; i < event.results.length; i += 1) if (event.results[i].isFinal) heard += `${event.results[i][0].transcript.trim()} `;
-      if (heard.trim()) { const next = `${notes.current}${notes.current && !notes.current.endsWith('\n') ? '\n' : ''}${heard.trim()}`; notes.current = next; onChange({ body: next }); }
+      if (heard.trim()) onHeard([heard.trim()]); // what is heard becomes a new line of notes below the meeting, in the document itself
     };
     recognition.onerror = (event) => { if (event.error === 'not-allowed' || event.error === 'service-not-allowed') { listening.current = null; setError(t('bl.speechDenied')); } };
     recognition.onend = () => { if (listening.current === recognition) { try { recognition.start(); } catch { listening.current = null; } } }; // the browser stops after a pause, so carry on while recording
@@ -434,7 +483,6 @@ export function MeetingBlock({ block, readOnly, running, onChange, onTasks }: { 
     try { recognition.start(); } catch { listening.current = null; }
   }
   function stopListening() { const recognition = listening.current; listening.current = null; try { recognition?.stop(); } catch { /* already stopped */ } }
-  const actions = (block.actions ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
   async function start() {
     setError('');
     try {
@@ -456,15 +504,13 @@ export function MeetingBlock({ block, readOnly, running, onChange, onTasks }: { 
       <input type="date" value={block.date ?? ''} readOnly={readOnly} aria-label={t('bl.meetingDate')} onChange={(event) => onChange({ date: event.target.value })} />
     </div>
     <input className="document-meeting__wide" value={block.attendees ?? ''} readOnly={readOnly} maxLength={400} placeholder={t('bl.meetingAttendees')} aria-label={t('bl.meetingAttendees')} onChange={(event) => onChange({ attendees: event.target.value })} />
-    <textarea value={block.body ?? ''} readOnly={readOnly} rows={5} maxLength={20000} placeholder={t('bl.meetingNotes')} aria-label={t('bl.meetingNotes')} onChange={(event) => onChange({ body: event.target.value })} />
-    <textarea value={block.actions ?? ''} readOnly={readOnly} rows={3} maxLength={4000} placeholder={t('bl.meetingActions')} aria-label={t('bl.meetingActions')} onChange={(event) => onChange({ actions: event.target.value })} />
     <div className="document-image__actions">
       {!readOnly && speechOk && !recording && <label className="document-meeting__check"><input type="checkbox" checked={transcribe} onChange={(event) => setTranscribe(event.target.checked)} />{t('bl.transcribe')}</label>}
       {!readOnly && (recording ? <button type="button" onClick={() => recording.stop()}>{t('bl.stopRecording')}</button> : <button type="button" onClick={() => void start()}>{t('bl.record')}</button>)}
-      {!readOnly && <button type="button" disabled={running || actions.length === 0} onClick={() => onTasks(actions)}>{t('bl.actionsToTasks', { n: actions.length })}</button>}
+      {!readOnly && <button type="button" disabled={running || actionCount === 0} onClick={onTasks}>{t('bl.actionsToTasks', { n: actionCount })}</button>}
     </div>
     {recording && <p className="document-image__missing" role="status">{t('bl.recording')}</p>}
-    {!readOnly && <p className="document-image__missing">{speechOk ? t('bl.transcribeNote') : t('bl.noTranscribe')}</p>}
+    {!readOnly && <p className="document-image__missing">{t('bl.meetingHint')} {speechOk ? t('bl.transcribeNote') : t('bl.noTranscribe')}</p>}
     {stored.url && <audio className="document-media__audio" src={stored.url} controls preload="metadata" aria-label={t('bl.meetingRecording')} />}
     {error && <p className="workspace-settings-status" role="alert">{error}</p>}
   </div>;

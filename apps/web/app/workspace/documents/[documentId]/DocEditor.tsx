@@ -10,11 +10,12 @@ import { Gapcursor, UndoRedo } from '@tiptap/extensions';
 import { useT } from '../../../i18n';
 import type { Key } from '../../../i18n/en';
 import { Doc, Text, Title, TextBlock, UniqueBlockIds, Decorations, emptyLive, liveKey, type LiveState } from './editor-extensions';
-import { AtomBlockView, EnvContext, SourceBlockView, SyncedBlockView, ToggleBlockView, type EditorEnv } from './editor-nodeviews';
-import { blocksToDoc } from './editor-convert';
+import { AtomBlockView, EnvContext, SourceBlockView, SyncedBlockView, ToggleBlockView, type EditorEnv, type HostEnv } from './editor-nodeviews';
+import { blocksToDoc, nodeNameFor } from './editor-convert';
 import { findMatches, locateBlocks, readDoc, reconcile, sameBlocks, selectBlock, selectionInBlock } from './editor-sync';
-import { applySlash, blankBlock, convertBlock, duplicateBlock, filterSlash, findSlash, indentBlock, keepsNewlines, makeLink, markdownShortcut, moveBlockBy, normalizeBlock, pasteLines, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, toggleMark, type Block, type Mark } from './editor-model';
-import { blockCatalog, iconForBlock, type CatalogEntry } from './block-catalog';
+import type { BlockType } from './editor-model';
+import { applySlash, blankBlock, contentOf, convertBlock, duplicateBlock, filterSlash, findSlash, indentBlock, keepsNewlines, makeLink, markdownShortcut, moveBlockBy, normalizeBlock, pasteLines, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, setColour, toggleMark, type Block, type Mark } from './editor-model';
+import { blockCatalog, catalogCategories, iconForBlock, type BlockCategory, type CatalogEntry } from './block-catalog';
 import { BlockIcon } from '../../block-icons';
 import { FormatBar, SlashMenu } from './editor-ui';
 import { readRecent, recordRecent } from './recent-blocks';
@@ -33,7 +34,7 @@ export type LocalChange = { title: string; blocks: Block[]; previous: Block[] };
 export type SelectionReport = { id: string | null; start: number; end: number; inline: boolean };
 
 type Props = {
-  title: string; blocks: Block[]; readOnly: boolean; env: Omit<EditorEnv, 'placeholders'>;
+  title: string; blocks: Block[]; readOnly: boolean; env: HostEnv;
   cursors: LiveState['cursors']; others: LiveState['others'];
   onLocalChange: (change: LocalChange) => void; onSelection: (report: SelectionReport) => void;
   onCreateTask: (block: Block) => void; onComment: (block: Block, quote: string) => void; onMoveOut: (block: Block) => void; onNotice: (message: string) => void; onError: (message: string) => void;
@@ -45,7 +46,7 @@ type Props = {
 /** The decorations plugin reads this object on every redraw, so it is updated in place. */
 const share = (state: LiveState, patch: Partial<LiveState>) => { Object.assign(state, patch); };
 /** A floating panel that stays inside the window: it moves left if it would pass the right edge and opens above the line if there is no room below. */
-function Popover({ left, top, children }: { left: number; top: number; children: ReactNode }) {
+function Popover({ left, top, bar, children }: { left: number; top: number; bar?: boolean; children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = box.current; if (!el) return;
@@ -56,7 +57,7 @@ function Popover({ left, top, children }: { left: number; top: number; children:
     if (flip) el.style.top = `${top - rect.height - 34}px`;
     if (shiftX) el.style.transform = `translateX(${shiftX}px)`;
   });
-  return <div className="aven-popover" ref={box} style={{ left, top }}>{children}</div>;
+  return <div className={bar ? 'aven-popover aven-popover--bar' : 'aven-popover'} ref={box} style={{ left, top }}>{children}</div>;
 }
 const uuid = () => crypto.randomUUID();
 const toolClass = 'aven-handle__menu';
@@ -68,10 +69,14 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
   const last = useRef<Block[]>(blocks);
   const latest = useRef({ onLocalChange, onSelection, readOnly, t, onError });
   useEffect(() => { latest.current = { onLocalChange, onSelection, readOnly, t, onError }; });
-  const [slash, setSlash] = useState<{ blockId: string; start: number; query: string; index: number; left: number; top: number } | null>(null);
+  const [slash, setSlash] = useState<{ blockId: string; start: number; query: string; index: number; left: number; top: number; category: BlockCategory | null } | null>(null);
   const [format, setFormat] = useState<{ left: number; top: number } | null>(null);
   const slashRef = useRef(slash); useEffect(() => { slashRef.current = slash; }, [slash]);
   const [ai, setAi] = useState<AiTarget | null>(null);
+  const [picked, setPicked] = useState<{ ids: string[]; anchor: string; head: string } | null>(null);
+  const pickedRef = useRef(picked); useEffect(() => { pickedRef.current = picked; }, [picked]);
+  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
+  const [activeTabs, setActiveTabs] = useState<Record<string, number>>({});
   const [docVersion, setDocVersion] = useState(0);
   const findOpen = useRef(false);
   const [find, setFind] = useState<{ query: string; replace: string; index: number } | null>(null);
@@ -92,12 +97,14 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
   const editor = useEditor({
     extensions, content: blocksToDoc(title, blocks), editable: !readOnly, immediatelyRender: false, shouldRerenderOnTransaction: false,
     editorProps: {
-      attributes: { class: 'aven-doc', role: 'textbox', 'aria-multiline': 'true', 'aria-label': t('ed.documentLabel'), spellcheck: 'true' },
+      attributes: { class: 'aven-doc', role: 'textbox', 'aria-multiline': 'true', 'aria-autocomplete': 'list', 'aria-haspopup': 'listbox', 'aria-label': t('ed.documentLabel'), spellcheck: 'true' },
       handleKeyDown: (_view, event) => handlers.current?.keyDown(event) ?? false,
       handleTextInput: (_view, from, to, text) => handlers.current?.textInput(from, to, text) ?? false,
       handlePaste: (_view, event) => handlers.current?.paste(event) ?? false,
       handleDOMEvents: { mousedown: (_view, event) => handlers.current?.gutterClick(event) ?? false },
       handleClick: (_view, _pos, event) => handlers.current?.linkClick(event) ?? false,
+      // A block being dragged by its handle is moved by our own drop handler; the editor must not also insert its id as text.
+      handleDrop: () => dragRef.current !== null,
     },
     onUpdate: ({ editor: ed, transaction }) => {
       if (findOpen.current) setDocVersion((value) => value + 1);
@@ -140,7 +147,7 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
       const found = findSlash(sel.node.textContent, sel.start);
       if (!found) { setSlash(null); return; }
       const spot = coordsFor(sel.pos + 1 + sel.start);
-      setSlash((current) => ({ blockId: sel.id, start: found.start, query: found.query, index: current && current.query === found.query && current.blockId === sel.id ? current.index : 0, left: spot.left, top: spot.top }));
+      setSlash((current) => ({ blockId: sel.id, start: found.start, query: found.query, index: current && current.query === found.query && current.blockId === sel.id ? current.index : 0, left: spot.left, top: spot.top, category: current && current.blockId === sel.id ? current.category : null }));
     } else {
       setSlash(null);
       const spot = coordsFor(sel.pos + 1 + sel.start); setFormat({ left: spot.left, top: Math.max(0, (spot as { above: number }).above) });
@@ -153,7 +160,14 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     latest.current.onSelection({ id: sel?.id ?? null, start: sel?.start ?? 0, end: sel?.end ?? 0, inline: sel?.inline ?? false });
   }, [editor]);
 
-  const slashChoices = (query: string) => filterSlash(query, (item) => latest.current.t(`blk.${item.id}` as Key), readRecent());
+  const slashChoices = (query: string, category: BlockCategory | null) => filterSlash(query, (item) => latest.current.t(`blk.${item.id}` as Key), readRecent()).filter((item) => !category || item.category === category);
+  // The editor tells assistive technology when the slash menu is open and which entry is highlighted, since the focus stays in the text.
+  useEffect(() => {
+    const dom = editor?.view.dom; if (!dom) return;
+    if (!slash) { dom.setAttribute('aria-expanded', 'false'); dom.removeAttribute('aria-controls'); dom.removeAttribute('aria-activedescendant'); return; }
+    const entry = slashChoices(slash.query, slash.category)[slash.index];
+    dom.setAttribute('aria-expanded', 'true'); dom.setAttribute('aria-controls', 'aven-slash-list'); if (entry) dom.setAttribute('aria-activedescendant', `aven-slash-${entry.id}`);
+  }); // runs after every render: cheap, and must follow the menu on every change
 
   function chooseSlash(entry: CatalogEntry) {
     const open = slashRef.current; if (!editor || !open) return;
@@ -167,6 +181,13 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     if (!editor) return;
     const sel = selectionInBlock(editor.state); if (!sel?.inline) return;
     const next = toggleMark(sel.node.textContent, sel.start, sel.end, mark);
+    const blocks = currentBlocks().map((block) => (block.id === sel.id ? normalizeBlock({ ...block, text: next.text }) : block));
+    commit(blocks, { id: sel.id, caret: next.start, end: next.end });
+  }
+  function applyColour(tone: string | null) {
+    if (!editor) return;
+    const sel = selectionInBlock(editor.state); if (!sel?.inline) return;
+    const next = setColour(sel.node.textContent, sel.start, sel.end, tone);
     const blocks = currentBlocks().map((block) => (block.id === sel.id ? normalizeBlock({ ...block, text: next.text }) : block));
     commit(blocks, { id: sel.id, caret: next.start, end: next.end });
   }
@@ -194,11 +215,51 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
   }
 
   // ---- keyboard, typing, paste, clicks ----------------------------------------------------------------------------------------
+  /** Picks the blocks from `anchor` to `head` (in document order). */
+  function pickRange(all: Block[], anchor: string, head: string) {
+    const a = all.findIndex((block) => block.id === anchor), h = all.findIndex((block) => block.id === head); if (a < 0 || h < 0) return;
+    setPicked({ ids: all.slice(Math.min(a, h), Math.max(a, h) + 1).map((block) => block.id), anchor, head });
+  }
+  /** Keys while whole blocks are picked. Returns whether the key was used. */
+  function pickedKey(event: KeyboardEvent, current: { ids: string[]; anchor: string; head: string }): boolean {
+    const all = currentBlocks(); const mod = event.metaKey || event.ctrlKey;
+    const first = all.findIndex((block) => block.id === current.ids[0]); const last = all.findIndex((block) => block.id === current.ids[current.ids.length - 1]);
+    const chosen = all.filter((block) => current.ids.includes(block.id));
+    const leave = (focus?: { id: string; caret: number }) => { setPicked(null); if (focus && editor) editor.view.dispatch(selectBlock(editor.state.tr, focus.id, focus.caret).scrollIntoView()); };
+    if (event.key === 'Escape') { event.preventDefault(); leave(); return true; }
+    if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !mod) {
+      event.preventDefault(); const down = event.key === 'ArrowDown'; const at = all.findIndex((block) => block.id === current.head);
+      const next = all[Math.max(0, Math.min(all.length - 1, at + (down ? 1 : -1)))]; if (!next) return true;
+      if (event.shiftKey) pickRange(all, current.anchor, next.id); else setPicked({ ids: [next.id], anchor: next.id, head: next.id });
+      document.getElementById(`block-${next.id}`)?.scrollIntoView({ block: 'nearest' }); return true;
+    }
+    if (event.key === 'Backspace' || event.key === 'Delete' || (mod && event.key.toLowerCase() === 'x')) {
+      event.preventDefault();
+      if (mod) void navigator.clipboard?.writeText(chosen.map((block) => block.text).join('\n'));
+      const rest = all.filter((block) => !current.ids.includes(block.id)); const near = rest[Math.min(first, rest.length - 1)];
+      setPicked(null); commit(rest.length ? rest : [blankBlock(uuid())], near ? { id: near.id, caret: near.text.length } : undefined); return true;
+    }
+    if (mod && event.key.toLowerCase() === 'c') { event.preventDefault(); void navigator.clipboard?.writeText(chosen.map((block) => block.text).join('\n')); onNotice(latest.current.t('ed.copiedBlocks', { n: chosen.length })); return true; }
+    if (mod && event.key.toLowerCase() === 'd') {
+      event.preventDefault(); const copies = chosen.map((block) => ({ ...block, id: uuid() }));
+      commit([...all.slice(0, last + 1), ...copies, ...all.slice(last + 1)]); setPicked({ ids: copies.map((block) => block.id), anchor: copies[0].id, head: copies[copies.length - 1].id }); return true;
+    }
+    if (event.key === 'Tab' && !mod) {
+      event.preventDefault(); let next = all;
+      for (const block of event.shiftKey ? [...chosen] : chosen) { const changed = indentBlock(next, block.id, event.shiftKey ? -1 : 1); if (changed) next = changed; }
+      if (next !== all) commit(next); return true;
+    }
+    if (event.key === 'Enter') { event.preventDefault(); leave({ id: current.ids[0], caret: chosen[0]?.text.length ?? 0 }); return true; }
+    if (event.key.length === 1 && !mod) setPicked(null); // typing carries on in the text as before
+    return false;
+  }
+
   function keyDown(event: KeyboardEvent): boolean {
     if (!editor || event.isComposing) return false;
     const { state } = editor;
     if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'f') { event.preventDefault(); const picked = editor.state.doc.textBetween(state.selection.from, state.selection.to); setFind((current) => ({ query: picked && !picked.includes('\n') ? picked : current?.query ?? '', replace: current?.replace ?? '', index: 0 })); return true; }
     if (latest.current.readOnly) return false;
+    if (pickedRef.current && pickedKey(event, pickedRef.current)) return true;
     // Select all: the first press selects the body, the second one the whole page including the title, so deleting never takes the title by accident.
     if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'a' && state.selection.$from.parent.type.name !== 'title') {
       const bodyStart = state.doc.firstChild ? state.doc.firstChild.nodeSize + 1 : 1;
@@ -214,7 +275,8 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     const mod = event.metaKey || event.ctrlKey; const open = slashRef.current;
     const blocks = currentBlocks();
     if (open && sel.inline && open.blockId === sel.id) {
-      const items = slashChoices(open.query);
+      const items = slashChoices(open.query, open.category);
+      if (event.altKey && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) { event.preventDefault(); const order: (BlockCategory | null)[] = [null, ...catalogCategories]; const at = order.indexOf(open.category); setSlash({ ...open, index: 0, category: order[(at + (event.key === 'ArrowRight' ? 1 : order.length - 1)) % order.length] }); return true; }
       if (event.key === 'ArrowDown') { event.preventDefault(); setSlash({ ...open, index: items.length ? (open.index + 1) % items.length : 0 }); return true; }
       if (event.key === 'ArrowUp') { event.preventDefault(); setSlash({ ...open, index: items.length ? (open.index + items.length - 1) % items.length : 0 }); return true; }
       if (event.key === 'Escape') { event.preventDefault(); setSlash(null); return true; }
@@ -222,7 +284,11 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     }
     if (!sel.inline) {
       // a selected block (table, image, …): Enter adds a paragraph after it
-      if (event.key === 'Enter') { event.preventDefault(); const fresh = blankBlock(uuid()); const next = [...blocks.slice(0, sel.index + 1), fresh, ...blocks.slice(sel.index + 1)]; commit(next, { id: fresh.id, caret: 0 }); return true; }
+      if (event.key === 'Enter') { event.preventDefault(); const parent = blocks[sel.index]; const into = parent && (parent.type === 'TABS' || parent.type === 'MEETING');
+        // after tabs or meeting notes the new paragraph is their content (for tabs: in the tab that is showing); after anything else it is a sibling
+        const at = into ? sel.index + contentOf(blocks, sel.index).length : sel.index;
+        const fresh = into ? normalizeBlock({ ...blankBlock(uuid()), indent: (parent.indent ?? 0) + 1, tab: parent.type === 'TABS' ? activeTabs[parent.id] ?? 0 : 0 }) : blankBlock(uuid());
+        const next = [...blocks.slice(0, at + 1), fresh, ...blocks.slice(at + 1)]; commit(next, { id: fresh.id, caret: 0 }); return true; }
       return false;
     }
     const type = String(sel.node.attrs.type);
@@ -232,6 +298,7 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     if (mod && !event.shiftKey && event.key.toLowerCase() === 'k') { event.preventDefault(); applyLink(); return true; }
     if (mod && !event.shiftKey && event.key.toLowerCase() === 'd') { event.preventDefault(); const result = duplicateBlock(blocks, sel.id, uuid); if (result) commit(result.blocks, result.focus); return true; }
     if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) { event.preventDefault(); const next = moveBlockBy(blocks, sel.id, event.key === 'ArrowUp' ? -1 : 1); if (next !== blocks) commit(next, { id: sel.id, caret: sel.start, end: sel.end }); return true; }
+    if (event.key === 'Escape' && !open && !mod) { event.preventDefault(); setPicked({ ids: [sel.id], anchor: sel.id, head: sel.id }); return true; }
     if (event.key === 'Tab' && !mod) {
       const next = indentBlock(blocks, sel.id, event.shiftKey ? -1 : 1);
       if (next) { event.preventDefault(); commit(next, { id: sel.id, caret: sel.start, end: sel.end }); return true; }
@@ -239,6 +306,7 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     }
     if (event.key === 'Enter') {
       const result = pressEnter(blocks, sel.id, sel.start, sel.end, uuid, { mod, shift: event.shiftKey });
+      if (result && type === 'TOGGLE') setFolded((current) => { if (!current.has(sel.id)) return current; const next = new Set(current); next.delete(sel.id); return next; });
       if (result) { event.preventDefault(); commit(result.blocks, result.focus); return true; }
       if (event.shiftKey || keepsNewlines(type as never)) { event.preventDefault(); editor.view.dispatch(state.tr.insertText('\n').scrollIntoView()); return true; }
       return false;
@@ -279,6 +347,8 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
   }
 
   function gutterClick(event: MouseEvent): boolean {
+    const current = pickedRef.current;
+    if (current && event.shiftKey) { const id = (event.target as HTMLElement | null)?.closest('[data-block-id]')?.getAttribute('data-block-id'); if (id) { event.preventDefault(); pickRange(currentBlocks(), current.anchor, id); return true; } }
     const target = event.target as HTMLElement | null;
     const gutter = target?.closest('.aven-gutter'); const block = target?.closest('.aven-block[data-type="TODO"]');
     if (!editor || !gutter || !block || latest.current.readOnly) return false;
@@ -387,25 +457,54 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
   function act(run: (blocks: Block[], block: Block) => void) { if (!hoverBlock) return; run(currentBlocks(), hoverBlock); }
   const turnInto = blockCatalog.filter((entry) => entry.id !== 'database-inline' && entry.id !== 'database-linked');
 
-  const full: EditorEnv = useMemo(() => ({ ...env, placeholders }), [env, placeholders]);
+  const full: EditorEnv = useMemo(() => ({
+    ...env, placeholders, folded, activeTabs,
+    onFold: (id: string) => setFolded((current) => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; }),
+    onTab: (id: string, index: number) => setActiveTabs((current) => ({ ...current, [id]: index })),
+    appendLines: (parentId: string, lines: string[], type: BlockType = 'PARAGRAPH') => {
+      const all = currentBlocks(); const at = all.findIndex((block) => block.id === parentId); if (at < 0) return;
+      const end = at + contentOf(all, at).length; const kids = lines.filter((line) => line.trim()).map((line) => normalizeBlock({ ...blankBlock(uuid(), type), text: line.trim(), indent: (all[at].indent ?? 0) + 1 }));
+      if (kids.length) commit([...all.slice(0, end + 1), ...kids, ...all.slice(end + 1)]);
+    },
+    contentActions: (parentId: string) => { const all = currentBlocks(); const at = all.findIndex((block) => block.id === parentId); return at < 0 ? [] : contentOf(all, at).filter((block) => block.type === 'TODO' && !block.checked && block.text.trim()).map((block) => block.text.trim()); },
+    removeTab: (parentId: string, index: number) => {
+      const all = currentBlocks(); const at = all.findIndex((block) => block.id === parentId); if (at < 0) return;
+      const inside = new Set(contentOf(all, at).map((block) => block.id));
+      commit(all.map((block) => (inside.has(block.id) && (block.tab ?? 0) >= index ? normalizeBlock({ ...block, tab: (block.tab ?? 0) === index ? Math.max(0, index - 1) : (block.tab ?? 0) - 1 }) : block)));
+      setActiveTabs((current) => ({ ...current, [parentId]: Math.max(0, Math.min(current[parentId] ?? 0, index - 1)) }));
+    },
+  }), [env, placeholders, folded, activeTabs, currentBlocks, commit]);
+  useEffect(() => {
+    if (!editor) return;
+    share(live, { picked: new Set(picked?.ids ?? []) });
+    editor.view.dispatch(editor.state.tr.setMeta(liveKey, 'refresh').setMeta('addToHistory', false).setMeta('aven-external', true));
+  }, [picked, editor, live]);
+  useEffect(() => {
+    if (!editor) return;
+    share(live, { folded, tabs: activeTabs });
+    editor.view.dispatch(editor.state.tr.setMeta(liveKey, 'refresh').setMeta('addToHistory', false).setMeta('aven-external', true));
+  }, [folded, activeTabs, editor, live]);
   return <EnvContext.Provider value={full}>
     <div className="aven-editor" ref={wrapper} onMouseMove={onMove} onMouseLeave={() => { if (!dragRef.current) setHover(null); }} onDragOver={overBlock} onDrop={drop}>
       {ai && onAssist && <AiPanel target={ai} run={onAssist} onReplace={aiReplace} onInsert={aiInsert} onTasks={(titles) => env.createTasks(ai.kind === 'selection' ? ai.blockId : currentBlocks()[0]?.id ?? '', titles)} onClose={() => { setAi(null); editor?.view.focus(); }} />}
       {find && <FindBar query={find.query} replace={find.replace} count={matches.length} current={currentMatch} readOnly={readOnly} onQuery={(query) => setFind({ ...find, query, index: 0 })} onReplaceText={(replace) => setFind({ ...find, replace })} onStep={(step) => setFind({ ...find, index: currentMatch + step })} onReplace={replaceMatches} onClose={closeFind} />}
+      {picked && <p className="sr-only" role="status">{t('ed.pickedCount', { n: picked.ids.length })}</p>}
       <EditorContent editor={editor} />
-      {slash && <Popover left={slash.left} top={slash.top}><SlashMenu query={slash.query} index={slash.index} onPick={chooseSlash} onHover={(index) => setSlash({ ...slash, index })} /></Popover>}
-      {format && <div className="aven-popover aven-popover--bar" style={{ left: format.left, top: format.top }}><FormatBar onMark={applyMark} onLink={applyLink} onAi={onAssist ? openAiOnSelection : undefined} /></div>}
+      {slash && <Popover left={slash.left} top={slash.top}><SlashMenu query={slash.query} index={slash.index} category={slash.category} onCategory={(category) => setSlash({ ...slash, category, index: 0 })} onPick={chooseSlash} onHover={(index) => setSlash({ ...slash, index })} /></Popover>}
+      {format && <Popover left={format.left} top={format.top} bar><FormatBar onMark={applyMark} onLink={applyLink} onColour={applyColour} onAi={onAssist ? openAiOnSelection : undefined} /></Popover>}
       {!readOnly && hover && hoverBlock && <div className="aven-handle" style={{ top: hover.top }}>
         <button type="button" className="aven-handle__drag" draggable aria-label={t('ed.dragHandle')} title={t('ed.dragHandle')}
           onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', hover.id); setDrag({ id: hover.id, over: null }); }} onDragEnd={() => setDrag(null)}>⋮⋮</button>
         <details className="rd-menu aven-handle__more"><summary className="aven-handle__summary" aria-label={t('ed.blockMenu')}><BlockIcon id={iconForBlock(hoverBlock)} size={16} /></summary>
           <div className={`rd-menu__list ${toolClass}`}>
             <label className="rd-menu__field">{t('ed.turnInto')}<select value={iconForBlock(hoverBlock)} onChange={(event) => { const entry = turnInto.find((item) => item.id === event.target.value); if (entry) act((all, block) => commit(all.map((item) => (item.id === block.id ? convertBlock(item, entry) : item)), { id: block.id, caret: block.text.length })); }}>{turnInto.map((entry) => <option key={entry.id} value={entry.id}>{t(`blk.${entry.id}` as Key)}</option>)}</select></label>
+            <button type="button" onClick={() => act((_all, block) => setPicked({ ids: [block.id], anchor: block.id, head: block.id }))}>{t('ed.selectBlock')}</button>
             <button type="button" onClick={() => act((all, block) => { const blank = blankBlock(uuid()); const at = all.findIndex((item) => item.id === block.id); commit([...all.slice(0, at), blank, ...all.slice(at)], { id: blank.id, caret: 0 }); })}>{t('ed.addAbove')}</button>
             <button type="button" onClick={() => act((all, block) => { const blank = blankBlock(uuid()); const at = all.findIndex((item) => item.id === block.id); commit([...all.slice(0, at + 1), blank, ...all.slice(at + 1)], { id: blank.id, caret: 0 }); })}>{t('ed.addBelow')}</button>
             <button type="button" onClick={() => act((all, block) => { const result = duplicateBlock(all, block.id, uuid); if (result) commit(result.blocks, result.focus); })}>{t('ed.duplicateBlock')}</button>
             <button type="button" onClick={() => act((all, block) => commit(moveBlockBy(all, block.id, -1), { id: block.id, caret: 0 }))}>{t('ed.moveUp')}</button>
             <button type="button" onClick={() => act((all, block) => commit(moveBlockBy(all, block.id, 1), { id: block.id, caret: 0 }))}>{t('ed.moveDown')}</button>
+            {hoverBlock.type !== 'DIVIDER' && nodeNameFor(hoverBlock.type) === 'atomBlock' && !['TOC', 'BREADCRUMB', 'MEETING', 'TABS', 'BUTTON'].includes(hoverBlock.type) && <button type="button" onClick={() => act((all, block) => commit(all.map((item) => (item.id === block.id ? normalizeBlock({ ...item, span: item.span === 'half' ? undefined : 'half' }) : item))))}>{hoverBlock.span === 'half' ? t('ed.fullWidth') : t('ed.halfWidth')}</button>}
             <button type="button" onClick={() => act((_all, block) => { void navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}#block-${block.id}`).then(() => onNotice(t('ed.blockLinkCopied'))).catch(() => onError(t('bl.syncCopyFailed'))); })}>{t('ed.copyBlockLink')}</button>
             <button type="button" onClick={() => act((_all, block) => { const picked = editor ? selectionInBlock(editor.state) : null; const quote = picked && picked.end > picked.start ? block.text.slice(picked.start, picked.end) : block.text; onComment(block, quote.trim().slice(0, 200)); })}>{t('ed.addComment')}</button>
             <button type="button" onClick={() => act((_all, block) => onMoveOut(block))}>{t('ed.moveToDoc')}</button>

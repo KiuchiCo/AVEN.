@@ -4,10 +4,10 @@ import { Fragment, useState, type ReactNode } from 'react';
 import { useT } from '../../../i18n';
 import { Icon } from '../../home-icons';
 import type { Key } from '../../../i18n/en';
-import { filterSlash, parseInline, type Mark } from './editor-model';
+import { filterSlash, parseInline, tones, type Mark } from './editor-model';
 import { BlockIcon } from '../../block-icons';
 import { readRecent } from './recent-blocks';
-import { catalogCategories, type CatalogEntry } from './block-catalog';
+import { catalogCategories, type BlockCategory, type CatalogEntry } from './block-catalog';
 
 /** Shows a block's text with its inline marks applied. Everything is rendered as React nodes, never as HTML. */
 export function RichText({ text }: { text: string }) {
@@ -18,6 +18,7 @@ export function RichText({ text }: { text: string }) {
     if (run.kind === 'strike') return <s key={key}>{run.text}</s>;
     if (run.kind === 'underline') return <u key={key}>{run.text}</u>;
     if (run.kind === 'highlight') return <mark key={key}>{run.text}</mark>;
+    if (run.kind === 'colour') return <span key={key} className={`md-colour md-c-${run.tone}`}>{run.text}</span>;
     if (run.kind === 'code') return <code key={key}>{run.text}</code>;
     if (run.kind === 'link') return <a key={key} href={run.href} target="_blank" rel="noopener noreferrer">{run.text}</a>;
     return <Fragment key={key}>{run.text}</Fragment>;
@@ -27,11 +28,13 @@ export function RichText({ text }: { text: string }) {
 const nameOf = (id: string) => `blk.${id}` as Key;
 
 /** The "/" menu: blocks matching what was typed, each with its icon, name and a short description. The editor handles the keys; this only draws it. */
-export function SlashMenu({ query, index, onPick, onHover }: { query: string; index: number; onPick: (entry: CatalogEntry) => void; onHover: (index: number) => void }) {
+export function SlashMenu({ query, index, category, onCategory, onPick, onHover }: { query: string; index: number; category: BlockCategory | null; onCategory: (category: BlockCategory | null) => void; onPick: (entry: CatalogEntry) => void; onHover: (index: number) => void }) {
   const t = useT();
-  const items = filterSlash(query, (item) => t(nameOf(item.id)), readRecent());
-  return <div className="document-slash rd-menu__list" role="listbox" aria-label={t('ed.slashLabel')} onMouseDown={(event) => event.preventDefault()}>
-    {items.length === 0 ? <p className="document-slash__empty">{t('ed.slashEmpty')}</p> : items.map((item, position) => <button type="button" role="option" aria-selected={position === index} className={position === index ? 'is-active' : ''} key={item.id} ref={(node) => { if (node && position === index) node.scrollIntoView({ block: 'nearest' }); }} onMouseEnter={() => onHover(position)} onClick={() => onPick(item)}>
+  const items = filterSlash(query, (item) => t(nameOf(item.id)), readRecent()).filter((item) => !category || item.category === category);
+  const chips: (BlockCategory | null)[] = [null, ...catalogCategories];
+  return <div id="aven-slash-list" className="document-slash rd-menu__list" role="listbox" aria-label={t('ed.slashLabel')} onMouseDown={(event) => event.preventDefault()}>
+    <div className="document-slash__cats" role="group" aria-label={t('ed.slashCategories')}>{chips.map((chip) => <button type="button" key={chip ?? 'all'} aria-pressed={category === chip} className={category === chip ? 'is-on' : ''} onClick={() => onCategory(chip)}>{chip ? t(`blk.cat.${chip}` as Key) : t('ed.slashAll')}</button>)}</div>
+    {items.length === 0 ? <p className="document-slash__empty">{t('ed.slashEmpty')}</p> : items.map((item, position) => <button type="button" role="option" id={`aven-slash-${item.id}`} aria-selected={position === index} className={position === index ? 'is-active' : ''} key={item.id} ref={(node) => { if (node && position === index) node.scrollIntoView({ block: 'nearest' }); }} onMouseEnter={() => onHover(position)} onClick={() => onPick(item)}>
       <BlockIcon id={item.id} size={20} /><span><strong>{t(nameOf(item.id))}</strong><small>{t(`${nameOf(item.id)}.d` as Key)}</small></span>
     </button>)}
   </div>;
@@ -56,8 +59,9 @@ export function BlockBrowser({ onPick, onClose }: { onPick: (entry: CatalogEntry
 }
 
 /** Appears above a block while text is selected. Uses the same small buttons as the block controls. */
-export function FormatBar({ onMark, onLink, onAi }: { onMark: (mark: Mark) => void; onLink: () => void; onAi?: () => void }) {
+export function FormatBar({ onMark, onLink, onAi, onColour }: { onMark: (mark: Mark) => void; onLink: () => void; onAi?: () => void; onColour?: (tone: string | null) => void }) {
   const t = useT();
+  const [palette, setPalette] = useState(false);
   const items: { label: ReactNode; title: Key; run: () => void }[] = [
     { label: <b>B</b>, title: 'ed.fmt.bold', run: () => onMark('bold') },
     { label: <i>I</i>, title: 'ed.fmt.italic', run: () => onMark('italic') },
@@ -68,7 +72,13 @@ export function FormatBar({ onMark, onLink, onAi }: { onMark: (mark: Mark) => vo
     { label: <Icon name="link" size={14} />, title: 'ed.fmt.link', run: onLink },
   ];
   return <div className="document-formatbar" role="toolbar" aria-label={t('ed.fmt.label')} onMouseDown={(event) => event.preventDefault()}>
+    {palette && onColour && <div className="document-formatbar__palette" role="group" aria-label={t('ed.fmt.colour')}>
+      {tones.map((tone) => <button type="button" key={tone} className={`md-c-${tone}`} title={t(`ed.tone.${tone}` as Key)} aria-label={t(`ed.tone.${tone}` as Key)} onClick={() => { onColour(tone); setPalette(false); }}>A</button>)}
+      {tones.map((tone) => <button type="button" key={`bg-${tone}`} className={`md-c-bg-${tone}`} title={`${t('ed.fmt.highlight')} · ${t(`ed.tone.${tone}` as Key)}`} aria-label={`${t('ed.fmt.highlight')} · ${t(`ed.tone.${tone}` as Key)}`} onClick={() => { onColour(`bg-${tone}`); setPalette(false); }}>A</button>)}
+      <button type="button" onClick={() => { onColour(null); setPalette(false); }}>{t('ed.fmt.noColour')}</button>
+    </div>}
     {items.map((item) => <button type="button" key={item.title} title={t(item.title)} aria-label={t(item.title)} onClick={item.run}>{item.label}</button>)}
+    {onColour && <button type="button" aria-expanded={palette} aria-haspopup="true" title={t('ed.fmt.colour')} aria-label={t('ed.fmt.colour')} onClick={() => setPalette((open) => !open)}><span className="md-c-red" style={{ fontWeight: 700 }}>A</span></button>}
     {onAi && <button type="button" className="document-formatbar__ai" onClick={onAi}>{t('ed.ai')}</button>}
   </div>;
 }

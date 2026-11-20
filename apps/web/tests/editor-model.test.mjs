@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applySlash, duplicateBlock, filterSlash, findSlash, hasInlineMarks, makeLink, markdownShortcut, moveBlockBy, parseInline, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, safeHref, toggleMark } from '../app/workspace/documents/[documentId]/editor-model.ts';
+import { applySlash, setColour, hiddenIds, liftBodies, duplicateBlock, filterSlash, findSlash, hasInlineMarks, makeLink, markdownShortcut, moveBlockBy, parseInline, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, safeHref, toggleMark } from '../app/workspace/documents/[documentId]/editor-model.ts';
 
 const b = (id, text, type = 'PARAGRAPH', extra = {}) => ({ id, type, text, checked: false, ...extra });
 let counter = 0; const newId = () => `n${++counter}`;
@@ -195,4 +195,48 @@ test('underline and highlight marks wrap words but leave C++ and comparisons alo
   assert.deepEqual(parseInline('C++ and C++ plus a==b==c').map((run) => run.kind), ['text']);
   assert.equal(toggleMark('word', 0, 4, 'underline').text, '++word++');
   assert.equal(toggleMark('++word++', 2, 6, 'underline').text, 'word');
+});
+
+test('colour marks parse, wrap, recolour and clear without touching other text', () => {
+  assert.deepEqual(parseInline('a {red:warm} b {bg-blue:cool} {nope:x}').map((run) => `${run.kind}:${run.tone ?? ''}`), ['text:', 'colour:red', 'text:', 'colour:bg-blue', 'text:']);
+  const wrapped = setColour('hello world', 6, 11, 'green');
+  assert.equal(wrapped.text, 'hello {green:world}');
+  assert.equal(wrapped.text.slice(wrapped.start, wrapped.end), 'world');
+  const recoloured = setColour(wrapped.text, wrapped.start, wrapped.end, 'red');
+  assert.equal(recoloured.text, 'hello {red:world}');
+  assert.equal(setColour(recoloured.text, recoloured.start, recoloured.end, null).text, 'hello world');
+  assert.equal(setColour(recoloured.text, recoloured.start, recoloured.end, 'red').text, 'hello world');
+  assert.equal(setColour('x', 0, 0, 'red').text, 'x');
+});
+
+const nb = (id, type, extra = {}) => ({ id, type, text: extra.text ?? '', checked: false, ...extra });
+test('Enter in a toggle starts its content, and an empty nested paragraph steps back out', () => {
+  const blocks = [nb('t', 'TOGGLE', { text: 'More', level: 0 })];
+  const inside = pressEnter(blocks, 't', 4, 4, newId);
+  assert.equal(inside.blocks[1].indent, 1);
+  const again = pressEnter(inside.blocks, inside.focus.id, 0, 0, newId);
+  assert.equal(again.blocks.length, 2); assert.equal(again.blocks[1].indent ?? 0, 0);
+  const sibling = pressEnter([nb('a', 'PARAGRAPH', { text: 'x', indent: 1 })], 'a', 1, 1, newId);
+  assert.equal(sibling.blocks[1].indent, 1);
+});
+test('a closed toggle hides what is indented under it and a tabs block shows one tab at a time', () => {
+  const list = [nb('t', 'TOGGLE'), nb('c1', 'PARAGRAPH', { indent: 1 }), nb('c2', 'PARAGRAPH', { indent: 2 }), nb('after', 'PARAGRAPH'),
+    nb('tabs', 'TABS'), nb('x', 'PARAGRAPH', { indent: 1, tab: 0 }), nb('y', 'PARAGRAPH', { indent: 1, tab: 1 })];
+  assert.deepEqual([...hiddenIds(list, new Set(['t']), {})].sort(), ['c1', 'c2', 'y']);
+  assert.deepEqual([...hiddenIds(list, new Set(), { tabs: 1 })].sort(), ['x']);
+  assert.equal(hiddenIds(list, new Set(), {}).has('after'), false);
+});
+test('old toggle, tab and meeting text fields become blocks inside them, with the same ids every time', () => {
+  const legacy = [nb('t', 'TOGGLE', { body: 'one\ntwo' }), nb('tb', 'TABS', { tabs: [{ title: 'A', body: 'a1' }, { title: 'B', body: 'b1' }] }), nb('m', 'MEETING', { body: 'notes', actions: 'call Sam' })];
+  const lifted = liftBodies(legacy);
+  assert.deepEqual(lifted.map((block) => `${block.type}:${block.text}:${block.indent ?? 0}:${block.tab ?? 0}`), ['TOGGLE::0:0', 'PARAGRAPH:one:1:0', 'PARAGRAPH:two:1:0', 'TABS::0:0', 'PARAGRAPH:a1:1:0', 'PARAGRAPH:b1:1:1', 'MEETING::0:0', 'PARAGRAPH:notes:1:0', 'TODO:call Sam:1:0']);
+  assert.equal(lifted[0].body, undefined); assert.equal(lifted[3].tabs[0].body, '');
+  assert.deepEqual(liftBodies(legacy).map((block) => block.id), lifted.map((block) => block.id));
+  assert.equal(liftBodies(lifted), lifted);
+});
+test('Tab nests a paragraph under a toggle but not deeper than its sibling', () => {
+  const list = [nb('t', 'TOGGLE'), nb('a', 'PARAGRAPH'), nb('b', 'PARAGRAPH')];
+  const one = indentBlock(list, 'a', 1); assert.equal(one[1].indent, 1);
+  assert.equal(indentBlock(one, 'b', 1)[2].indent, 1);
+  assert.equal(indentBlock(list, 'b', 1), null);
 });

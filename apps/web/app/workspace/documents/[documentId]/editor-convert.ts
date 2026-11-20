@@ -19,14 +19,14 @@ export function nodeNameFor(type: BlockType): NodeName {
 /** Block types that carry editable text inside the document (as opposed to atoms that render a component). */
 export const hasInlineContent = (name: string) => name === 'textBlock' || name === 'toggleBlock' || name === 'sourceBlock' || name === 'syncedBlock';
 
-const ATOM_FIELDS = ['rows', 'fileId', 'level', 'body', 'url', 'docId', 'databaseId', 'view', 'create', 'linked', 'tabs', 'date', 'attendees', 'actions'] as const;
+const ATOM_FIELDS = ['rows', 'fileId', 'level', 'body', 'url', 'docId', 'databaseId', 'view', 'create', 'linked', 'tabs', 'date', 'attendees', 'actions', 'span'] as const;
 
 export function blockToNode(block: Block): NodeJSON {
   const name = nodeNameFor(block.type);
   const content = hasInlineContent(name) && block.text ? [{ type: 'text' as const, text: block.text }] : undefined;
-  const base = { blockId: block.id, type: block.type };
+  const base = { blockId: block.id, type: block.type, indent: block.indent ?? 0, tab: block.tab ?? 0 };
   switch (name) {
-    case 'textBlock': return { type: name, attrs: { ...base, checked: block.checked === true, indent: block.indent ?? 0 }, ...(content ? { content } : {}) };
+    case 'textBlock': return { type: name, attrs: { ...base, checked: block.checked === true }, ...(content ? { content } : {}) };
     case 'toggleBlock': return { type: name, attrs: { ...base, level: block.level ?? 0, body: block.body ?? '' }, ...(content ? { content } : {}) };
     case 'sourceBlock': return { type: name, attrs: base, ...(content ? { content } : {}) };
     case 'syncedBlock': return { type: name, attrs: { ...base, syncId: block.syncId ?? block.id }, ...(content ? { content } : {}) };
@@ -39,8 +39,10 @@ export function nodeToBlock(node: NodeJSON): Block | null {
   if (typeof attrs.blockId !== 'string' || typeof attrs.type !== 'string') return null;
   const text = (node.content ?? []).map((part) => part.text).join('');
   const block: Block = { id: attrs.blockId, type: attrs.type as BlockType, text };
+  if (typeof attrs.indent === 'number' && attrs.indent > 0) block.indent = attrs.indent;
+  if (typeof attrs.tab === 'number' && attrs.tab > 0) block.tab = attrs.tab;
   switch (node.type) {
-    case 'textBlock': block.checked = attrs.checked === true; if (typeof attrs.indent === 'number') block.indent = attrs.indent; break;
+    case 'textBlock': block.checked = attrs.checked === true; break;
     case 'toggleBlock': block.level = typeof attrs.level === 'number' ? attrs.level : 0; if (typeof attrs.body === 'string') block.body = attrs.body; break;
     case 'syncedBlock': if (typeof attrs.syncId === 'string') block.syncId = attrs.syncId; break;
     case 'atomBlock': {

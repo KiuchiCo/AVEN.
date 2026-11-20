@@ -14,7 +14,7 @@ import type { AiRequest } from './AiAssist';
 import { DocEditor, type DocEditorApi, type LocalChange, type SelectionReport } from './DocEditor';
 import { blockCatalog, type CatalogEntry } from './block-catalog';
 import { BlockIcon } from '../../block-icons';
-import { blankBlock, blockTypeList, headingLevel, isLiveText, normalizeBlock } from './editor-model';
+import { blankBlock, blockTypeList, liftBodies, headingLevel, isLiveText, normalizeBlock } from './editor-model';
 import { FavouriteStar } from '../../favourites';
 import { readEvents } from '../../messages/sse';
 import { mergeBlocks, reconcileDraft } from './block-merge';
@@ -36,7 +36,7 @@ const readOnlyRole = (role: string | null) => role === 'GUEST';
 function parseBlocks(content: string): Block[] {
   try {
     const value = JSON.parse(content) as { format?: string; blocks?: Block[] };
-    if (value.format === 'aven-doc-v1' && Array.isArray(value.blocks) && value.blocks.every((block) => typeof block.id === 'string' && blockTypeList.includes(block.type) && typeof block.text === 'string')) return value.blocks.length ? value.blocks.map(normalizeBlock) : [createBlock()];
+    if (value.format === 'aven-doc-v1' && Array.isArray(value.blocks) && value.blocks.every((block) => typeof block.id === 'string' && blockTypeList.includes(block.type) && typeof block.text === 'string')) return value.blocks.length ? liftBodies(value.blocks.map(normalizeBlock)) : [createBlock()];
   } catch { /* Existing plain-text documents are opened as a first paragraph. */ }
   return [content ? { ...createBlock(), text: content } : createBlock()];
 }
@@ -77,7 +77,7 @@ export default function DocumentEditorPage() {
   const [liveBusy, setLiveBusy] = useState(false);
   const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor[]>>({});
   const liveEngine = useRef<LiveTextEngine | null>(null);
-  const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE'>('OUTLINE');
+  const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE' | 'RELATED'>('OUTLINE');
   const [viewers, setViewers] = useState<{ id: string; name: string; blockId: string | null }[]>([]);
   const revision = useRef(0);
   const announced = useRef<{ sent: string | null; timer?: number }>({ sent: null });
@@ -420,6 +420,14 @@ export default function DocumentEditorPage() {
     return () => { active = false; window.removeEventListener('focus', again); window.clearInterval(timer); };
   }, [syncIds, hydrated]); // eslint-disable-line react-hooks/exhaustive-deps -- request and pushSynced are stable enough for this; the ids and hydration are what matter
   const words = useMemo(() => blocks.reduce((sum, block) => sum + (block.text.trim() ? block.text.trim().split(/\s+/).length : 0), 0), [blocks]);
+  // Related documents: the others in this project, and the ones edited most recently.
+  const [others, setOthers] = useState<{ id: string; title: string; updatedAt: string; project?: { id: string } | null }[] | null>(null);
+  useEffect(() => {
+    if (activePanel !== 'RELATED') return;
+    let cancelled = false;
+    void (request(`/workspaces/${workspace.id}/documents`) as Promise<{ id: string; title: string; updatedAt: string; project?: { id: string } | null }[]>).then((rows) => { if (!cancelled) setOthers(rows.filter((row) => row.id !== documentId)); }).catch(() => { if (!cancelled) setOthers([]); });
+    return () => { cancelled = true; };
+  }, [activePanel, request, workspace.id, documentId]);
   const outline = useMemo(() => blocks.filter((block) => headingLevel(block) > 0 && block.text.trim()), [blocks]);
   // The heading the reader is in: the last heading that has scrolled past the top of the page.
   const [activeHeading, setActiveHeading] = useState<string | null>(null);
@@ -532,9 +540,12 @@ export default function DocumentEditorPage() {
           <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}<span className="document-studio__meta"> · {t('ed.meta', { words: words.toLocaleString(), minutes: Math.max(1, Math.round(words / 220)) })}</span></p>
           <DocEditor title={title} blocks={blocks} readOnly={readOnlyRole(workspace.role)} env={editorEnv} cursors={editorCursors} others={editorOthers} onLocalChange={handleEditorChange} onSelection={handleSelection} onCreateTask={(block) => void createTaskFromBlock(block)} onComment={(block, quote) => { setCommentTarget({ blockId: block.id, quote }); setActivePanel('COMMENTS'); }} onMoveOut={(block) => void startMove(block)} onNotice={setSuccess} onAssist={aiReady ? assist : null} onError={setError} apiRef={editorApi} />
         </main>
-        <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(['OUTLINE', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
+        <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(['OUTLINE', 'RELATED', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'RELATED' ? t('ed.tab.related') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
           {activePanel === 'SHARE' && <SharePanel documentId={document.id} />}
           {activePanel === 'FILES' && <section className="document-studio__panel"><AttachmentsPanel target={{ documentId: document.id }} /></section>}
+          {activePanel === 'RELATED' && <section className="document-studio__panel"><h2>{t('ed.tab.related')}</h2>{others === null ? <p>{t('ed.opening')}</p> : others.length === 0 ? <p>{t('ed.relatedEmpty')}</p> : <>
+            {document.project && others.some((row) => row.project?.id === document.project?.id) && <><h3>{t('ed.sameProject', { name: document.project.name })}</h3><ul className="document-studio__related">{others.filter((row) => row.project?.id === document.project?.id).slice(0, 8).map((row) => <li key={row.id}><Link href={`/workspace/documents/${row.id}`}>{row.title || t('ed.document')}</Link></li>)}</ul></>}
+            <h3>{t('ed.recentlyEdited')}</h3><ul className="document-studio__related">{[...others].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 8).map((row) => <li key={row.id}><Link href={`/workspace/documents/${row.id}`}>{row.title || t('ed.document')}</Link><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(row.updatedAt))}</time></li>)}</ul></>}</section>}
           {activePanel === 'OUTLINE' && <section className="document-studio__panel"><h2><button type="button" className="document-studio__collapse" aria-expanded={outlineOpen} onClick={() => setOutlineOpen((open) => !open)}><span aria-hidden>{outlineOpen ? '▾' : '▸'}</span> {t('ed.onThisPage')}</button></h2>{!outlineOpen ? null : outline.length === 0 ? <p>{t('ed.outlineEmpty')}</p> : <nav aria-label={t('ed.onThisPage')}>{outline.map((block) => <a className={`${headingLevel(block) > 1 ? 'is-nested' : ''}${(outline.some((item) => item.id === activeHeading) ? activeHeading : outline[0]?.id) === block.id ? ' is-current' : ''}`} aria-current={(outline.some((item) => item.id === activeHeading) ? activeHeading : outline[0]?.id) === block.id ? 'location' : undefined} key={block.id} href={`#block-${block.id}`} onClick={(event) => { event.preventDefault(); document_scrollTo(block.id); window.history.replaceState(null, '', `#block-${block.id}`); }}>{block.text}</a>)}</nav>}</section>}
           {activePanel === 'COMMENTS' && <section className="document-studio__panel"><h2>{t('ed.tab.comments')}</h2>
             <form className="document-studio__comment-form" onSubmit={addComment}>

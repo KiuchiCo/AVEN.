@@ -2,7 +2,7 @@
 
 // The blocks that are more than text. Each one is a node inside the same document and renders a component in place; the text-bearing
 // ones (toggle, equation, Mermaid, synced) keep their text as the node's own editable content, not an input.
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
 import { useT } from '../../../i18n';
 import { ImageBlock, TableBlock } from './document-blocks';
@@ -10,17 +10,24 @@ import { BookmarkBlock, BreadcrumbBlock, ButtonBlock, DatabaseBlock, DatabaseLin
 import { AtomBlock, SourceBlock, SyncedBlock, ToggleBlock } from './editor-extensions';
 import type { DatabaseView, TabPane } from './editor-model';
 
+import type { BlockType } from './editor-model.ts';
+
 export type EditorEnv = {
   readOnly: boolean; documentId: string; projectId: string | undefined;
   headings: { id: string; text: string; level: number }[]; crumbs: string[]; creatingTask: string;
   runButton: (blockId: string, title: string) => void; createTasks: (blockId: string, titles: string[]) => void;
   syncCounts: Record<string, number>; copySync: (syncId: string) => void; linkSync: (blockId: string, code: string) => void; unsync: (blockId: string) => void;
   placeholders: Record<string, string>;
+  /** Owned by the editor itself: which toggles are closed, which tab each tabs block shows, and edits to a block's content. */
+  folded: ReadonlySet<string>; onFold: (id: string) => void;
+  activeTabs: Record<string, number>; onTab: (id: string, index: number) => void;
+  appendLines: (parentId: string, lines: string[], type?: BlockType) => void; contentActions: (parentId: string) => string[]; removeTab: (parentId: string, index: number) => void;
 };
+export type HostEnv = Omit<EditorEnv, 'placeholders' | 'folded' | 'onFold' | 'activeTabs' | 'onTab' | 'appendLines' | 'contentActions' | 'removeTab'>;
 export const EnvContext = createContext<EditorEnv | null>(null);
 const useEnv = () => { const env = useContext(EnvContext); if (!env) throw new Error('Document blocks need the editor environment.'); return env; };
 
-const wrapperProps = (node: NodeViewProps['node'], extra = '') => ({ id: `block-${node.attrs.blockId}`, className: `aven-block aven-${String(node.attrs.type).toLowerCase()}${extra}`, 'data-block-id': String(node.attrs.blockId), 'data-type': String(node.attrs.type) });
+const wrapperProps = (node: NodeViewProps['node'], extra = '') => ({ id: `block-${node.attrs.blockId}`, className: `aven-block aven-${String(node.attrs.type).toLowerCase()}${extra}`, 'data-block-id': String(node.attrs.blockId), 'data-type': String(node.attrs.type), 'data-indent': String(node.attrs.indent ?? 0), ...(node.attrs.span === 'half' ? { 'data-span': 'half' } : {}) });
 
 function AtomView({ node, updateAttributes }: NodeViewProps) {
   const env = useEnv();
@@ -41,24 +48,24 @@ function AtomView({ node, updateAttributes }: NodeViewProps) {
     case 'TOC': body = <TocBlock headings={env.headings} />; break;
     case 'BREADCRUMB': body = <BreadcrumbBlock crumbs={env.crumbs} />; break;
     case 'BUTTON': body = <ButtonBlock label={str('text')} taskTitle={str('body')} readOnly={env.readOnly} running={env.creatingTask === a.blockId} onLabel={(text) => change({ text })} onTaskTitle={(text) => change({ body: text })} onRun={() => env.runButton(a.blockId, str('body'))} />; break;
-    case 'TABS': body = <TabsBlock tabs={(Array.isArray(a.tabs) ? a.tabs : []) as TabPane[]} readOnly={env.readOnly} onChange={(tabs) => change({ tabs })} />; break;
-    case 'MEETING': body = <MeetingBlock block={{ text: str('text'), body: str('body'), date: str('date'), attendees: str('attendees'), actions: str('actions'), fileId: str('fileId') || undefined }} readOnly={env.readOnly} running={env.creatingTask === a.blockId} onChange={(update) => change(update)} onTasks={(titles) => env.createTasks(a.blockId, titles)} />; break;
+    case 'TABS': body = <TabsBlock tabs={(Array.isArray(a.tabs) ? a.tabs : []) as TabPane[]} active={env.activeTabs[a.blockId] ?? 0} readOnly={env.readOnly} onActive={(index) => env.onTab(a.blockId, index)} onRemove={(index) => env.removeTab(a.blockId, index)} onChange={(tabs) => change({ tabs })} />; break;
+    case 'MEETING': body = <MeetingBlock block={{ text: str('text'), date: str('date'), attendees: str('attendees'), fileId: str('fileId') || undefined }} readOnly={env.readOnly} running={env.creatingTask === a.blockId} actionCount={env.contentActions(a.blockId).length} onChange={(update) => change(update)} onHeard={(lines) => env.appendLines(a.blockId, lines)} onTasks={() => env.createTasks(a.blockId, env.contentActions(a.blockId))} />; break;
     default: body = <p className="document-image__missing">{t('ed.unknownBlock')}</p>;
   }
   return <NodeViewWrapper {...wrapperProps(node, ' aven-atom')} contentEditable={false}>{body}</NodeViewWrapper>;
 }
 
-function ToggleView({ node, updateAttributes }: NodeViewProps) {
+function ToggleView({ node }: NodeViewProps) {
   const env = useEnv();
   const t = useT();
-  const [open, setOpen] = useState(true);
+  const id = String(node.attrs.blockId);
+  const open = !env.folded.has(id);
   const level = (node.attrs.level as number) ?? 0;
   return <NodeViewWrapper {...wrapperProps(node, ` aven-toggle-l${level}`)}>
     <div className="aven-toggle__row">
-      <button type="button" contentEditable={false} className="aven-toggle__chevron" aria-expanded={open} aria-label={t('ed.toggleOpen')} onClick={() => setOpen((value) => !value)}><span aria-hidden="true">▸</span></button>
+      <button type="button" contentEditable={false} className={`aven-toggle__chevron${open ? ' is-open' : ''}`} aria-expanded={open} aria-label={t('ed.toggleOpen')} onClick={() => env.onFold(id)}><span aria-hidden="true">▸</span></button>
       <NodeViewContent className={`aven-content${node.content.size === 0 ? ' is-empty' : ''}`} data-placeholder={t('ed.togglePh')} />
     </div>
-    {open && <textarea contentEditable={false} className="aven-toggle__body" value={String(node.attrs.body ?? '')} readOnly={env.readOnly} rows={2} maxLength={20000} placeholder={t('ed.toggleBody')} aria-label={t('ed.toggleBody')} onChange={(event) => updateAttributes({ body: event.target.value })} />}
   </NodeViewWrapper>;
 }
 
