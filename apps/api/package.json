@@ -4,11 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "tsc -p ../../packages/collab/tsconfig.json",
     "build": "nest build",
     "test": "npm run build && node --experimental-strip-types --test test/*.test.mjs",
     "start": "node dist/main.js",
+    "prestart:dev": "tsc -p ../../packages/collab/tsconfig.json",
     "start:dev": "nest start --watch",
     "vapid:generate": "node scripts/vapid.mjs",
+    "pretypecheck": "tsc -p ../../packages/collab/tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
@@ -17,6 +20,7 @@
     "test:integration": "npm run build && node --test test/integration/*.test.mjs"
   },
   "dependencies": {
+    "@aven/collab": "*",
     "@clerk/backend": "^3.30.0",
     "@nestjs/common": "12.5.1",
     "@nestjs/core": "12.5.1",

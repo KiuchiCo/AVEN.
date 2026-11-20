@@ -5,7 +5,9 @@ export type Viewer = { id: string; name: string };
 export type PresentViewer = Viewer & { blockId: string | null };
 export type DocumentEvent =
   | { type: 'presence'; viewers: PresentViewer[] }
-  | { type: 'saved'; updatedAt: string; by: Viewer };
+  | { type: 'saved'; updatedAt: string; by: Viewer }
+  /** An accepted edit to the text of one block. Only people who may read the document are subscribed, so it is safe to carry the change. */
+  | { type: 'text'; blockId: string; revision: number; operation: readonly (number | string)[]; by: Viewer; clientId: string | null };
 
 type Listener = { viewer: Viewer; send: (event: DocumentEvent) => void };
 
@@ -19,6 +21,7 @@ export class DocumentEvents {
   private readonly listeners = new Map<string, Set<Listener>>();
   private readonly open = new Map<string, number>();
   private readonly focus = new Map<string, Map<string, string>>();
+  private readonly emptied = new Set<(documentId: string) => void>();
 
   /** Caps how many live document connections one person can hold. Returns a release function, or null when over the cap. */
   acquire(userId: string, max = 10): (() => void) | null {
@@ -28,6 +31,12 @@ export class DocumentEvents {
     let released = false;
     return () => { if (released) return; released = true; const left = (this.open.get(userId) ?? 1) - 1; if (left <= 0) this.open.delete(userId); else this.open.set(userId, left); };
   }
+
+  /** Calls back when the last person closes a document, so live state held for it can be saved and released. */
+  onEmpty(callback: (documentId: string) => void) { this.emptied.add(callback); }
+
+  /** Whether anyone has this document open right now. */
+  isOpen(documentId: string) { return (this.listeners.get(documentId)?.size ?? 0) > 0; }
 
   viewers(documentId: string): PresentViewer[] {
     const seen = new Map<string, PresentViewer>();
@@ -54,7 +63,7 @@ export class DocumentEvents {
     return () => {
       set.delete(listener);
       if (![...set].some((other) => other.viewer.id === viewer.id)) this.focus.get(documentId)?.delete(viewer.id);
-      if (!set.size) { this.listeners.delete(documentId); this.focus.delete(documentId); }
+      if (!set.size) { this.listeners.delete(documentId); this.focus.delete(documentId); for (const callback of this.emptied) callback(documentId); }
       else this.publish(documentId, { type: 'presence', viewers: this.viewers(documentId) });
     };
   }

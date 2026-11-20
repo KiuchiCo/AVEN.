@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpException, Param, ParseUUIDPipe, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { DocumentEvents } from './document-events.js';
+import { TextSessions } from './text-sessions.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -9,7 +10,7 @@ import { ProductivityService } from './productivity.service.js';
 @Controller('workspaces/:workspaceId/documents')
 @UseGuards(ClerkAuthGuard)
 export class DocumentsController {
-  constructor(private readonly productivity: ProductivityService, private readonly events: DocumentEvents) {}
+  constructor(private readonly productivity: ProductivityService, private readonly events: DocumentEvents, private readonly textSessions: TextSessions) {}
 
   /** Server-sent events for one open document: who else is here, and when someone saves a newer version. */
   @Get(':documentId/stream')
@@ -29,6 +30,29 @@ export class DocumentsController {
     const unsubscribe = this.events.subscribe(documentId, viewer, (event) => { if (!response.writableEnded) response.write(`data: ${JSON.stringify(event)}\n\n`); });
     const heartbeat = setInterval(() => { if (!response.writableEnded) response.write(': keep-alive\n\n'); }, 25_000);
     request.on('close', () => { clearInterval(heartbeat); unsubscribe(); release(); });
+  }
+
+  /** The live text of one block and the revision to write edits against. */
+  @Get(':documentId/text/:blockId')
+  liveText(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Param('blockId') blockId: string,
+  ) {
+    return this.textSessions.text(identity, workspaceId, documentId, blockId);
+  }
+
+  /** One keystroke-level edit to a block's text, written against a revision. */
+  @Post(':documentId/text/:blockId/ops')
+  liveEdit(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Param('blockId') blockId: string,
+    @Body() body: unknown,
+  ) {
+    return this.textSessions.receive(identity, workspaceId, documentId, blockId, body);
   }
 
   /** Says which block the caller's cursor is in (or null when it left), for the "someone is editing here" markers. */

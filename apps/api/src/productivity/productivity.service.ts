@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DocumentEvents } from './document-events.js';
+import { TextSessions } from './text-sessions.js';
 import { PermissionsService } from '../billing/permissions.service.js';
 import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -34,7 +35,7 @@ const databaseRecordSearchMaxScan = 3000;
 
 @Injectable()
 export class ProductivityService {
-  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService, private readonly documentEvents: DocumentEvents) {}
+  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService, private readonly documentEvents: DocumentEvents, private readonly textSessions: TextSessions) {}
 
   async listProjects(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
@@ -867,6 +868,7 @@ export class ProductivityService {
     if (!document) throw new NotFoundException('Document not found in this workspace.');
     const result = await this.prisma.document.deleteMany({ where: { id: documentId, workspaceId } });
     if (result.count !== 1) throw new NotFoundException('Document not found in this workspace.');
+    this.textSessions.drop(documentId);
     await this.recordActivity(workspaceId, actorId, 'DOCUMENT', document.id, `deleted document “${document.title}”`);
     return { id: document.id, deleted: true };
   }
@@ -901,7 +903,7 @@ export class ProductivityService {
       if (typeof body.content !== 'string' || body.content.length > 100000) {
         throw new BadRequestException('Document content must be 100,000 characters or fewer.');
       }
-      data.content = body.content;
+      data.content = this.textSessions.reconcile(documentId, body.content); // live text wins over what the page last saw
     }
     if ('silent' in body && typeof body.silent !== 'boolean') throw new BadRequestException('silent must be a boolean.');
     if (!Object.keys(data).length) throw new BadRequestException('Provide a title or content to update.');
@@ -941,7 +943,7 @@ export class ProductivityService {
     await this.requireMembership(identity, workspaceId);
     const document = await this.prisma.document.findFirst({ where: { id: documentId, workspaceId }, include: { project: { select: { id: true, name: true } } } });
     if (!document) throw new NotFoundException('Document not found in this workspace.');
-    return document;
+    return { ...document, content: this.textSessions.reconcile(documentId, document.content) }; // includes text typed in the last moment
   }
 
   async listDocumentVersions(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
@@ -957,6 +959,7 @@ export class ProductivityService {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
     const label = optionalText(body.label, 'Version label', 120);
+    await this.textSessions.settle(documentId);
     const document = await this.requireDocument(workspaceId, documentId);
     const version = await this.prisma.documentVersion.create({
       data: { workspaceId, documentId, createdById: actorId, title: document.title, content: document.content, label },
@@ -968,6 +971,7 @@ export class ProductivityService {
 
   async restoreDocumentVersion(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, versionId: string) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
+    await this.textSessions.settle(documentId);
     const [document, version] = await Promise.all([
       this.requireDocument(workspaceId, documentId),
       this.prisma.documentVersion.findFirst({ where: { id: versionId, workspaceId, documentId } }),
@@ -978,6 +982,7 @@ export class ProductivityService {
       return transaction.document.update({ where: { id: documentId }, data: { title: version.title, content: version.content }, include: { project: { select: { id: true, name: true } } } });
     });
     await this.recordActivity(workspaceId, actorId, 'DOCUMENT', documentId, `restored a version of “${restored.title}”`);
+    this.textSessions.drop(documentId);
     await this.announceSave(documentId, restored.updatedAt, actorId);
     return restored;
   }
