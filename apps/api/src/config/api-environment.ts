@@ -19,6 +19,8 @@ export type ApiEnvironment = {
   maxUploadBytes: number;
   storageQuotaBytes: number;
   aiApiKey?: string;
+  /** Optional web search for AVEN Intelligence (Brave Search API). */
+  webSearch?: { apiKey: string; baseUrl: string };
   aiModel: string;
   aiBaseUrl: string;
   aiMonthlyCredits: number;
@@ -92,6 +94,10 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   const storageDir = source.STORAGE_DIR?.trim() || '.storage';
 
   const aiApiKey = source.ANTHROPIC_API_KEY?.trim() || undefined;
+  const webSearchKey = source.WEB_SEARCH_API_KEY?.trim() || undefined;
+  const webSearchBase = source.WEB_SEARCH_BASE_URL?.trim() || 'https://api.search.brave.com';
+  try { const parsed = new URL(webSearchBase); if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname))) errors.push('WEB_SEARCH_BASE_URL must be an https address'); } catch { errors.push('WEB_SEARCH_BASE_URL must be a valid URL'); }
+  const webSearch = webSearchKey ? { apiKey: webSearchKey, baseUrl: webSearchBase } : undefined;
   const aiModel = source.AI_MODEL?.trim() || 'claude-sonnet-5-5';
   if (aiModel.length > 100 || !/^[\w.:-]+$/.test(aiModel)) errors.push('AI_MODEL must be a model identifier');
   const aiBaseUrl = source.AI_BASE_URL?.trim() || 'https://api.anthropic.com';
@@ -161,5 +167,5 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, webSearch, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
 }

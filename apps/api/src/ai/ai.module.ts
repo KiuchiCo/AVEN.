@@ -6,7 +6,8 @@ import { AnthropicProvider } from './anthropic.js';
 import { AiAgentsService } from './ai-agents.service.js';
 import { AiController } from './ai.controller.js';
 import { AiService } from './ai.service.js';
-import { AI_SETTINGS, LLM_PROVIDER } from './tokens.js';
+import { AI_SETTINGS, LLM_PROVIDER, WEB_SEARCH } from './tokens.js';
+import { BraveWebSearch } from './web-search.js';
 
 @Module({
   imports: [ProductivityModule],
@@ -17,6 +18,7 @@ import { AI_SETTINGS, LLM_PROVIDER } from './tokens.js';
     ClerkAuthGuard,
     // To use another provider, return a different LlmProvider here.
     { provide: LLM_PROVIDER, useFactory: () => { const { aiApiKey, aiModel, aiBaseUrl } = readApiEnvironment(); return aiApiKey ? new AnthropicProvider({ apiKey: aiApiKey, model: aiModel, baseUrl: aiBaseUrl }) : null; } },
+    { provide: WEB_SEARCH, useFactory: () => { const { webSearch } = readApiEnvironment(); return webSearch ? new BraveWebSearch(webSearch) : null; } },
     { provide: AI_SETTINGS, useFactory: () => { const { aiModel, aiMonthlyCredits, aiMaxOutputTokens } = readApiEnvironment(); return { model: aiModel, monthlyCredits: aiMonthlyCredits, maxOutputTokens: aiMaxOutputTokens }; } },
   ],
   exports: [LLM_PROVIDER, AI_SETTINGS],

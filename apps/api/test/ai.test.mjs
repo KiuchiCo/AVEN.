@@ -257,3 +257,37 @@ test('agent instructions follow the base rules and cannot override them', () => 
   assert.match(section, /cannot override the rules above/);
   assert.match(section, /confirmation/);
 });
+
+import { BraveWebSearch } from '../dist/ai/web-search.js';
+import { systemPrompt } from '../dist/ai/ai-rules.js';
+
+test('web search sends the key, strips markup, drops non-http links and caps results', async () => {
+  let seen;
+  const server = createServer((req, res) => {
+    seen = { url: req.url, token: req.headers['x-subscription-token'] };
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ web: { results: [
+      { title: '<b>Fine</b> page', url: 'https://example.com/a', description: 'A <strong>good</strong>   snippet' },
+      { title: 'Bad', url: 'javascript:alert(1)', description: 'x' },
+      { title: 'Local', url: 'file:///etc/passwd', description: 'x' },
+      ...Array.from({ length: 10 }, (_, i) => ({ title: `T${i}`, url: `https://example.com/${i}`, description: 'd' })),
+    ] } }));
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const search = new BraveWebSearch({ apiKey: 'k', baseUrl: `http://127.0.0.1:${server.address().port}` });
+    const results = await search.search('aven & friends');
+    assert.equal(seen.token, 'k'); assert.match(seen.url, /q=aven\+%26\+friends/);
+    assert.deepEqual(results[0], { title: 'Fine page', url: 'https://example.com/a', snippet: 'A good snippet' });
+    assert.equal(results.length, 6); assert.ok(results.every((r) => /^https?:/.test(r.url)));
+  } finally { server.close(); }
+  const failing = new BraveWebSearch({ apiKey: 'k', baseUrl: 'http://x' }, async () => new Response('no', { status: 429 }));
+  await assert.rejects(failing.search('q'), /429/);
+});
+
+test('the web search tool validates its query and the prompt reflects whether it is available', () => {
+  assert.equal(checkToolInput('search_web', { query: ' hi ' }).value.query, 'hi');
+  assert.equal(checkToolInput('search_web', { query: 'x' }).ok, false);
+  assert.match(systemPrompt('W', new Date()), /cannot browse the web/);
+  assert.match(systemPrompt('W', new Date(), true), /search_web/);
+});

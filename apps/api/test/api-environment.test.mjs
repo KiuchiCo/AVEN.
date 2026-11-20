@@ -57,3 +57,11 @@ test('s3 storage requires its credentials and exposes them when set', async () =
   assert.equal(env.storageDriver, 's3');
   assert.equal(env.s3.region, 'us-east-1');
 });
+
+test('web search is optional and needs a safe base URL', async () => {
+  const { readApiEnvironment } = await import('../dist/config/api-environment.js');
+  const base = { DATABASE_URL: 'postgresql://u:p@localhost:5432/d' };
+  assert.equal(readApiEnvironment(base).webSearch, undefined);
+  assert.equal(readApiEnvironment({ ...base, WEB_SEARCH_API_KEY: 'k' }).webSearch.baseUrl, 'https://api.search.brave.com');
+  assert.throws(() => readApiEnvironment({ ...base, WEB_SEARCH_API_KEY: 'k', WEB_SEARCH_BASE_URL: 'http://example.com' }), /https/);
+});
