@@ -1,3 +1,5 @@
+import type { Key } from '../../i18n/en';
+
 export type StepType = 'branch' | 'delay' | 'create_task' | 'update_task' | 'notify' | 'webhook' | 'ai';
 
 /** The editor's working copy of a step. Fields are loose strings so inputs can be empty while typing. */
@@ -84,4 +86,24 @@ export function describeTrigger(trigger: Record<string, unknown>): string {
 /** Step ids whose result a later step can use as {{steps.<id>.output}}. */
 export function outputStepIds(steps: StepDraft[]): string[] {
   return steps.flatMap((step) => [...(['ai', 'webhook', 'create_task', 'update_task'].includes(step.type) ? [step.id] : []), ...outputStepIds(step.then ?? []), ...outputStepIds(step.else ?? [])]);
+}
+
+export const stepLabelKeys: Record<StepType, Key> = {
+  branch: 'wf.step.branch', delay: 'wf.step.delay', create_task: 'wf.step.create_task', update_task: 'wf.step.update_task', notify: 'wf.step.notify', webhook: 'wf.step.webhook', ai: 'wf.step.ai',
+};
+const statusKeys: Record<string, Key> = { TODO: 'status.todo', IN_PROGRESS: 'status.inProgress', IN_REVIEW: 'status.inReview', COMPLETED: 'status.completed', CANCELLED: 'status.cancelled' };
+
+/** Same text as describeTrigger, in the person's language. */
+export function describeTriggerWith(t: (key: Key, values?: Record<string, string | number>) => string, trigger: Record<string, unknown>): string {
+  const status = (value: unknown) => (statusKeys[String(value)] ? t(statusKeys[String(value)]).toLocaleLowerCase() : String(value));
+  switch (trigger.type) {
+    case 'task_status_changed': return t('wf.d.statusChanged', { to: status(trigger.toStatus), from: trigger.fromStatus ? t('wf.d.from', { status: status(trigger.fromStatus) }) : '' });
+    case 'task_created': return t('wf.d.created');
+    case 'manual': return t('wf.d.manual');
+    case 'schedule': {
+      const when = trigger.frequency === 'DAILY' ? t('wf.d.everyDay') : trigger.frequency === 'WEEKLY' ? t('wf.d.everyWeekday', { day: t(`wd.${Number(trigger.weekday)}` as Key).toLocaleLowerCase() }) : t('wf.d.monthly', { n: String(trigger.dayOfMonth) });
+      return t('wf.d.schedule', { when, time: String(trigger.time), zone: String(trigger.timeZone) });
+    }
+    default: return t('wf.d.unknown');
+  }
 }
