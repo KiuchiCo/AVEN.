@@ -11,3 +11,8 @@ apps/api/src/generated/
 graphify-out/
 .storage/
 apps/api/.storage/
+
+# Browser test output
+apps/web/e2e/test-results/
+apps/web/playwright-report/
+apps/web/.next-e2e/

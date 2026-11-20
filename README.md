@@ -130,7 +130,7 @@ Everything below is real, tested code. Features that need an outside service say
 - **Appearance and language** — an editorial light theme by default, optional dark, and menus, Home, Settings, Tasks, Inbox, Activity, Task Labels, Analytics, Whiteboards, Search, Documents, People, Files, Calendar, Messages, Knowledge, Automations, the document editor, Databases, Intelligence, Connected apps, the Audit log and the Projects page, the single-project workspace and the Gantt chart (not yet the template library) in English, Spanish, French or German (other screens are English for now).
 - **Inbox** — updates about the same item are grouped.
 - **Operations** — security headers, liveness and readiness checks, graceful shutdown, a backup script, and a [deployment guide](docs/DEPLOYMENT.md).
-- **Tests** — unit tests, a committed integration suite (`npm run test:integration`) and a route-by-route access audit that checks anonymous, outsider and guest access on every endpoint.
+- **Tests** — unit tests, a committed integration suite (`npm run test:integration`) and a route-by-route access audit that checks anonymous, outsider and guest access on every endpoint. `npm run test:e2e --workspace @aven/web` drives real Chrome through the public pages (landing page, sign-in redirect, shared-document links, mobile width) against a throwaway database and fresh servers; signed-in screens are not covered by browser tests.
 
 Verified only against local stand-ins, because they need your credentials: Stripe, Anthropic, Resend, Google and Microsoft calendars, S3, Brave Search and push services. Each one reports clearly when it is not configured.
 

@@ -10,6 +10,8 @@ if (existsSync(rootEnvPath)) {
 const production = process.env.NODE_ENV === 'production';
 
 const nextConfig: NextConfig = {
+  // The browser tests use their own folder so they can run while a normal dev server is open.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   poweredByHeader: false,
   async headers() {
     return [{
