@@ -3,7 +3,7 @@
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useT } from '../../../i18n';
 import type { Key } from '../../../i18n/en';
 import { useWorkspaceSession } from '../../workspace-shell';
@@ -12,7 +12,7 @@ import { ImageBlock, TableBlock } from './document-blocks';
 import { SharePanel } from './share-panel';
 import { FavouriteStar } from '../../favourites';
 import { readEvents } from '../../messages/sse';
-import { mergeBlocks, reconcileDraft } from './block-merge';
+import { mergeBlocks, moveCaret, reconcileDraft } from './block-merge';
 import { draftKey, readDraft, removeDraft, writeDraft } from './offline-draft';
 
 type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER' | 'TABLE' | 'IMAGE';
@@ -62,6 +62,7 @@ export default function DocumentEditorPage() {
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE'>('OUTLINE');
   const [viewers, setViewers] = useState<{ id: string; name: string }[]>([]);
   const revision = useRef(0);
+  const caret = useRef<{ id: string; start: number; end: number } | null>(null);
   const live = useRef<{ document: Document | null; blocks: Block[]; title: string; dirty: boolean; saving: boolean }>({ document: null, blocks: [], title: '', dirty: false, saving: false });
   useEffect(() => { live.current = { document, blocks, title, dirty, saving }; });
 
@@ -94,19 +95,40 @@ export default function DocumentEditorPage() {
    * block by block, so changes to different blocks both survive; if both of us changed the same block it returns 'conflict'
    * and leaves everything as it is for the person to choose.
    */
+  /** When someone else's words arrive while a block is being typed in, remember where the cursor should land afterwards. */
+  const holdCaret = useCallback((before: Block[], after: Block[]) => {
+    const field = globalThis.document.activeElement;
+    if (!(field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) || !field.id.startsWith('block-') || field.selectionStart === null || field.selectionEnd === null) return;
+    const id = field.id.slice('block-'.length);
+    const [was, now] = [before.find((block) => block.id === id)?.text, after.find((block) => block.id === id)?.text];
+    if (was === undefined || now === undefined) return;
+    caret.current = { id, start: moveCaret(was, now, field.selectionStart), end: moveCaret(was, now, field.selectionEnd) };
+  }, []);
+
+  useLayoutEffect(() => {
+    const target = caret.current;
+    if (!target) return;
+    caret.current = null;
+    const field = globalThis.document.getElementById(`block-${target.id}`);
+    if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) field.setSelectionRange(target.start, target.end);
+  }, [blocks]);
+
   const applyRemote = useCallback((latest: Document, who: string): 'same' | 'applied' | 'merged' | 'conflict' => {
     const mine = live.current;
     if (!mine.document || latest.updatedAt === mine.document.updatedAt) return 'same';
     if (!mine.dirty) {
-      setDocument(latest); setTitle(latest.title); setBlocks(parseBlocks(latest.content)); revision.current += 1; setSuccess(t('ed.updatedBy', { who }));
+      const next = parseBlocks(latest.content);
+      holdCaret(mine.blocks, next);
+      setDocument(latest); setTitle(latest.title); setBlocks(next); revision.current += 1; setSuccess(t('ed.updatedBy', { who }));
       return 'applied';
     }
     const { blocks: merged, conflicts } = mergeBlocks(parseBlocks(mine.document.content), mine.blocks, parseBlocks(latest.content));
     if (conflicts.length) return 'conflict';
+    holdCaret(mine.blocks, merged);
     setDocument(latest); setBlocks(merged); if (mine.title === mine.document.title) setTitle(latest.title);
     revision.current += 1; setSuccess(t('ed.merged', { who }));
     return 'merged';
-  }, [t]);
+  }, [holdCaret, t]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -175,7 +197,8 @@ export default function DocumentEditorPage() {
       }
       return false;
     } catch (reason) {
-      if (reason instanceof OfflineError) setOffline(true);
+      setOffline(reason instanceof OfflineError); // any answer from the server means the connection is back
+      if (reason instanceof OfflineError) { /* kept on this device; retried when the connection returns */ }
       else if (reason instanceof ConflictError) { if (applyRemote(reason.current, t('ed.someone')) === 'conflict') setConflict(reason.current); }
       else setError(reason instanceof Error ? reason.message : 'Autosave failed.');
       return false;
