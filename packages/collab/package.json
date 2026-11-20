@@ -1,0 +1,14 @@
+{
+  "name": "@aven/collab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Transport-independent engine for editing the same text together: operations, transforms, and the client and server sync state machines.",
+  "type": "module",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.mjs"
+  }
+}
