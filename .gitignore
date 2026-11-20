@@ -18,3 +18,4 @@ apps/web/playwright-report/
 apps/web/.next-e2e/
 apps/mobile/build/
 apps/mobile/ios/App/App/capacitor.config.json
+apps/api/scripts/.seed-demo-manifest.json
