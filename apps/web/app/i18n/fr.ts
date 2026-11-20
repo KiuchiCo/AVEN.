@@ -1825,4 +1825,5 @@ export const fr: Dictionary = {
   'sync.f.dueAt': "l’échéance",
   'sync.f.assigneeId': "la personne assignée",
   'ed.editingHere': "{names} en train de modifier",
+  'ed.liveReset': "Vos dernières modifications d’un bloc sont entrées en conflit avec celles de quelqu’un d’autre après un problème de connexion ; il affiche donc leur version.",
 };

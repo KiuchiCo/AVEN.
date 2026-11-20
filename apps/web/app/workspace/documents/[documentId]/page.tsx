@@ -12,7 +12,9 @@ import { ImageBlock, TableBlock } from './document-blocks';
 import { SharePanel } from './share-panel';
 import { FavouriteStar } from '../../favourites';
 import { readEvents } from '../../messages/sse';
+import { transformPosition } from '@aven/collab';
 import { mergeBlocks, moveCaret, reconcileDraft } from './block-merge';
+import { LiveTextEngine, type TextEvent } from './live-text';
 import { draftKey, readDraft, removeDraft, writeDraft } from './offline-draft';
 
 type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER' | 'TABLE' | 'IMAGE';
@@ -24,6 +26,8 @@ const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 class ConflictError extends Error { constructor(message: string, readonly current: Document) { super(message); } }
 /** The request never reached the server: no connection, or the sign-in token could not be refreshed. */
 class OfflineError extends Error {}
+/** The server answered with an error; `status` is its HTTP status. */
+class HttpError extends Error { constructor(message: string, readonly status: number) { super(message); } }
 const blockTypes: { type: BlockType; label: Key }[] = (['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'DIVIDER', 'TABLE', 'IMAGE'] as const).map((type) => ({ type, label: `bt.${type}` as Key }));
 
 function createBlock(type: BlockType = 'PARAGRAPH'): Block { return { id: crypto.randomUUID(), type, text: '', checked: false }; }
@@ -67,6 +71,8 @@ export default function DocumentEditorPage() {
   const [success, setSuccess] = useState('');
   const [conflict, setConflict] = useState<Document | null>(null);
   const [offline, setOffline] = useState(false);
+  const [liveBusy, setLiveBusy] = useState(false);
+  const liveEngine = useRef<LiveTextEngine | null>(null);
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE'>('OUTLINE');
   const [viewers, setViewers] = useState<{ id: string; name: string; blockId: string | null }[]>([]);
   const revision = useRef(0);
@@ -86,7 +92,7 @@ export default function DocumentEditorPage() {
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string; current?: Document } | null;
       if (response.status === 409 && body?.current) throw new ConflictError(body.message ?? 'This document was changed by someone else.', body.current);
-      throw new Error(body?.message ?? 'AVEN could not complete that request.');
+      throw new HttpError(body?.message ?? 'AVEN could not complete that request.', response.status);
     }
     return response.status === 204 ? null : response.json();
   }, [getToken]);
@@ -134,17 +140,47 @@ export default function DocumentEditorPage() {
     if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) field.setSelectionRange(target.start, target.end);
   }, [blocks]);
 
+  // The engine outlives re-renders; it reaches the latest request function and translator through these.
+  const latest = useRef({ request, t });
+  useEffect(() => { latest.current = { request, t }; });
+
+  // Keystroke-level editing of block text. Blocks join when first focused (or when someone else's edit to them arrives).
+  useEffect(() => {
+    const engine = new LiveTextEngine(crypto.randomUUID(), {
+      get: (blockId) => latest.current.request(`/workspaces/${workspace.id}/documents/${documentId}/text/${blockId}`) as Promise<{ text: string; revision: number }>,
+      post: async (blockId, body) => { await latest.current.request(`/workspaces/${workspace.id}/documents/${documentId}/text/${blockId}/ops`, { method: 'POST', body: JSON.stringify(body) }); },
+    }, {
+      readText: (blockId) => live.current.blocks.find((block) => block.id === blockId)?.text,
+      writeText: (blockId, text, operation) => {
+        const field = globalThis.document.activeElement;
+        if (operation && (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) && field.id === `block-${blockId}` && field.selectionStart !== null && field.selectionEnd !== null) {
+          caret.current = { id: blockId, start: transformPosition(operation, field.selectionStart), end: transformPosition(operation, field.selectionEnd) };
+        }
+        setBlocks((current) => current.map((block) => (block.id === blockId ? { ...block, text } : block)));
+      },
+      changed: () => setLiveBusy(engine.unsettled),
+      reset: () => setSuccess(latest.current.t('ed.liveReset')),
+    });
+    liveEngine.current = engine;
+    return () => { engine.stop(); liveEngine.current = null; };
+  }, [documentId, workspace.id]);
+
   const applyRemote = useCallback((latest: Document, who: string): 'same' | 'applied' | 'merged' | 'conflict' => {
     const mine = live.current;
     if (!mine.document || latest.updatedAt === mine.document.updatedAt) return 'same';
     if (!mine.dirty) {
-      const next = parseBlocks(latest.content);
+      const engine = liveEngine.current;
+      const next = parseBlocks(latest.content).map((block) => (engine?.has(block.id) ? { ...block, text: engine.screen(block.id) ?? block.text } : block)); // what is being typed live stays as typed
+      engine?.prune(new Set(next.map((block) => block.id)));
       holdCaret(mine.blocks, next);
       setDocument(latest); setTitle(latest.title); setBlocks(next); revision.current += 1; setSuccess(t('ed.updatedBy', { who }));
       return 'applied';
     }
-    const { blocks: merged, conflicts } = mergeBlocks(parseBlocks(mine.document.content), mine.blocks, parseBlocks(latest.content));
-    if (conflicts.length) return 'conflict';
+    const engine = liveEngine.current;
+    const { blocks: combined, conflicts } = mergeBlocks(parseBlocks(mine.document.content), mine.blocks, parseBlocks(latest.content));
+    if (conflicts.some((id) => !engine?.has(id))) return 'conflict'; // blocks edited live are reconciled word by word elsewhere
+    const merged = combined.map((block) => (engine?.has(block.id) ? { ...block, text: engine.screen(block.id) ?? block.text } : block));
+    engine?.prune(new Set(merged.map((block) => block.id)));
     holdCaret(mine.blocks, merged);
     setDocument(latest); setBlocks(merged); if (mine.title === mine.document.title) setTitle(latest.title);
     revision.current += 1; setSuccess(t('ed.merged', { who }));
@@ -165,8 +201,10 @@ export default function DocumentEditorPage() {
           const token = await getToken();
           const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
           if (!response.ok || !response.body) return;
-          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string } }>(response.body)) {
+          if (attempt > 0) liveEngine.current?.resyncAll(); // events may have been missed while the connection was down
+          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string } } | ({ type: 'text' } & TextEvent)>(response.body)) {
             if (event.type === 'presence') setViewers(event.viewers);
+            else if (event.type === 'text') liveEngine.current?.handle(event);
             else void sync(event.by.id === user.id ? t('ed.anotherTab') : event.by.name).catch(() => undefined);
           }
         } catch { if (abort.signal.aborted) return; }
@@ -246,17 +284,17 @@ export default function DocumentEditorPage() {
   useEffect(() => {
     if (!hydrated || !document) return;
     const key = draftKey(user.id, workspace.id, documentId);
-    if (!dirty) { removeDraft(window.localStorage, key); return; }
+    if (!dirty && !liveBusy) { removeDraft(window.localStorage, key); return; }
     const timer = window.setTimeout(() => writeDraft(window.localStorage, key, { title, content: encodeBlocks(blocks), base: { updatedAt: document.updatedAt, title: document.title, content: document.content }, savedAt: new Date().toISOString() }), 300);
     return () => window.clearTimeout(timer);
-  }, [blocks, dirty, document, documentId, hydrated, title, user.id, workspace.id]);
+  }, [blocks, dirty, document, documentId, hydrated, liveBusy, title, user.id, workspace.id]);
 
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && !liveBusy) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+  }, [dirty, liveBusy]);
 
   async function keepMyChanges() {
     if (!conflict) return;
@@ -272,12 +310,15 @@ export default function DocumentEditorPage() {
 
   function useTheirVersion() {
     if (!conflict || !window.confirm(t('ed.discardConfirm'))) return;
-    setDocument(conflict); setTitle(conflict.title); setBlocks(parseBlocks(conflict.content)); revision.current += 1; setDirty(false); setConflict(null); setSuccess(t('ed.loadedLatest'));
+    liveEngine.current?.clear(); setDocument(conflict); setTitle(conflict.title); setBlocks(parseBlocks(conflict.content)); revision.current += 1; setDirty(false); setConflict(null); setSuccess(t('ed.loadedLatest'));
   }
 
   function markChanged() { revision.current += 1; setDirty(true); setSuccess(''); }
   function changeTitle(value: string) { setTitle(value); markChanged(); }
-  function changeBlock(id: string, update: Partial<Block>) { setBlocks((current) => current.map((block) => block.id === id ? { ...block, ...update } : block)); markChanged(); }
+  function changeBlock(id: string, update: Partial<Block>) {
+    // Typing in a block that is live goes to the server one edit at a time instead of through the whole-document save.
+    if (Object.keys(update).length === 1 && typeof update.text === 'string' && liveEngine.current?.edit(id, update.text)) { const text = update.text; setBlocks((current) => current.map((block) => (block.id === id ? { ...block, text } : block))); return; }
+    setBlocks((current) => current.map((block) => block.id === id ? { ...block, ...update } : block)); markChanged(); }
   function insertBlock(afterId?: string) {
     const block = createBlock(blockType);
     setBlocks((current) => { if (!afterId) return [...current, block]; const index = current.findIndex((item) => item.id === afterId); return [...current.slice(0, index + 1), block, ...current.slice(index + 1)]; });
@@ -303,7 +344,7 @@ export default function DocumentEditorPage() {
     try {
       if (dirty && !await saveDocument()) return;
       const restored = await request(`/workspaces/${workspace.id}/documents/${documentId}/versions/${version.id}/restore`, { method: 'POST' }) as Document;
-      setDocument(restored); setTitle(restored.title); setBlocks(parseBlocks(restored.content)); revision.current += 1; setDirty(false); setSuccess(t('ed.restored')); await reloadCollaboration();
+      liveEngine.current?.clear(); setDocument(restored); setTitle(restored.title); setBlocks(parseBlocks(restored.content)); revision.current += 1; setDirty(false); setSuccess(t('ed.restored')); await reloadCollaboration();
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not restore this version.'); }
   }
@@ -348,7 +389,7 @@ export default function DocumentEditorPage() {
         <main className="document-studio__paper">
           <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}</p>
           <input className="document-studio__title" value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={200} aria-label={t('ed.titleLabel')} />
-          <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}${others.some((viewer) => viewer.blockId === block.id) ? ' document-block--others' : ''}`} key={block.id} style={blockColour(others, block.id)} onFocus={() => announceFocus(block.id)} onBlur={() => announceFocus(null)}>
+          <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}${others.some((viewer) => viewer.blockId === block.id) ? ' document-block--others' : ''}`} key={block.id} style={blockColour(others, block.id)} onFocus={() => { announceFocus(block.id); if (!readOnlyRole(workspace.role) && block.type !== 'DIVIDER' && block.type !== 'TABLE' && block.type !== 'IMAGE') void liveEngine.current?.join(block.id); }} onBlur={() => announceFocus(null)}>
             {others.filter((viewer) => viewer.blockId === block.id).length > 0 && <span className="document-block__presence" role="status">{t('ed.editingHere', { names: others.filter((viewer) => viewer.blockId === block.id).map((viewer) => viewer.name).join(', ') })}</span>}
             <div className="document-block__controls"><select aria-label={t('ed.blockTypeFor', { n: index + 1 })} value={block.type} onChange={(event) => changeBlock(block.id, { type: event.target.value as BlockType })}>{blockTypes.map((option) => <option value={option.type} key={option.type}>{t(option.label)}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label={t('ed.moveUp')}>↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label={t('ed.moveDown')}>↓</button><button type="button" onClick={() => removeBlock(block.id)} aria-label={t('ed.deleteBlock')}>×</button></div>
             {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label={t('ed.markTodo')} />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span><textarea id={`block-${block.id}`} value={block.text} onChange={(event) => changeBlock(block.id, { text: event.target.value })} placeholder={block.type === 'CODE' ? t('ed.phCode') : block.type === 'CALLOUT' ? t('ed.phCallout') : t('ed.phText')} aria-label={t('ed.blockLabel', { type: (() => { const found = blockTypes.find((option) => option.type === block.type); return found ? t(found.label) : t('ed.text'); })(), n: index + 1 })} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}

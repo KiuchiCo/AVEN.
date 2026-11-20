@@ -1825,4 +1825,5 @@ export const es: Dictionary = {
   'sync.f.dueAt': "la fecha límite",
   'sync.f.assigneeId': "el responsable",
   'ed.editingHere': "{names} editando",
+  'ed.liveReset': "Tus últimos cambios en un bloque chocaron con los de otra persona tras un problema de conexión, así que ahora muestra su versión.",
 };

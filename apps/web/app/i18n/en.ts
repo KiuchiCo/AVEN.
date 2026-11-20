@@ -1824,6 +1824,7 @@ export const en = {
   'sync.f.dueAt': "due date",
   'sync.f.assigneeId': "assignee",
   'ed.editingHere': "{names} editing",
+  'ed.liveReset': "Your last edits to a block clashed with someone else’s after a connection problem, so it now shows their version.",
 } as const;
 
 export type Key = keyof typeof en;

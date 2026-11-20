@@ -1825,4 +1825,5 @@ export const de: Dictionary = {
   'sync.f.dueAt': "Fälligkeitsdatum",
   'sync.f.assigneeId': "Zuständige Person",
   'ed.editingHere': "{names} bearbeitet",
+  'ed.liveReset': "Deine letzten Änderungen an einem Block kollidierten nach einem Verbindungsproblem mit denen einer anderen Person, daher zeigt er jetzt deren Version.",
 };
