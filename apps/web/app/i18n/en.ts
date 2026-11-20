@@ -1823,6 +1823,7 @@ export const en = {
   'sync.f.startAt': "start date",
   'sync.f.dueAt': "due date",
   'sync.f.assigneeId': "assignee",
+  'ed.editingHere': "{names} editing",
 } as const;
 
 export type Key = keyof typeof en;

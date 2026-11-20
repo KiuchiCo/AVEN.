@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpException, Param, ParseUUIDPipe, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpException, Param, ParseUUIDPipe, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { DocumentEvents } from './document-events.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
@@ -29,6 +29,21 @@ export class DocumentsController {
     const unsubscribe = this.events.subscribe(documentId, viewer, (event) => { if (!response.writableEnded) response.write(`data: ${JSON.stringify(event)}\n\n`); });
     const heartbeat = setInterval(() => { if (!response.writableEnded) response.write(': keep-alive\n\n'); }, 25_000);
     request.on('close', () => { clearInterval(heartbeat); unsubscribe(); release(); });
+  }
+
+  /** Says which block the caller's cursor is in (or null when it left), for the "someone is editing here" markers. */
+  @Post(':documentId/focus')
+  @HttpCode(204)
+  async focus(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Body() body: { blockId?: unknown },
+  ) {
+    const blockId = body?.blockId ?? null;
+    if (blockId !== null && (typeof blockId !== 'string' || !/^[\w-]{1,64}$/.test(blockId))) throw new BadRequestException('blockId must be a block id or null.');
+    const viewer = await this.productivity.openDocumentStream(identity, workspaceId, documentId);
+    this.events.setFocus(documentId, viewer.id, blockId);
   }
 
   @Get()

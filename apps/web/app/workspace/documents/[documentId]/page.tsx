@@ -35,6 +35,14 @@ function parseBlocks(content: string): Block[] {
   } catch { /* Existing plain-text documents are opened as a first paragraph. */ }
   return [content ? { ...createBlock(), text: content } : createBlock()];
 }
+const presenceColours = ['#A48766', '#6B5746', '#6F8A62', '#5F7399', '#9A5C68'];
+/** Each person gets the same colour for as long as they are in the document, whoever else is there. */
+function blockColour(others: { id: string; blockId: string | null }[], blockId: string): React.CSSProperties | undefined {
+  const viewer = others.find((candidate) => candidate.blockId === blockId);
+  if (!viewer) return undefined;
+  let hash = 0; for (const char of viewer.id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return { '--presence': presenceColours[hash % presenceColours.length] } as React.CSSProperties;
+}
 function encodeBlocks(blocks: Block[]) { return JSON.stringify({ format: 'aven-doc-v1', blocks }); }
 
 export default function DocumentEditorPage() {
@@ -60,9 +68,10 @@ export default function DocumentEditorPage() {
   const [conflict, setConflict] = useState<Document | null>(null);
   const [offline, setOffline] = useState(false);
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE'>('OUTLINE');
-  const [viewers, setViewers] = useState<{ id: string; name: string }[]>([]);
+  const [viewers, setViewers] = useState<{ id: string; name: string; blockId: string | null }[]>([]);
   const revision = useRef(0);
   const caret = useRef<{ id: string; start: number; end: number } | null>(null);
+  const announced = useRef<{ sent: string | null; timer?: number }>({ sent: null });
   const live = useRef<{ document: Document | null; blocks: Block[]; title: string; dirty: boolean; saving: boolean }>({ document: null, blocks: [], title: '', dirty: false, saving: false });
   useEffect(() => { live.current = { document, blocks, title, dirty, saving }; });
 
@@ -79,8 +88,20 @@ export default function DocumentEditorPage() {
       if (response.status === 409 && body?.current) throw new ConflictError(body.message ?? 'This document was changed by someone else.', body.current);
       throw new Error(body?.message ?? 'AVEN could not complete that request.');
     }
-    return response.json();
+    return response.status === 204 ? null : response.json();
   }, [getToken]);
+
+  /** Tells the others which block my cursor is in. Waits a moment so moving between blocks sends one message, not two. */
+  const announceFocus = useCallback((blockId: string | null) => {
+    const state = announced.current;
+    window.clearTimeout(state.timer);
+    state.timer = window.setTimeout(() => {
+      if (state.sent === blockId) return;
+      state.sent = blockId;
+      void request(`/workspaces/${workspace.id}/documents/${documentId}/focus`, { method: 'POST', body: JSON.stringify({ blockId }) }).catch(() => { state.sent = null; });
+    }, 250);
+  }, [documentId, request, workspace.id]);
+  useEffect(() => { const state = announced.current; return () => window.clearTimeout(state.timer); }, []);
 
   const reloadCollaboration = useCallback(async () => {
     const [history, threads] = await Promise.all([
@@ -144,7 +165,7 @@ export default function DocumentEditorPage() {
           const token = await getToken();
           const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
           if (!response.ok || !response.body) return;
-          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string } }>(response.body)) {
+          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string } }>(response.body)) {
             if (event.type === 'presence') setViewers(event.viewers);
             else void sync(event.by.id === user.id ? t('ed.anotherTab') : event.by.name).catch(() => undefined);
           }
@@ -268,6 +289,7 @@ export default function DocumentEditorPage() {
   }
   function removeBlock(id: string) { setBlocks((current) => current.length === 1 ? [createBlock()] : current.filter((block) => block.id !== id)); markChanged(); }
 
+  const others = useMemo(() => viewers.filter((viewer) => viewer.id !== user.id), [user.id, viewers]);
   const outline = useMemo(() => blocks.filter((block) => (block.type === 'HEADING_1' || block.type === 'HEADING_2') && block.text.trim()), [blocks]);
 
   async function saveVersion(event: FormEvent<HTMLFormElement>) {
@@ -326,7 +348,8 @@ export default function DocumentEditorPage() {
         <main className="document-studio__paper">
           <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}</p>
           <input className="document-studio__title" value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={200} aria-label={t('ed.titleLabel')} />
-          <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}`} key={block.id}>
+          <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}${others.some((viewer) => viewer.blockId === block.id) ? ' document-block--others' : ''}`} key={block.id} style={blockColour(others, block.id)} onFocus={() => announceFocus(block.id)} onBlur={() => announceFocus(null)}>
+            {others.filter((viewer) => viewer.blockId === block.id).length > 0 && <span className="document-block__presence" role="status">{t('ed.editingHere', { names: others.filter((viewer) => viewer.blockId === block.id).map((viewer) => viewer.name).join(', ') })}</span>}
             <div className="document-block__controls"><select aria-label={t('ed.blockTypeFor', { n: index + 1 })} value={block.type} onChange={(event) => changeBlock(block.id, { type: event.target.value as BlockType })}>{blockTypes.map((option) => <option value={option.type} key={option.type}>{t(option.label)}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label={t('ed.moveUp')}>↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label={t('ed.moveDown')}>↓</button><button type="button" onClick={() => removeBlock(block.id)} aria-label={t('ed.deleteBlock')}>×</button></div>
             {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label={t('ed.markTodo')} />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span><textarea id={`block-${block.id}`} value={block.text} onChange={(event) => changeBlock(block.id, { text: event.target.value })} placeholder={block.type === 'CODE' ? t('ed.phCode') : block.type === 'CALLOUT' ? t('ed.phCallout') : t('ed.phText')} aria-label={t('ed.blockLabel', { type: (() => { const found = blockTypes.find((option) => option.type === block.type); return found ? t(found.label) : t('ed.text'); })(), n: index + 1 })} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}
             <div className="document-block__actions">{block.type === 'TODO' && block.text.trim() && <button type="button" disabled={creatingTask === block.id} onClick={() => void createTaskFromBlock(block)}>{creatingTask === block.id ? t('ed.creating') : t('ed.createTask')}</button>}<button className="document-block__insert" type="button" onClick={() => insertBlock(block.id)}>{t('ed.addBelow')}</button></div>

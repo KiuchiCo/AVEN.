@@ -41,6 +41,41 @@ describe('live documents', { skip }, () => {
     zoe.close();
   });
 
+  test('each viewer\u2019s block is shared with the others, cleared on null, and dropped when they leave', async () => {
+    const zoe = await listen(t, 'zoe', `${path()}/stream`); const yan = await listen(t, 'yan', `${path()}/stream`);
+    const blockOf = (feed, name) => feed.events.filter((e) => e.type === 'presence').at(-1)?.viewers.find((v) => v.name === name)?.blockId;
+    await until(() => zoe.events.some((e) => e.type === 'presence' && e.viewers.length === 2));
+    assert.equal((await t.call('yan', 'POST', `${path()}/focus`, { blockId: 'block-1' })).status, 204);
+    await until(() => blockOf(zoe, 'yan') === 'block-1');
+    assert.equal(blockOf(zoe, 'zoe'), null, 'only the person who moved changes');
+    const count = zoe.events.length;
+    await t.call('yan', 'POST', `${path()}/focus`, { blockId: 'block-1' });
+    await new Promise((r) => setTimeout(r, 150)); assert.equal(zoe.events.length, count, 'saying the same thing twice sends nothing');
+    await t.call('yan', 'POST', `${path()}/focus`, { blockId: null });
+    await until(() => blockOf(zoe, 'yan') === null);
+    await t.call('yan', 'POST', `${path()}/focus`, { blockId: 'block-2' });
+    await until(() => blockOf(zoe, 'yan') === 'block-2');
+    yan.close();
+    await until(() => zoe.events.filter((e) => e.type === 'presence').at(-1).viewers.length === 1);
+    const again = await listen(t, 'yan', `${path()}/stream`);
+    await until(() => zoe.events.filter((e) => e.type === 'presence').at(-1).viewers.length === 2);
+    assert.equal(blockOf(zoe, 'yan'), null, 'a returning viewer does not inherit the old block');
+    again.close(); zoe.close();
+  });
+
+  test('focus can\u2019t be used to appear in a document you haven\u2019t opened, and bad block ids are refused', async () => {
+    const before = await listen(t, 'zoe', `${path()}/stream`);
+    await until(() => before.events.length > 0);
+    assert.equal((await t.call('yan', 'POST', `${path()}/focus`, { blockId: 'sneaky' })).status, 204, 'accepted but ignored: yan has nothing open');
+    await new Promise((r) => setTimeout(r, 150));
+    assert.deepEqual(before.events.at(-1).viewers.map((v) => v.name), ['zoe']);
+    assert.equal((await t.call('zoe', 'POST', `${path()}/focus`, { blockId: '<script>' })).status, 400);
+    assert.equal((await t.call('zoe', 'POST', `${path()}/focus`, { blockId: 5 })).status, 400);
+    assert.equal((await t.call('wes', 'POST', `${path()}/focus`, { blockId: 'x' })).status, 404, 'other workspaces learn nothing');
+    assert.equal((await t.call(null, 'POST', `${path()}/focus`, { blockId: 'x' })).status, 401);
+    before.close();
+  });
+
   test('the stream is for members of this workspace and this document only; guests can watch', async () => {
     assert.equal((await listen(t, 'wes', `${path()}/stream`)).status, 404);
     assert.equal((await listen(t, 'zoe', `${path(otherDoc)}/stream`)).status, 404);

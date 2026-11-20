@@ -1824,4 +1824,5 @@ export const fr: Dictionary = {
   'sync.f.startAt': "la date de début",
   'sync.f.dueAt': "l’échéance",
   'sync.f.assigneeId': "la personne assignée",
+  'ed.editingHere': "{names} en train de modifier",
 };

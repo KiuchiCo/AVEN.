@@ -2687,6 +2687,8 @@ body {
 .document-studio__title { width:100%; margin:0 0 28px; padding:0; border:0; outline:0; background:transparent; color:var(--h-211e1a); font-family:Georgia, 'Times New Roman', serif; font-size:clamp(32px, 5vw, 50px); letter-spacing:-.045em; }
 .document-studio__blocks { display:grid; gap:10px; }
 .document-block { position:relative; padding:8px 0; }
+.document-block--others { box-shadow:-3px 0 0 var(--presence, #A48766); padding-left:10px; margin-left:-13px; }
+.document-block__presence { position:absolute; top:-6px; right:0; padding:1px 9px; border-radius:999px; background:var(--presence, #A48766); color:#fff; font-size:11px; line-height:1.6; pointer-events:none; }
 .document-block__controls { display:flex; align-items:center; gap:4px; min-height:25px; opacity:0; transition:opacity 120ms ease; }
 .document-block:hover .document-block__controls, .document-block:focus-within .document-block__controls { opacity:1; }
 .document-block__controls > span { margin-right:auto; color:var(--h-988b7b); font-size:9px; text-transform:uppercase; letter-spacing:.08em; }

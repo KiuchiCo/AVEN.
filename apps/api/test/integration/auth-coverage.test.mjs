@@ -28,6 +28,7 @@ const guestAllowed = [
   'POST /api/v1/workspaces/:workspaceId/ai/conversations',
   'POST /api/v1/workspaces/:workspaceId/channels/:channelId/read',
   'POST /api/v1/workspaces/:workspaceId/members/leave',
+  'POST /api/v1/workspaces/:workspaceId/documents/:documentId/focus',
   'POST /api/v1/workspaces/:workspaceId/favourites',
   'DELETE /api/v1/workspaces/:workspaceId/favourites',
   'POST /api/v1/workspaces/:workspaceId/activity/:activityId/dismiss',
