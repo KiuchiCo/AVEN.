@@ -23,3 +23,13 @@ test('both health endpoints are exempt from rate limiting', () => {
   const guard = new RateLimitGuard(1, 1000, () => 0);
   for (const path of ['/api/v1/health', '/api/v1/health/ready']) for (let i = 0; i < 4; i += 1) assert.equal(guard.canActivate({ switchToHttp: () => ({ getRequest: () => ({ ip: '1.1.1.1', path, headers: {} }) }) }), true);
 });
+
+test('live document typing has its own, larger allowance and does not use up the ordinary one', () => {
+  const guard = new RateLimitGuard(3, 1000, () => 0, 10);
+  const call = (path) => guard.canActivate({ switchToHttp: () => ({ getRequest: () => ({ ip: '2.2.2.2', path, headers: {} }), getResponse: () => ({ setHeader() {} }) }) });
+  const live = '/api/v1/workspaces/w/documents/d/text/b/ops';
+  for (let i = 0; i < 10; i += 1) assert.equal(call(live), true);
+  assert.throws(() => call(live), /Too many requests/, 'the live allowance runs out too');
+  for (let i = 0; i < 3; i += 1) assert.equal(call('/api/v1/workspaces/w/tasks'), true, 'ordinary requests are unaffected');
+  assert.throws(() => call('/api/v1/workspaces/w/tasks'), /Too many requests/);
+});

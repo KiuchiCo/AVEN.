@@ -1,13 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, type OnModuleDestroy } from '@nestjs/common';
-import { SyncDocument, type Operation } from '@aven/collab';
+import { baseLength, SyncDocument, targetLength, type Operation } from '@aven/collab';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { DocumentEvents } from './document-events.js';
 import { textBlockIds, textOfBlock, withBlockTexts } from './text-blocks.js';
 
-type Session = { doc: SyncDocument; dirty: boolean; /** Edit sources that were retired (see `fence`); nothing more is accepted from them. */ retired: Set<string> };
-const maxRetired = 2000, maxParts = 1000, maxInsertedCharacters = 50_000, keepRevisions = 300, saveAfterMs = 800;
+type Session = { doc: SyncDocument; dirty: boolean; /** How much of the document's saved size is not this block's text, when the session opened. */ restSize: number; /** Edit sources that were retired (see `fence`); nothing more is accepted from them. */ retired: Set<string> };
+const maxDocumentCharacters = 100_000, maxRetired = 2000, maxParts = 1000, maxInsertedCharacters = 50_000, keepRevisions = 300, saveAfterMs = 800;
 const blockIdPattern = /^[\w-]{1,64}$/;
 
 /**
@@ -44,6 +44,9 @@ export class TextSessions implements OnModuleDestroy {
     const id = this.blockId(blockId);
     const session = await this.session(workspaceId, documentId, id);
     if (clientId && session.retired.has(clientId)) throw new ConflictException({ message: 'That editing session was closed; reload the text and continue.', resync: true });
+    // Typing must not make a document larger than a normal save would allow.
+    const growth = targetLength(operation) - baseLength(operation);
+    if (growth > 0 && session.restSize + session.doc.text.length + growth > maxDocumentCharacters) throw new BadRequestException('This document would be longer than the 100,000 characters a document can hold.');
     let result: { operation: Operation; revision: number };
     try { result = session.doc.receive(input.revision, operation); }
     catch (error) { throw new ConflictException({ message: error instanceof Error ? error.message : 'The edit could not be applied.', resync: true }); }
@@ -134,7 +137,7 @@ export class TextSessions implements OnModuleDestroy {
     this.sessions.set(documentId, open);
     const raced = open.get(blockId); // another request may have opened it while this one was reading
     if (raced) return raced;
-    const created = { doc: new SyncDocument(text), dirty: false, retired: new Set<string>() };
+    const created = { doc: new SyncDocument(text), dirty: false, restSize: Math.max(0, document.content.length - text.length), retired: new Set<string>() };
     open.set(blockId, created);
     return created;
   }

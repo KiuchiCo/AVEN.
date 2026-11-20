@@ -135,3 +135,22 @@ describe('live text sessions', { skip }, () => {
     assert.equal(stale.status, 409, 'a client that was editing before the restore is told to reload');
   });
 });
+
+describe('live text respects the document size limit', { skip }, () => {
+  let t; let W; let doc;
+  before(async () => {
+    t = await boot(); await t.user('big'); W = await t.workspace('big');
+    doc = (await t.call('big', 'POST', `/workspaces/${W.id}/documents`, { title: 'Long', content: content([{ id: 'x', type: 'PARAGRAPH', text: 'a'.repeat(99_900) }]) })).body;
+  });
+  after(async () => { await t?.close(); });
+
+  test('growth past the limit is refused, shrinking and growth within it are not', async () => {
+    const path = `/workspaces/${W.id}/documents/${doc.id}/text/x`;
+    const start = (await t.call('big', 'GET', path)).body; assert.equal(start.text.length, 99_900);
+    const tooBig = await t.call('big', 'POST', `${path}/ops`, { revision: 0, operation: [99_900, 'b'.repeat(500)] });
+    assert.equal(tooBig.status, 400); assert.match(tooBig.body.message, /100,000/);
+    assert.equal((await t.call('big', 'POST', `${path}/ops`, { revision: 0, operation: [99_900, 'b'.repeat(20)] })).status, 201, 'within the limit');
+    assert.equal((await t.call('big', 'POST', `${path}/ops`, { revision: 1, operation: [-5000, 99_920 - 5000] })).status, 201, 'deleting is always fine');
+    assert.equal((await t.call('big', 'GET', path)).body.text.length, 94_920);
+  });
+});
