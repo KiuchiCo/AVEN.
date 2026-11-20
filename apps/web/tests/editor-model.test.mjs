@@ -14,7 +14,7 @@ test('findSlash needs a slash at the start or after a space', () => {
 });
 
 test('filterSlash ranks names first and finds by keyword', () => {
-  assert.equal(filterSlash('', label).length, 38);
+  assert.equal(filterSlash('', label).length, 48);
   assert.equal(filterSlash('h1', label)[0].type, 'HEADING_1');
   assert.equal(filterSlash('toggle heading 2', label)[0].id, 'toggle-heading-2');
   assert.equal(filterSlash('donut', label)[0].id, 'chart-donut');
@@ -99,6 +99,18 @@ test('new block types: toggle headings, database views and media get the right f
   assert.deepEqual(markdownShortcut(b('a', ''), '#### '), { type: 'HEADING_4', text: '' });
   const enter = pressEnter([b('a', 'Details', 'TOGGLE', { level: 0, body: 'x' })], 'a', 7, 7, newId);
   assert.equal(enter.blocks[1].type, 'PARAGRAPH');
+});
+
+test('equation, mermaid and synced blocks behave as source and shared text', () => {
+  assert.equal(pressEnter([b('a', 'x^2', 'EQUATION')], 'a', 3, 3, newId), null);
+  assert.equal(pressEnter([b('a', 'graph TD', 'MERMAID')], 'a', 8, 8, newId, { mod: true }).blocks.length, 2);
+  const synced = applySlash([b('a', '/sync')], 'a', { start: 0, query: 'sync' }, 5, { type: 'SYNCED' }, newId);
+  assert.equal(synced.blocks[0].syncId, 'a');
+  const copy = duplicateBlock(synced.blocks, 'a', newId);
+  assert.equal(copy.blocks[1].syncId, 'a');
+  assert.equal(pressBackspaceAtStart([{ ...b('s', '', 'SYNCED'), syncId: 's' }], 's').blocks[0].syncId, undefined);
+  const tabs = applySlash([b('a', '/tabs')], 'a', { start: 0, query: 'tabs' }, 5, { type: 'TABS' }, newId);
+  assert.equal(tabs.blocks[0].tabs.length, 2);
 });
 
 test('toggleMark wraps, unwraps and handles an empty selection', () => {

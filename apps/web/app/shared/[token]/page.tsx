@@ -23,6 +23,8 @@ function Blocks({ blocks }: { blocks: Block[] }) {
     switch (block.type) {
       case 'HEADING_1': return <h2 key={index}><RichText text={block.text} /></h2>;
       case 'HEADING_2': return <h3 key={index}><RichText text={block.text} /></h3>;
+      case 'EQUATION': case 'MERMAID': return <pre key={index}><code>{block.text}</code></pre>;
+      case 'SYNCED': return <p key={index}><RichText text={block.text} /></p>;
       case 'HEADING_3': return <h4 key={index}><RichText text={block.text} /></h4>;
       case 'HEADING_4': return <h5 key={index}><RichText text={block.text} /></h5>;
       case 'TOGGLE': return <details key={index}><summary><RichText text={block.text} /></summary><p>{block.body}</p></details>;

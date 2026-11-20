@@ -6,8 +6,10 @@
 import { blockCatalog, type CatalogEntry } from './block-catalog.ts';
 
 export type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'HEADING_3' | 'HEADING_4' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'TOGGLE'
-  | 'DIVIDER' | 'TABLE' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'BOOKMARK' | 'PAGE_LINK' | 'DATABASE' | 'DATABASE_LINK' | 'TOC' | 'BREADCRUMB' | 'BUTTON';
-export type DatabaseView = 'TABLE' | 'BOARD' | 'GALLERY' | 'LIST' | 'BAR_V' | 'BAR_H' | 'DONUT' | 'NUMBER';
+  | 'DIVIDER' | 'TABLE' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'BOOKMARK' | 'PAGE_LINK' | 'DATABASE' | 'DATABASE_LINK' | 'TOC' | 'BREADCRUMB' | 'BUTTON'
+  | 'EQUATION' | 'MERMAID' | 'TABS' | 'SYNCED' | 'MEETING';
+export type DatabaseView = 'TABLE' | 'BOARD' | 'GALLERY' | 'LIST' | 'BAR_V' | 'BAR_H' | 'DONUT' | 'NUMBER' | 'CALENDAR' | 'TIMELINE' | 'FEED' | 'DASHBOARD' | 'LINE';
+export type TabPane = { title: string; body: string };
 /** `text` is the block's main text (a caption for media, the title of a toggle, the label of a button). Other fields belong to specific block types. */
 export type Block = {
   id: string; type: BlockType; text: string; checked?: boolean;
@@ -17,15 +19,22 @@ export type Block = {
   docId?: string;                               // link to another document
   databaseId?: string; view?: DatabaseView;     // database views and charts
   create?: boolean; linked?: boolean;           // set on a fresh block that still needs its target created or chosen
+  tabs?: TabPane[];                             // tabs block
+  syncId?: string;                              // synced block: every block with the same id shows the same text
+  date?: string; attendees?: string; actions?: string; // meeting notes (text = title, body = notes, fileId = recording)
 };
 export type Focus = { id: string; caret: number };
 export type EditResult = { blocks: Block[]; focus: Focus };
 
 export const blockTypeList: BlockType[] = [...new Set(blockCatalog.map((entry) => entry.type))];
-const textual = new Set<BlockType>(['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'TOGGLE']);
+const textual = new Set<BlockType>(['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'TOGGLE', 'EQUATION', 'MERMAID', 'SYNCED']);
 const listLike = new Set<BlockType>(['BULLET', 'NUMBERED', 'TODO']);
 export const isTextBlock = (type: BlockType) => textual.has(type);
-export const blankBlock = (id: string, type: BlockType = 'PARAGRAPH', patch: Partial<Block> = {}): Block => ({ id, type, text: type === 'BUTTON' ? 'Create task' : '', checked: false, ...(type === 'TABLE' ? { rows: [['', ''], ['', '']] } : {}), ...(type === 'TOGGLE' ? { level: 0, body: '' } : {}), ...(type === 'DATABASE' ? { view: 'TABLE' as DatabaseView } : {}), ...patch });
+/** Blocks whose text is edited as a shared live session. Synced copies and non-text blocks are saved with the whole document instead. */
+export const isLiveText = (type: BlockType) => textual.has(type) && type !== 'SYNCED';
+/** Blocks where Enter adds a line inside the block (source text) instead of starting a new block. */
+export const keepsNewlines = (type: BlockType) => type === 'CODE' || type === 'CALLOUT' || type === 'EQUATION' || type === 'MERMAID' || type === 'SYNCED';
+export const blankBlock = (id: string, type: BlockType = 'PARAGRAPH', patch: Partial<Block> = {}): Block => ({ id, type, text: type === 'BUTTON' ? 'Create task' : '', checked: false, ...(type === 'TABLE' ? { rows: [['', ''], ['', '']] } : {}), ...(type === 'TOGGLE' ? { level: 0, body: '' } : {}), ...(type === 'DATABASE' ? { view: 'TABLE' as DatabaseView } : {}), ...(type === 'TABS' ? { tabs: [{ title: 'Tab 1', body: '' }, { title: 'Tab 2', body: '' }] } : {}), ...(type === 'SYNCED' ? { syncId: patch.syncId ?? id } : {}), ...(type === 'MEETING' ? { date: new Date().toISOString().slice(0, 10), attendees: '', actions: '', body: '' } : {}), ...patch });
 
 // ---- Slash menu ------------------------------------------------------------------------------------------------------
 
@@ -98,8 +107,8 @@ export function pressEnter(blocks: Block[], id: string, start: number, end: numb
   const block = blocks[at];
   const text = block.text;
   if (!isTextBlock(block.type)) return null;
-  if (options.shift && block.type !== 'CODE') return null; // Shift+Enter is a line break inside the block
-  if ((block.type === 'CODE' || block.type === 'CALLOUT') && !options.mod) return null; // a newline inside the block, handled by the textarea
+  if (options.shift && !keepsNewlines(block.type)) return null; // Shift+Enter is a line break inside the block
+  if (keepsNewlines(block.type) && !options.mod) return null; // a newline inside the block, handled by the textarea
   if (isDividerShortcut(text) && block.type === 'PARAGRAPH') {
     const divider: Block = { ...blankBlock(block.id, 'DIVIDER') };
     const next = blankBlock(newId());
@@ -125,7 +134,7 @@ export function pressBackspaceAtStart(blocks: Block[], id: string): EditResult |
   const block = blocks[at];
   if (!isTextBlock(block.type)) return null;
   if (block.type !== 'PARAGRAPH') {
-    return { blocks: blocks.map((item) => (item.id === id ? { ...item, type: 'PARAGRAPH', checked: false } : item)), focus: { id, caret: 0 } };
+    return { blocks: blocks.map((item) => (item.id === id ? { ...item, type: 'PARAGRAPH', checked: false, syncId: undefined } : item)), focus: { id, caret: 0 } };
   }
   if (at === 0) return null;
   const previous = blocks[at - 1];
@@ -176,7 +185,7 @@ export function applySlash(blocks: Block[], id: string, slash: { start: number; 
   const rest = text.replace(/\s+$/, '');
   const { type, patch = {} } = entry;
   if (isTextBlock(type) && type !== 'TOGGLE') {
-    const changed: Block = { ...block, ...patch, type, text, checked: type === 'TODO' ? Boolean(block.checked) : false };
+    const changed: Block = { ...block, ...patch, type, text, checked: type === 'TODO' ? Boolean(block.checked) : false, syncId: type === 'SYNCED' ? block.syncId ?? block.id : undefined };
     return { blocks: [...blocks.slice(0, at), changed, ...blocks.slice(at + 1)], focus: { id, caret: slash.start } };
   }
   if (type === 'TOGGLE') {

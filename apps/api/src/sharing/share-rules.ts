@@ -3,7 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 export const shareLimits = { activePerDocument: 10, expiryDays: [7, 30, 90] as const } as const;
 export type PublicBlock = { type: string; text: string; checked?: boolean; rows?: string[][]; image?: string | null; body?: string; level?: number };
 
-const blockTypes = new Set(['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'TOGGLE', 'DIVIDER', 'TABLE', 'IMAGE']);
+const blockTypes = new Set(['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'TOGGLE', 'EQUATION', 'MERMAID', 'SYNCED', 'DIVIDER', 'TABLE', 'IMAGE']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Raw = { type?: unknown; text?: unknown; checked?: unknown; rows?: unknown; fileId?: unknown; body?: unknown; level?: unknown };
 

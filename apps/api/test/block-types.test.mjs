@@ -17,6 +17,6 @@ test('a shared document includes small headings and toggles, and drops blocks th
 
 test('toggle content is searchable, and workspace-only blocks are never live text sessions', () => {
   assert.equal(documentPlainText(doc([{ type: 'TOGGLE', text: 'Checklist', body: 'buy milk' }])), 'Checklist buy milk');
-  for (const type of ['VIDEO', 'AUDIO', 'FILE', 'BOOKMARK', 'PAGE_LINK', 'DATABASE', 'DATABASE_LINK', 'TOC', 'BREADCRUMB', 'BUTTON']) assert.equal(isTextBlock({ id: 'x', type, text: 'caption' }), false, type);
-  for (const type of ['PARAGRAPH', 'HEADING_3', 'HEADING_4', 'TOGGLE']) assert.equal(isTextBlock({ id: 'x', type, text: 'hi' }), true, type);
+  for (const type of ['VIDEO', 'AUDIO', 'FILE', 'BOOKMARK', 'PAGE_LINK', 'DATABASE', 'DATABASE_LINK', 'TOC', 'BREADCRUMB', 'BUTTON', 'TABS', 'MEETING', 'SYNCED']) assert.equal(isTextBlock({ id: 'x', type, text: 'caption' }), false, type);
+  for (const type of ['PARAGRAPH', 'HEADING_3', 'HEADING_4', 'TOGGLE', 'EQUATION', 'MERMAID']) assert.equal(isTextBlock({ id: 'x', type, text: 'hi' }), true, type);
 });
