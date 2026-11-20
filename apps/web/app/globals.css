@@ -4190,3 +4190,37 @@ body {
 .share-panel__list li div { display: grid; gap: 1px; }
 .share-panel__list small { color: var(--aven-muted); font-size: 11px; }
 .share-panel__list li.is-off { opacity: .6; }
+
+/* Phone width: the top bar keeps room for search, notifications and Create by dropping back/forward and shortening the page title. */
+@media (max-width: 640px) {
+  .workspace-history { display: none; }
+  .workspace-topbar { gap: 10px; }
+  .workspace-topbar__leading { min-width: 0; flex: 1 1 auto; }
+  .workspace-breadcrumb { min-width: 0; }
+  .workspace-breadcrumb strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .workspace-topbar__actions { flex: 0 0 auto; }
+}
+
+/* A page made of one grid column must be allowed to be narrower than its widest text, or long words stretch the whole page past the screen. */
+.workspace-settings-page { grid-template-columns: minmax(0, 1fr); }
+.workspace-settings-page > * { min-width: 0; }
+@media (max-width: 640px) { .workspace-settings-page { padding: 24px 0; } }
+
+/* Cards, form rows and menus never grow past the screen; long labels wrap and long menu entries are cut short. */
+.workspace-settings-card { grid-template-columns: minmax(0, 1fr); }
+.workspace-settings-card > * { min-width: 0; }
+select { max-width: 100%; }
+@media (max-width: 640px) {
+  .whiteboard-new { flex-wrap: wrap; }
+  .whiteboard-new > * { min-width: 0; max-width: 100%; }
+}
+
+.workspace-settings-toggles { grid-template-columns: minmax(0, 1fr); }
+.workspace-settings-card p, .workspace-settings-card h2 { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .database-toolbar { flex-wrap: wrap; }
+  .database-toolbar > * { min-width: 0; max-width: 100%; }
+}
+
+/* Visually hidden text inside a scrolling table is positioned absolutely; the scroller must contain it or it widens the whole page. */
+.database-table-scroll { position: relative; }

@@ -243,3 +243,13 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 .workspace-settings-card--danger { border-color: #b4483a; }
 .workspace-settings-danger { background: #b4483a; border-color: #b4483a; color: #fff; }
 .workspace-settings-danger:disabled { opacity: .5; }
+
+/* The main column of Home may be narrower than its widest content (otherwise the tiles stretch it past a phone screen). */
+.home__main { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.home__main > * { min-width: 0; }
+
+/* Section headings with a link beside them wrap instead of pushing the page wider than the screen. */
+.home section > header { flex-wrap: wrap; gap: 6px 14px; }
+
+/* On a phone the back and forward buttons make way for the page title (the browser's own gestures cover them). */
+@media (max-width: 640px) { .workspace-topbar .workspace-history { display: none; } }
