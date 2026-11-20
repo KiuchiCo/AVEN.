@@ -752,3 +752,12 @@ button:hover > .block-icon, button.is-active > .block-icon, button[aria-selected
 .document-studio__blocks { grid-template-columns: minmax(0, 1fr); } .document-block { min-width: 0; }
 .document-pagelink__pick > *, .document-database__bar > select { min-width: 0; max-width: 100%; } .document-pagelink__pick select { flex: 1 1 180px; text-overflow: ellipsis; } .document-database__bar select { flex: 0 1 auto; text-overflow: ellipsis; }
 .document-media, .document-bookmark, .document-pagelink, .document-database, .document-button { grid-template-columns: minmax(0, 1fr); }
+
+/* Project hub: the same pill tabs, card radius and control heights as every other page. */
+.project-hub__tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; border: 0; background: transparent; }
+.project-hub__tabs :is(button, a) { display: inline-flex; align-items: center; min-height: var(--ds-control-h-sm); padding: 0 16px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--m-ink); font: 600 var(--ds-fs-small) var(--aven-interface-font); text-decoration: none; cursor: pointer; }
+.project-hub__tabs :is(button, a):hover { background: var(--m-chip); }
+.project-hub__tabs :is(button, a)[aria-selected='true'], .project-hub__tabs :is(button, a)[aria-current='page'], .project-hub__tabs :is(button, a).is-active { border-color: rgb(164 135 102 / 45%); background: var(--m-active); }
+.project-hub__hero, .project-hub__panel, .project-hub__full-panel, .project-hub__stats > * { border-radius: var(--ds-radius-xl); }
+.project-hub__hero :is(button, a) { min-height: var(--ds-control-h-sm); border-radius: var(--ds-radius-md); }
+.project-hub__stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: var(--ds-gap); }
