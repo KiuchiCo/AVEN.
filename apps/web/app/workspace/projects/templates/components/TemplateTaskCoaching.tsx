@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, type SyntheticEvent } from 'react';
+import { useT } from '../../../../i18n';
 import type { TemplateTaskCoaching as Coaching } from '../presets/task-coaching/types';
 import { TaskWorksheet } from './TaskWorksheet';
 
 export function TemplateTaskCoaching({ presetId, taskIndex }: { presetId: string; taskIndex: number }) {
+  const t = useT();
   const [coaching, setCoaching] = useState<Coaching | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -18,8 +20,8 @@ export function TemplateTaskCoaching({ presetId, taskIndex }: { presetId: string
 
   return (
     <details className="project-template-task-coaching" onToggle={loadChecklist}>
-      <summary>Task execution checklist <span>8 reviewable steps</span></summary>
-      {loading && <p role="status">Loading checklist…</p>}
+      <summary>{t('tpl.co.summary')} <span>{t('tpl.co.sub')}</span></summary>
+      {loading && <p role="status">{t('tpl.co.loading')}</p>}
       {coaching && <><ol>{coaching.steps.map((step) => <li key={step.title}><strong>{step.title}</strong><p>{step.guidance}</p></li>)}</ol><TaskWorksheet presetId={presetId} taskIndex={taskIndex} prompts={coaching.worksheet} readinessRubric={coaching.readinessRubric} /></>}
     </details>
   );

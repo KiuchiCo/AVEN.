@@ -1,19 +1,22 @@
 'use client';
 
 import { useState } from 'react';
+import { useT } from '../../../../i18n';
 import type { TemplateTaskReadinessDimension, TemplateTaskWorksheet as WorksheetPrompts } from '../presets/task-coaching/types';
 import { TaskReadinessReview } from './TaskReadinessReview';
 import { useBrowserStorageValue, writeBrowserStorageValue } from '../browser-storage';
 
-const fields: { key: keyof WorksheetPrompts; title: string; placeholder: string }[] = [
-  { key: 'outcome', title: 'Outcome', placeholder: 'Describe the result and how the team will recognize it.' },
-  { key: 'owner', title: 'Owner and decision rights', placeholder: 'Name the owner, reviewer, approver, and backup.' },
-  { key: 'evidence', title: 'Evidence and source', placeholder: 'Link the source and note collection date and limitations.' },
-  { key: 'decisions', title: 'Decisions to make', placeholder: 'List the decision, options, criteria, and decision owner.' },
-  { key: 'dependencies', title: 'Dependencies and capacity', placeholder: 'Record dependency, owner, lead time, and escalation date.' },
-  { key: 'risks', title: 'Risks and response', placeholder: 'Describe impact, warning signal, response owner, and recovery.' },
-  { key: 'review', title: 'Review and acceptance', placeholder: 'Set observable acceptance criteria and required evidence.' },
-  { key: 'handoff', title: 'Handoff and follow-up', placeholder: 'Name recipient, destination, open questions, and review date.' },
+import type { Key } from '../../../../i18n/en';
+
+const fields: { key: keyof WorksheetPrompts; title: Key; placeholder: Key }[] = [
+  { key: 'outcome', title: 'tpl.ws.outcome', placeholder: 'tpl.ws.outcomePh' },
+  { key: 'owner', title: 'tpl.ws.owner', placeholder: 'tpl.ws.ownerPh' },
+  { key: 'evidence', title: 'tpl.ws.evidence', placeholder: 'tpl.ws.evidencePh' },
+  { key: 'decisions', title: 'tpl.ws.decisions', placeholder: 'tpl.ws.decisionsPh' },
+  { key: 'dependencies', title: 'tpl.ws.dependencies', placeholder: 'tpl.ws.dependenciesPh' },
+  { key: 'risks', title: 'tpl.ws.risks', placeholder: 'tpl.ws.risksPh' },
+  { key: 'review', title: 'tpl.ws.review', placeholder: 'tpl.ws.reviewPh' },
+  { key: 'handoff', title: 'tpl.ws.handoff', placeholder: 'tpl.ws.handoffPh' },
 ];
 
 type WorksheetValues = Record<keyof WorksheetPrompts, string>;
@@ -23,6 +26,7 @@ function storageKey(presetId: string, taskIndex: number) {
 }
 
 export function TaskWorksheet({ presetId, taskIndex, prompts, readinessRubric }: { presetId: string; taskIndex: number; prompts: WorksheetPrompts; readinessRubric: TemplateTaskReadinessDimension[] }) {
+  const t = useT();
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState('');
   const key = storageKey(presetId, taskIndex);
@@ -36,29 +40,29 @@ export function TaskWorksheet({ presetId, taskIndex, prompts, readinessRubric }:
     const success = writeBrowserStorageValue(key, JSON.stringify(next));
     if (success) {
       setSaved(true);
-      setMessage('Draft saved in this browser.');
+      setMessage(t('tpl.ws.saved'));
     } else {
       setSaved(false);
-      setMessage('Could not save locally. Copy your notes before closing this page.');
+      setMessage(t('tpl.ws.saveFailed'));
     }
   }
 
   function clearWorksheet() {
     if (writeBrowserStorageValue(key, null)) {
       setSaved(false);
-      setMessage('Worksheet cleared.');
+      setMessage(t('tpl.ws.cleared'));
     } else {
-      setMessage('The worksheet is blank, but this browser could not clear its saved copy.');
+      setMessage(t('tpl.ws.clearFailed'));
     }
   }
 
   async function copyWorksheet() {
-    const content = fields.map(({ key: field, title }) => `${title}\n${values[field] || 'Not recorded'}`).join('\n\n');
+    const content = fields.map(({ key: field, title }) => `${t(title)}\n${values[field] || t('tpl.ws.notRecorded')}`).join('\n\n');
     try {
       await navigator.clipboard.writeText(content);
-      setMessage('Worksheet copied to the clipboard.');
+      setMessage(t('tpl.ws.copied'));
     } catch {
-      setMessage('Clipboard access is unavailable. Select and copy your notes manually.');
+      setMessage(t('tpl.ws.copyFailed'));
     }
   }
 
@@ -66,23 +70,23 @@ export function TaskWorksheet({ presetId, taskIndex, prompts, readinessRubric }:
 
   return (
     <details className="project-template-task-worksheet">
-      <summary>Prepare a planning worksheet <span>{completed} of {fields.length} sections filled</span></summary>
+      <summary>{t('tpl.ws.summary')} <span>{t('tpl.ws.filled', { n: completed, total: fields.length })}</span></summary>
       <div className="project-template-task-worksheet__toolbar">
-        <p>Draft notes stay in this browser and are not added to your project until you copy them across.</p>
-        <div><button type="button" onClick={copyWorksheet}>Copy worksheet</button><button type="button" onClick={clearWorksheet}>Clear</button></div>
+        <p>{t('tpl.ws.hint')}</p>
+        <div><button type="button" onClick={copyWorksheet}>{t('tpl.ws.copy')}</button><button type="button" onClick={clearWorksheet}>{t('tpl.ws.clear')}</button></div>
       </div>
       <div className="project-template-task-worksheet__fields">
         {fields.map(({ key: field, title, placeholder }) => (
           <label key={field}>
-            <span>{title}</span>
+            <span>{t(title)}</span>
             <small>{prompts[field]}</small>
-            <textarea value={values[field]} onChange={(event) => updateField(field, event.target.value)} maxLength={2000} placeholder={placeholder} rows={3} />
+            <textarea value={values[field]} onChange={(event) => updateField(field, event.target.value)} maxLength={2000} placeholder={t(placeholder)} rows={3} />
             <em>{values[field].length} / 2,000</em>
           </label>
         ))}
       </div>
       <TaskReadinessReview presetId={presetId} taskIndex={taskIndex} dimensions={readinessRubric} />
-      <p className="project-template-task-worksheet__status" role="status" aria-live="polite">{message || (saved ? 'Draft saved in this browser.' : 'Changes save locally as you type.')}</p>
+      <p className="project-template-task-worksheet__status" role="status" aria-live="polite">{message || (saved ? t('tpl.ws.saved') : t('tpl.ws.autosave'))}</p>
     </details>
   );
 }

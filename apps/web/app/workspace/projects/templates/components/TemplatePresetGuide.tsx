@@ -1,12 +1,17 @@
+'use client';
+
+import { useT } from '../../../../i18n';
+import type { Key } from '../../../../i18n/en';
 import type { TemplatePresetGuide as Guide } from '../presets/types';
 
-const sections: { key: keyof Guide; title: string; intro: string }[] = [
-  { key: 'preparation', title: 'Before you begin', intro: 'Make sure people, access, and decisions are ready.' },
-  { key: 'qualityChecks', title: 'Quality checks', intro: 'Review evidence and the result against the agreed bar.' },
-  { key: 'riskSignals', title: 'Watch for these risks', intro: 'Raise these signals while there is still room to respond.' },
-  { key: 'handoff', title: 'Handoff checklist', intro: 'Leave clear ownership and a route for follow-up.' },
+const sections: { key: keyof Guide; title: Key; intro: Key }[] = [
+  { key: 'preparation', title: 'tpl.g.preparation', intro: 'tpl.g.preparationIntro' },
+  { key: 'qualityChecks', title: 'tpl.g.quality', intro: 'tpl.g.qualityIntro' },
+  { key: 'riskSignals', title: 'tpl.g.risks', intro: 'tpl.g.risksIntro' },
+  { key: 'handoff', title: 'tpl.g.handoff', intro: 'tpl.g.handoffIntro' },
 ];
 
 export function TemplatePresetGuide({ guide }: { guide: Guide }) {
-  return <details className="project-template-preset-guide"><summary>Open the full planning guide <span>Preparation · quality · risks · handoff</span></summary>{sections.map(({ key, title, intro }) => <section key={key} aria-labelledby={`preset-guide-${key}`}><div><h5 id={`preset-guide-${key}`}>{title}</h5><p>{intro}</p></div><ul>{guide[key].map((item, index) => <li key={`${key}-${index}`}>{item}</li>)}</ul></section>)}</details>;
+  const t = useT();
+  return <details className="project-template-preset-guide"><summary>{t('tpl.g.open')} <span>{t('tpl.g.openSub')}</span></summary>{sections.map(({ key, title, intro }) => <section key={key} aria-labelledby={`preset-guide-${key}`}><div><h5 id={`preset-guide-${key}`}>{t(title)}</h5><p>{t(intro)}</p></div><ul>{guide[key].map((item, index) => <li key={`${key}-${index}`}>{item}</li>)}</ul></section>)}</details>;
 }

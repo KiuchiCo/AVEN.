@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, type FormEvent } from 'react';
+import { useT } from '../../../../i18n';
 import { TemplateEditor } from './editor/TemplateEditor';
 import { summarizeProjectTemplate } from '../summary';
 import { templatePresets, findTemplatePreset } from '../presets';
@@ -15,6 +16,7 @@ function copyPreset(preset: TemplatePreset) {
 }
 
 export function TemplateComposer({ busy, onCreate, onClose }: Props) {
+  const t = useT();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [tasks, setTasks] = useState<TemplateTask[]>([]);
@@ -29,19 +31,19 @@ export function TemplateComposer({ busy, onCreate, onClose }: Props) {
   function loadPreset() {
     if (!selectedPreset) return;
     const draft = copyPreset(selectedPreset);
-    setName(draft.name); setDescription(draft.description); setTasks(draft.tasks); setMilestones(draft.milestones); setError(''); setSuccess(`${selectedPreset.name} starter loaded. You can change every field before saving.`);
+    setName(draft.name); setDescription(draft.description); setTasks(draft.tasks); setMilestones(draft.milestones); setError(''); setSuccess(t('tpl.cp.loaded', { name: selectedPreset.name }));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(''); setSuccess('');
-    if (tasks.some((task) => !task.title.trim())) { setError('Give every starter task a title before saving.'); return; }
-    if (milestones.some((milestone) => !milestone.title.trim())) { setError('Give every milestone a title before saving.'); return; }
+    if (tasks.some((task) => !task.title.trim())) { setError(t('tpl.cp.taskTitle')); return; }
+    if (milestones.some((milestone) => !milestone.title.trim())) { setError(t('tpl.cp.milestoneTitle')); return; }
     try {
       await onCreate({ name: name.trim(), description: description.trim(), taskTemplates: tasks, milestoneTemplates: milestones });
-      setSuccess(`“${name.trim()}” was added to your template library.`);
+      setSuccess(t('tpl.cp.added', { name: name.trim() }));
       onClose();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create this template.'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('tpl.cp.failed')); }
   }
 
-  return <section className="project-template-composer" aria-labelledby="template-composer-title"><header><div><p className="workspace-eyebrow">START WITH A BLANK TEMPLATE OR A CHECKLIST</p><h3 id="template-composer-title">Create a reusable project plan</h3></div><button type="button" onClick={onClose}>Close</button></header><p className="project-template-composer__intro">Create your own repeatable workflow. Tasks, prerequisite links, labels, priorities, relative due dates, and milestones will be saved together.</p><TemplatePresetPicker presets={templatePresets} selectedId={presetId} onSelect={setPresetId} onLoad={loadPreset} /><div className="project-template-composer__stats" aria-live="polite"><span>{draftStats.tasks} tasks</span><span>{draftStats.dependencies} prerequisite links</span><span>{draftStats.scheduledTasks + draftStats.scheduledMilestones} scheduled items</span><span>{draftStats.milestones} milestones</span></div>{error && <p role="alert" className="productivity-error">{error}</p>}{success && <p role="status" className="productivity-success">{success}</p>}<TemplateEditor name={name} description={description} tasks={tasks} milestones={milestones} busy={busy} onName={setName} onDescription={setDescription} onTasks={setTasks} onMilestones={setMilestones} onSubmit={(event) => void submit(event)} onCancel={onClose} title="New project template" eyebrow="CREATE A REUSABLE WORKFLOW" submitLabel="Create template" /></section>;
+  return <section className="project-template-composer" aria-labelledby="template-composer-title"><header><div><p className="workspace-eyebrow">{t('tpl.cp.eyebrow')}</p><h3 id="template-composer-title">{t('tpl.cp.title')}</h3></div><button type="button" onClick={onClose}>{t('tpl.close')}</button></header><p className="project-template-composer__intro">{t('tpl.cp.intro')}</p><TemplatePresetPicker presets={templatePresets} selectedId={presetId} onSelect={setPresetId} onLoad={loadPreset} /><div className="project-template-composer__stats" aria-live="polite"><span>{t('tpl.cp.statTasks', { n: draftStats.tasks })}</span><span>{t('tpl.cp.statLinks', { n: draftStats.dependencies })}</span><span>{t('tpl.cp.statScheduled', { n: draftStats.scheduledTasks + draftStats.scheduledMilestones })}</span><span>{t('tpl.cp.statMilestones', { n: draftStats.milestones })}</span></div>{error && <p role="alert" className="productivity-error">{error}</p>}{success && <p role="status" className="productivity-success">{success}</p>}<TemplateEditor name={name} description={description} tasks={tasks} milestones={milestones} busy={busy} onName={setName} onDescription={setDescription} onTasks={setTasks} onMilestones={setMilestones} onSubmit={(event) => void submit(event)} onCancel={onClose} title={t('tpl.cp.newTitle')} eyebrow={t('tpl.cp.newEyebrow')} submitLabel={t('tpl.cp.create')} /></section>;
 }
