@@ -2242,7 +2242,7 @@ export const fr: Dictionary = {
   'bl.tabTitle': "Titre de l’onglet",
   'bl.removeTab': "Supprimer l’onglet",
   'bl.tabBody': "Contenu de cet onglet…",
-  'bl.synced': "Synchronisé · {n} copies. Les changements apparaissent partout.",
+  'bl.synced': "Synchronisé entre documents · {n} dans celui-ci. Les modifications apparaissent partout.",
   'bl.unsync': "Rendre indépendant",
   'bl.syncedPh': "Texte partagé par toutes les copies…",
   'bl.meetingTitle': "Titre de la réunion",
@@ -2257,4 +2257,8 @@ export const fr: Dictionary = {
   'bl.actionsToTasks': "Créer {n} tâches",
   'bl.meetingRecording': "Enregistrement de la réunion",
   'ed.tasksAdded': "{n} tâches ajoutées à Mes tâches.",
+  'bl.copySync': "Copier le code de synchro",
+  'bl.syncCopied': "Code copié. Collez-le dans un bloc synchronisé d’un autre document.",
+  'bl.syncCopyFailed': "La copie a été bloquée par le navigateur.",
+  'bl.linkSync': "Collez un code pour lier",
 };

@@ -195,6 +195,7 @@ model Workspace {
   documentShares      DocumentShare[]
   calendarConnections CalendarConnection[]
   billingInvoices     BillingInvoice[]
+  syncedBlocks        SyncedBlock[]
 
   @@index([createdById])
   @@map("workspaces")
@@ -1234,4 +1235,18 @@ model SearchEmbedding {
   @@unique([entityType, entityId, chunkIndex])
   @@index([workspaceId, entityType])
   @@map("search_embeddings")
+}
+
+/// The shared text of a synced block. Every document block with this id shows and edits the same text.
+model SyncedBlock {
+  id          String    @id @db.Uuid
+  workspaceId String    @db.Uuid
+  text        String    @default("") @db.Text
+  updatedById String?   @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("synced_blocks")
 }

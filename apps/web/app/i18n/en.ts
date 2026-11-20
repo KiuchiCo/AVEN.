@@ -2241,7 +2241,7 @@ export const en = {
   'bl.tabTitle': "Tab title",
   'bl.removeTab': "Remove tab",
   'bl.tabBody': "Content of this tab…",
-  'bl.synced': "Synced · {n} copies. Changes appear in every copy.",
+  'bl.synced': "Synced across documents · {n} in this one. Edits appear everywhere.",
   'bl.unsync': "Make independent",
   'bl.syncedPh': "Text shared by every copy…",
   'bl.meetingTitle': "Meeting title",
@@ -2256,6 +2256,10 @@ export const en = {
   'bl.actionsToTasks': "Create {n} tasks",
   'bl.meetingRecording': "Meeting recording",
   'ed.tasksAdded': "{n} tasks added to My Tasks.",
+  'bl.copySync': "Copy sync code",
+  'bl.syncCopied': "Sync code copied. Paste it into a synced block in another document.",
+  'bl.syncCopyFailed': "Copy was blocked by the browser.",
+  'bl.linkSync': "Paste a sync code to link",
 } as const;
 
 export type Key = keyof typeof en;

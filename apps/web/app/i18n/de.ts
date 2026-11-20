@@ -2242,7 +2242,7 @@ export const de: Dictionary = {
   'bl.tabTitle': "Tab-Titel",
   'bl.removeTab': "Tab entfernen",
   'bl.tabBody': "Inhalt dieses Tabs …",
-  'bl.synced': "Synchronisiert · {n} Kopien. Änderungen erscheinen überall.",
+  'bl.synced': "Dokumentübergreifend synchronisiert · {n} in diesem. Änderungen erscheinen überall.",
   'bl.unsync': "Unabhängig machen",
   'bl.syncedPh': "Text, den alle Kopien teilen …",
   'bl.meetingTitle': "Titel der Besprechung",
@@ -2257,4 +2257,8 @@ export const de: Dictionary = {
   'bl.actionsToTasks': "{n} Aufgaben erstellen",
   'bl.meetingRecording': "Aufnahme der Besprechung",
   'ed.tasksAdded': "{n} Aufgaben zu Meine Aufgaben hinzugefügt.",
+  'bl.copySync': "Sync-Code kopieren",
+  'bl.syncCopied': "Sync-Code kopiert. Füge ihn in einen synchronisierten Block in einem anderen Dokument ein.",
+  'bl.syncCopyFailed': "Das Kopieren wurde vom Browser blockiert.",
+  'bl.linkSync': "Sync-Code zum Verknüpfen einfügen",
 };
