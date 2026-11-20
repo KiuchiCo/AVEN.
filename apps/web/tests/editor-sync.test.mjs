@@ -4,7 +4,7 @@ import { getSchema } from '@tiptap/core';
 import { EditorState, TextSelection } from '@tiptap/pm/state';
 import { baseExtensions } from '../app/workspace/documents/[documentId]/editor-extensions.ts';
 import { blocksToDoc } from '../app/workspace/documents/[documentId]/editor-convert.ts';
-import { locateBlocks, readDoc, reconcile, sameBlocks, selectBlock, selectionInBlock } from '../app/workspace/documents/[documentId]/editor-sync.ts';
+import { findMatches, locateBlocks, readDoc, reconcile, sameBlocks, selectBlock, selectionInBlock } from '../app/workspace/documents/[documentId]/editor-sync.ts';
 import { normalizeBlock } from '../app/workspace/documents/[documentId]/editor-model.ts';
 
 const schema = getSchema(baseExtensions);
@@ -58,4 +58,21 @@ test('an empty target still leaves one block to type into, and selectBlock lands
   assert.equal(selectionInBlock(state).start, 3);
   state = state.apply(selectBlock(state.tr, 't', 0));
   assert.equal(selectionInBlock(state).inline, false);
+});
+
+test('findMatches finds every occurrence in the body, ignores case and the title, and never matches across blocks', () => {
+  const state = stateOf('Cat title', [b('a', 'The cat sat. CAT again'), b('c', 'ca'), b('d', 't')]);
+  const hits = findMatches(state.doc, 'cat');
+  assert.equal(hits.length, 2);
+  assert.deepEqual(hits.map((hit) => state.doc.textBetween(hit.from, hit.to)), ['cat', 'CAT']);
+  assert.equal(findMatches(state.doc, '').length, 0);
+});
+
+test('readDoc hands back the same block object for a block that did not change', () => {
+  let state = stateOf('T', [b('a', 'one'), b('c', 'two')]);
+  const first = readDoc(state.doc).blocks;
+  state = apply(state, [b('a', 'one'), b('c', 'two!')]).state;
+  const second = readDoc(state.doc).blocks;
+  assert.equal(second[0], first[0]);
+  assert.notEqual(second[1], first[1]);
 });

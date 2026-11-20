@@ -835,3 +835,49 @@ button:hover > .block-icon, button.is-active > .block-icon, button[aria-selected
 @media (max-width: 1000px) { .aven-handle { display: none; } }
 .document-studio__paper { overflow: visible; }
 .aven-doc:focus, .aven-doc:focus-visible { outline: none !important; box-shadow: none !important; }
+/* Only list items, to-dos and callouts have something in the gutter; everything else starts at the text edge, aligned with the title. */
+.aven-block > .aven-gutter { display: none; }
+.aven-bullet > .aven-gutter, .aven-numbered > .aven-gutter, .aven-todo > .aven-gutter, .aven-callout > .aven-gutter { display: inline-block; }
+.aven-doc { max-width: 720px; }
+.aven-paragraph { margin: 0; } .aven-block + .aven-block { margin-top: 0; }
+.aven-heading_1:not(:first-of-type) { margin-top: 22px; }
+@media (prefers-reduced-motion: reduce) { .aven-doc *, .aven-popover * { transition: none !important; animation: none !important; } }
+.aven-find-bar { position: sticky; top: 8px; z-index: 25; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; padding: 6px 8px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-card-solid); box-shadow: var(--m-shadow); }
+.aven-find-bar input { flex: 1 1 130px; min-width: 0; min-height: 32px; padding: 0 10px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-field); font: 14px var(--aven-interface-font); color: var(--m-ink); }
+.aven-find-bar button { min-width: 32px; min-height: 32px; padding: 0 10px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-card); color: var(--m-ink); cursor: pointer; font: 600 13px var(--aven-interface-font); } .aven-find-bar button:disabled { opacity: .45; cursor: default; }
+.aven-find-bar__count { min-width: 56px; font-size: 12.5px; color: var(--m-muted); }
+.aven-doc .aven-find { background: rgb(224 180 90 / 40%); border-radius: 2px; } .aven-doc .aven-find--current { background: rgb(196 140 50 / 65%); outline: 1px solid rgb(150 100 30 / 70%); }
+.document-studio__collapse { display: inline-flex; gap: 6px; align-items: center; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.document-studio__panel nav a.is-current { color: var(--m-ink); font-weight: 600; box-shadow: inset 2px 0 0 var(--m-focus); padding-left: 8px; }
+.aven-doc .md-underline { text-decoration: underline; text-underline-offset: 2px; } .aven-doc .md-highlight { background: rgb(224 180 90 / 40%); border-radius: 2px; }
+.aven-doc mark, .document-block mark { background: rgb(224 180 90 / 40%); color: inherit; border-radius: 2px; }
+.document-formatbar__ai { font-weight: 600; color: var(--m-focus); }
+.aven-ai-panel { position: sticky; top: 8px; z-index: 26; display: grid; gap: 8px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-card-solid); box-shadow: var(--m-shadow); }
+.aven-ai-panel header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; } .aven-ai-panel header button { border: 0; background: transparent; font-size: 18px; cursor: pointer; color: var(--m-muted); }
+.aven-ai-panel blockquote { flex: 1 0 100%; margin: 0 0 4px; padding-left: 10px; border-left: 3px solid var(--m-focus); font-size: 13px; color: var(--m-muted); font-style: italic; }
+.aven-ai-panel__actions { display: flex; flex-wrap: wrap; gap: 6px; } .aven-ai-panel__ask { display: flex; flex-wrap: wrap; gap: 6px; }
+.aven-ai-panel__ask input { flex: 1 1 200px; min-height: 34px; padding: 0 10px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-field); font: 14px var(--aven-interface-font); color: var(--m-ink); }
+.aven-ai-panel button:not(header button) { min-height: 32px; padding: 0 12px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-card); color: var(--m-ink); font: 600 12.5px var(--aven-interface-font); cursor: pointer; } .aven-ai-panel button:hover { background: var(--m-chip); }
+.aven-ai-panel__text { max-height: 220px; overflow: auto; padding: 8px 10px; border-radius: var(--ds-radius-sm); background: var(--m-field); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.aven-ai-panel__buttons { display: flex; flex-wrap: wrap; gap: 6px; } .aven-ai-panel__busy { margin: 0; color: var(--m-muted); font-size: 13px; } .aven-ai-panel__error { margin: 0; color: #9a3b2f; font-size: 13px; }
+.document-formatbar button { white-space: nowrap; }
+/* Numbered items: the number is drawn by the block itself (it knows its own number), not by the gutter. */
+.aven-numbered { padding-left: 26px; }
+.aven-numbered > .aven-gutter { display: none; }
+.aven-numbered::before { content: attr(data-num) '.'; position: absolute; left: 0; width: 20px; text-align: right; color: var(--m-muted); font-variant-numeric: tabular-nums; }
+.aven-block[data-indent="1"] { padding-left: 0; margin-left: 26px; } .aven-block[data-indent="2"] { padding-left: 0; margin-left: 52px; } .aven-block[data-indent="3"] { padding-left: 0; margin-left: 78px; }
+.aven-numbered[data-indent="1"], .aven-numbered[data-indent="2"], .aven-numbered[data-indent="3"] { padding-left: 26px; }
+.aven-todo > .aven-gutter { border-color: var(--m-muted); }
+.aven-quote { border-radius: 0; }
+.document-database__new { display: flex; gap: 6px; margin-top: 8px; } .document-database__new input { flex: 1; min-width: 0; min-height: 34px; padding: 0 10px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-field); font: 14px var(--aven-interface-font); color: var(--m-ink); }
+.document-database__new button { min-height: 34px; padding: 0 14px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-card); font: 600 13px var(--aven-interface-font); cursor: pointer; } .document-database__new button:disabled { opacity: .5; cursor: default; }
+/* Touch targets: controls inside blocks are at least 28px everywhere and 44px on touch screens. */
+.aven-block button, .aven-block select, .aven-block .document-database__open { min-height: 28px; display: inline-flex; align-items: center; }
+.aven-toggle__chevron { min-width: 28px; min-height: 28px; justify-content: center; }
+@media (pointer: coarse) {
+  .aven-block button, .aven-block select, .aven-block .document-database__open, .aven-find-bar button, .aven-ai-panel button, .document-formatbar button { min-height: 44px; min-width: 44px; }
+  .aven-todo > .aven-gutter { width: 22px; height: 22px; margin-top: 3px; }
+  .aven-doc { font-size: 17px; }
+}
+@media (max-width: 640px) { .document-studio__paper { padding-inline: 16px; } .aven-title { font-size: 30px; } }
+.document-studio__meta { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--m-muted); }

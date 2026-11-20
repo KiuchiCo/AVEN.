@@ -10,6 +10,7 @@ import { useWorkspaceSession } from '../../workspace-shell';
 import { AttachmentsPanel } from '../../files/attachments-panel';
 import { SharePanel } from './share-panel';
 import { BlockBrowser } from './editor-ui';
+import type { AiRequest } from './AiAssist';
 import { DocEditor, type DocEditorApi, type LocalChange, type SelectionReport } from './DocEditor';
 import { blockCatalog, type CatalogEntry } from './block-catalog';
 import { BlockIcon } from '../../block-icons';
@@ -23,7 +24,8 @@ import { draftKey, readDraft, removeDraft, writeDraft } from './offline-draft';
 import type { Block } from './editor-model';
 type Document = { id: string; title: string; content: string; updatedAt: string; project: { id: string; name: string } | null };
 type Version = { id: string; title: string; label: string | null; createdAt: string; createdBy: { displayName: string } };
-type Comment = { id: string; body: string; createdAt: string; resolvedAt: string | null; createdBy: { id: string; displayName: string } };
+type Comment = { id: string; body: string; createdAt: string; resolvedAt: string | null; blockId: string | null; quote: string | null; parentId: string | null; createdBy: { id: string; displayName: string } };
+type DocSummary = { id: string; title: string };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 class ConflictError extends Error { constructor(message: string, readonly current: Document) { super(message); } }
 /** The request never reached the server: no connection, or the sign-in token could not be refreshed. */
@@ -38,6 +40,8 @@ function parseBlocks(content: string): Block[] {
   } catch { /* Existing plain-text documents are opened as a first paragraph. */ }
   return [content ? { ...createBlock(), text: content } : createBlock()];
 }
+/** Scrolls a block into view and briefly marks it, for links to a block and for comments. */
+function document_scrollTo(id: string) { const node = window.document.getElementById(`block-${id}`); if (!node) return; node.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); node.classList.add('is-flash'); window.setTimeout(() => node.classList.remove('is-flash'), 1600); }
 const createBlock = (): Block => blankBlock(crypto.randomUUID(), 'PARAGRAPH', {});
 const presenceColours = ['#A48766', '#6B5746', '#6F8A62', '#5F7399', '#9A5C68'];
 /** Each person gets the same colour for as long as they are in the document, whoever else is there. */
@@ -56,6 +60,9 @@ export default function DocumentEditorPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [versionLabel, setVersionLabel] = useState('');
   const [commentDraft, setCommentDraft] = useState('');
+  const [commentTarget, setCommentTarget] = useState<{ blockId: string; quote: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<{ id: string; text: string } | null>(null);
+  const [moving, setMoving] = useState<{ block: Block; docs: DocSummary[] | null } | null>(null);
   const [entryId, setEntryId] = useState<string>('document-text');
   const [browserOpen, setBrowserOpen] = useState(false);
   const [creatingTask, setCreatingTask] = useState('');
@@ -163,9 +170,10 @@ export default function DocumentEditorPage() {
   useEffect(() => {
     if (!hydrated) return;
     const abort = new AbortController(); let timer: number | undefined;
-    const sync = async (who: string, attempt = 0): Promise<void> => {
-      if (live.current.saving && attempt < 6) { timer = window.setTimeout(() => { void sync(who, attempt + 1); }, 700); return; }
+    const sync = async (who: string, attempt = 0, replaced = false): Promise<void> => {
+      if (live.current.saving && attempt < 6) { timer = window.setTimeout(() => { void sync(who, attempt + 1, replaced); }, 700); return; }
       const latest = await request(`/workspaces/${workspace.id}/documents/${documentId}`) as Document;
+      if (replaced) { liveEngine.current?.clear(); } // a restored version replaces everything: nothing typed before it may survive it
       if (applyRemote(latest, who) === 'conflict') setConflict(latest);
     };
     void (async () => {
@@ -175,11 +183,11 @@ export default function DocumentEditorPage() {
           const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
           if (!response.ok || !response.body) return;
           if (attempt > 0) liveEngine.current?.resyncAll(); // events may have been missed while the connection was down
-          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string } } | ({ type: 'text' } & TextEvent) | ({ type: 'cursor' } & CursorEvent)>(response.body)) {
+          for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string }; replaced?: boolean } | ({ type: 'text' } & TextEvent) | ({ type: 'cursor' } & CursorEvent)>(response.body)) {
             if (event.type === 'presence') { setViewers(event.viewers); liveEngine.current?.keepCursorsOf(new Set(event.viewers.map((viewer) => viewer.id))); }
             else if (event.type === 'text') liveEngine.current?.handle(event);
             else if (event.type === 'cursor') liveEngine.current?.handleCursor(event);
-            else void sync(event.by.id === user.id ? t('ed.anotherTab') : event.by.name).catch(() => undefined);
+            else void sync(event.by.id === user.id ? t('ed.anotherTab') : event.by.name, 0, event.replaced === true).catch(() => undefined);
           }
         } catch { if (abort.signal.aborted) return; }
         await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
@@ -231,7 +239,8 @@ export default function DocumentEditorPage() {
     if (!document || saving) return false;
     if (!dirty) return true;
     const currentRevision = revision.current;
-    const payload = { title, content: encodeBlocks(blocks), silent: true, baseUpdatedAt: document.updatedAt };
+    // A document always has a name on the server; an empty title stays empty on screen but is saved as "Untitled", so it can never block saving the text.
+    const payload = { title: title.trim() || 'Untitled', content: encodeBlocks(blocks), silent: true, baseUpdatedAt: document.updatedAt };
     setSaving(true); setError(''); setSuccess('');
     try {
       const updated = await request(`/workspaces/${workspace.id}/documents/${document.id}`, { method: 'PATCH', body: JSON.stringify(payload) }) as Document;
@@ -325,6 +334,18 @@ export default function DocumentEditorPage() {
 
   // ---- The editor: what it reports, and what it is told ------------------------------------------------------------------------
   const editorApi = useRef<DocEditorApi | null>(null);
+  // AI is offered only when this workspace has a model provider and this person may edit.
+  const [aiReady, setAiReady] = useState(false);
+  useEffect(() => {
+    if (readOnlyRole(workspace.role)) return;
+    let cancelled = false;
+    void (request(`/workspaces/${workspace.id}/ai/status`) as Promise<{ configured: boolean }>).then((status) => { if (!cancelled) setAiReady(status.configured); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [request, workspace.id, workspace.role]);
+  const assist = useCallback(async (input: AiRequest) => {
+    const result = await request(`/workspaces/${workspace.id}/ai/assist`, { method: 'POST', body: JSON.stringify({ ...input, documentId }) }) as { text: string };
+    return result.text;
+  }, [request, workspace.id, documentId]);
   const addEntry = (entry: CatalogEntry | undefined) => { const api = editorApi.current; if (entry && api) api.insertEntry(entry, api.currentBlockId() ?? undefined); };
   const reported = useRef<{ id: string | null; timer?: number }>({ id: null });
   /** Called for every change made in the editor. Text typed into a block that is live goes out as one small edit; anything else is saved with the document. */
@@ -333,7 +354,7 @@ export default function DocumentEditorPage() {
     const structural = next.length !== previous.length || next.some((block, index) => previous[index]?.id !== block.id);
     const changedText: Block[] = []; let other = false;
     if (!structural) for (const block of next) {
-      const old = before.get(block.id); if (!old || JSON.stringify(old) === JSON.stringify(block)) continue;
+      const old = before.get(block.id); if (!old || old === block || JSON.stringify(old) === JSON.stringify(block)) continue;
       const { text: oldText, ...oldRest } = old; const { text: newText, ...newRest } = block; void oldText; void newText;
       if (JSON.stringify(oldRest) === JSON.stringify(newRest)) changedText.push(block); else other = true;
     }
@@ -356,8 +377,9 @@ export default function DocumentEditorPage() {
     announceFocus(report.id);
     if (!report.id || !report.inline || readOnlyRole(workspace.role)) return;
     const block = live.current.blocks.find((item) => item.id === report.id);
-    if (block && isLiveText(block.type)) void engine?.join(report.id);
-    const id = report.id; was.timer = window.setTimeout(() => engine?.reportCursor(id, report.start, report.end), 250);
+    const id = report.id; const joined = block && isLiveText(block.type) ? engine?.join(id) : undefined;
+    // The caret is shared once the block's live text is joined, otherwise there is nothing for its position to refer to.
+    was.timer = window.setTimeout(() => { void Promise.resolve(joined).then(() => engine?.reportCursor(id, report.start, report.end)); }, 250);
   }, [announceFocus, workspace.role]);
 
   const editorCursors = useMemo(() => Object.fromEntries(Object.entries(remoteCursors).map(([id, list]) => [id, list.map((cursor) => ({ ...cursor, colour: presenceColour(cursor.userId) }))])), [remoteCursors]);
@@ -370,6 +392,9 @@ export default function DocumentEditorPage() {
     linkSync: (blockId: string, code: string) => { liveEngine.current?.clear(); setBlocks((current) => current.map((item) => (item.id === blockId ? { ...item, syncId: code } : item))); markChanged(); },
     unsync: (blockId: string) => { liveEngine.current?.clear(); setBlocks((current) => current.map((item) => (item.id === blockId ? { id: item.id, type: 'PARAGRAPH', text: item.text, checked: false } : item))); markChanged(); },
   };
+
+  // A link to a block (#block-<id>) scrolls to it once the document has opened.
+  useEffect(() => { if (!hydrated) return; const id = window.location.hash.match(/^#block-(.+)$/)?.[1]; if (id) window.setTimeout(() => document_scrollTo(id), 200); }, [hydrated]);
 
   const syncIds = useMemo(() => [...new Set(blocks.filter((block) => block.type === 'SYNCED' && block.syncId).map((block) => block.syncId as string))].sort().join(','), [blocks]);
   useEffect(() => {
@@ -394,7 +419,24 @@ export default function DocumentEditorPage() {
     const timer = window.setInterval(again, 20000);
     return () => { active = false; window.removeEventListener('focus', again); window.clearInterval(timer); };
   }, [syncIds, hydrated]); // eslint-disable-line react-hooks/exhaustive-deps -- request and pushSynced are stable enough for this; the ids and hydration are what matter
+  const words = useMemo(() => blocks.reduce((sum, block) => sum + (block.text.trim() ? block.text.trim().split(/\s+/).length : 0), 0), [blocks]);
   const outline = useMemo(() => blocks.filter((block) => headingLevel(block) > 0 && block.text.trim()), [blocks]);
+  // The heading the reader is in: the last heading that has scrolled past the top of the page.
+  const [activeHeading, setActiveHeading] = useState<string | null>(null);
+  const [outlineOpen, setOutlineOpen] = useState(true);
+  const outlineKey = outline.map((block) => block.id).join();
+  useEffect(() => {
+    if (!outlineKey) return;
+    const ids = outlineKey.split(',');
+    const update = () => {
+      let current = ids[0];
+      for (const id of ids) { const node = window.document.getElementById(`block-${id}`); if (node && node.getBoundingClientRect().top <= 120) current = id; }
+      setActiveHeading(current);
+    };
+    const first = window.requestAnimationFrame(update);
+    window.addEventListener('scroll', update, { passive: true, capture: true }); window.addEventListener('resize', update);
+    return () => { window.cancelAnimationFrame(first); window.removeEventListener('scroll', update, { capture: true }); window.removeEventListener('resize', update); };
+  }, [outlineKey]);
 
   async function saveVersion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -414,8 +456,38 @@ export default function DocumentEditorPage() {
 
   async function addComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    try { await request(`/workspaces/${workspace.id}/documents/${documentId}/comments`, { method: 'POST', body: JSON.stringify({ body: commentDraft }) }); setCommentDraft(''); await reloadCollaboration(); }
+    try { await request(`/workspaces/${workspace.id}/documents/${documentId}/comments`, { method: 'POST', body: JSON.stringify({ body: commentDraft, ...(commentTarget ?? {}) }) }); setCommentDraft(''); setCommentTarget(null); await reloadCollaboration(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not post the comment.'); }
+  }
+
+  async function sendReply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!replyTo) return;
+    try { await request(`/workspaces/${workspace.id}/documents/${documentId}/comments`, { method: 'POST', body: JSON.stringify({ body: replyTo.text, parentId: replyTo.id }) }); setReplyTo(null); await reloadCollaboration(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not post the reply.'); }
+  }
+
+  /** Opens the list of other documents this person can edit, to move one block into. */
+  async function startMove(block: Block) {
+    setMoving({ block, docs: null });
+    try {
+      const all = await request(`/workspaces/${workspace.id}/documents`) as { id: string; title: string }[];
+      setMoving({ block, docs: all.filter((item) => item.id !== documentId).slice(0, 50) });
+    } catch (reason) { setMoving(null); setError(reason instanceof Error ? reason.message : t('ed.moveFailed')); }
+  }
+
+  /** Adds the block to the end of the chosen document first, and only removes it from this one once that was saved. */
+  async function moveTo(target: DocSummary) {
+    const block = moving?.block; if (!block) return;
+    try {
+      const fresh = await request(`/workspaces/${workspace.id}/documents/${target.id}`) as Document;
+      const list = parseBlocks(fresh.content).filter((item) => item.text !== '' || item.type !== 'PARAGRAPH' || item.rows || item.fileId);
+      const copy = { ...block, id: crypto.randomUUID() };
+      await request(`/workspaces/${workspace.id}/documents/${target.id}`, { method: 'PATCH', body: JSON.stringify({ title: fresh.title, content: encodeBlocks([...list, copy]), baseUpdatedAt: fresh.updatedAt }) });
+      const rest = live.current.blocks.filter((item) => item.id !== block.id);
+      const next = rest.length ? rest : [createBlock()];
+      liveEngine.current?.clear(); live.current.blocks = next; setBlocks(next); markChanged();
+      setSuccess(t('ed.moved', { name: target.title })); setMoving(null);
+    } catch (reason) { setMoving(null); setError(reason instanceof Error ? reason.message : t('ed.moveFailed')); }
   }
 
   async function toggleComment(comment: Comment) {
@@ -447,18 +519,40 @@ export default function DocumentEditorPage() {
     {offline && dirty && <p className="productivity-error" role="status">{t('ed.offlineKept')}</p>}
     {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>{t('ed.retry')}</button></p>}
     {loading ? <p className="productivity-message">{t('ed.opening')}</p> : !document ? <div className="workspace-section-empty"><h2>{t('ed.unavailable')}</h2><p>{t('ed.unavailableBody')}</p><Link href="/workspace/documents">{t('ed.back')}</Link></div> : <>
-      <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={entryId} onChange={(event) => setEntryId(event.target.value)}>{(['basic', 'media', 'database', 'advanced'] as const).map((category) => <optgroup key={category} label={t(`blk.cat.${category}` as Key)}>{blockCatalog.filter((entry) => entry.category === category).map((entry) => <option key={entry.id} value={entry.id}>{t(`blk.${entry.id}` as Key)}</option>)}</optgroup>)}</select></label><button type="button" onClick={() => addEntry(blockCatalog.find((item) => item.id === entryId))}>{t('ed.addBlock')}</button><button type="button" onClick={() => setBrowserOpen(true)}><BlockIcon id="database-gallery" size={16} />{t('blk.browse')}</button><span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
+      <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={entryId} onChange={(event) => setEntryId(event.target.value)}>{(['basic', 'media', 'database', 'advanced'] as const).map((category) => <optgroup key={category} label={t(`blk.cat.${category}` as Key)}>{blockCatalog.filter((entry) => entry.category === category).map((entry) => <option key={entry.id} value={entry.id}>{t(`blk.${entry.id}` as Key)}</option>)}</optgroup>)}</select></label><button type="button" onClick={() => addEntry(blockCatalog.find((item) => item.id === entryId))}>{t('ed.addBlock')}</button><button type="button" onClick={() => setBrowserOpen(true)}><BlockIcon id="database-gallery" size={16} />{t('blk.browse')}</button>{aiReady && <button type="button" onClick={() => editorApi.current?.askAi()}>{t('ed.ai')} · {t('ed.ai.askDoc')}</button>}<span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
       {browserOpen && !readOnlyRole(workspace.role) && <BlockBrowser onClose={() => setBrowserOpen(false)} onPick={(entry) => { addEntry(entry); setBrowserOpen(false); setSuccess(t('ed.addBlockFromBrowser', { name: t(`blk.${entry.id}` as Key) })); }} />}
+      {moving && <div className="document-browser" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMoving(null); }} onKeyDown={(event) => { if (event.key === 'Escape') setMoving(null); }}>
+        <div className="document-browser__panel document-move" role="dialog" aria-modal="true" aria-label={t('ed.moveTitle')}>
+          <header><h2>{t('ed.moveTitle')}</h2><button type="button" className="rd-iconbtn" aria-label={t('ed.close')} onClick={() => setMoving(null)}>×</button></header>
+          <div className="document-browser__scroll">{moving.docs === null ? <p className="document-slash__empty">{t('ed.opening')}</p> : moving.docs.length === 0 ? <p className="document-slash__empty">{t('ed.noOtherDocs')}</p> : <ul>{moving.docs.map((item) => <li key={item.id}><button type="button" onClick={() => void moveTo(item)}>{item.title || t('ed.document')}</button></li>)}</ul>}</div>
+        </div>
+      </div>}
       <div className="document-studio__layout">
         <main className="document-studio__paper">
-          <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}</p>
-          <DocEditor title={title} blocks={blocks} readOnly={readOnlyRole(workspace.role)} env={editorEnv} cursors={editorCursors} others={editorOthers} onLocalChange={handleEditorChange} onSelection={handleSelection} onCreateTask={(block) => void createTaskFromBlock(block)} onError={setError} apiRef={editorApi} />
+          <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}<span className="document-studio__meta"> · {t('ed.meta', { words: words.toLocaleString(), minutes: Math.max(1, Math.round(words / 220)) })}</span></p>
+          <DocEditor title={title} blocks={blocks} readOnly={readOnlyRole(workspace.role)} env={editorEnv} cursors={editorCursors} others={editorOthers} onLocalChange={handleEditorChange} onSelection={handleSelection} onCreateTask={(block) => void createTaskFromBlock(block)} onComment={(block, quote) => { setCommentTarget({ blockId: block.id, quote }); setActivePanel('COMMENTS'); }} onMoveOut={(block) => void startMove(block)} onNotice={setSuccess} onAssist={aiReady ? assist : null} onError={setError} apiRef={editorApi} />
         </main>
         <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(['OUTLINE', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
           {activePanel === 'SHARE' && <SharePanel documentId={document.id} />}
           {activePanel === 'FILES' && <section className="document-studio__panel"><AttachmentsPanel target={{ documentId: document.id }} /></section>}
-          {activePanel === 'OUTLINE' && <section className="document-studio__panel"><h2>{t('ed.onThisPage')}</h2>{outline.length === 0 ? <p>{t('ed.outlineEmpty')}</p> : <nav>{outline.map((block) => <a className={headingLevel(block) > 1 ? 'is-nested' : ''} key={block.id} href={`#block-${block.id}`}>{block.text}</a>)}</nav>}</section>}
-          {activePanel === 'COMMENTS' && <section className="document-studio__panel"><h2>{t('ed.tab.comments')}</h2><form className="document-studio__comment-form" onSubmit={addComment}><textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={2000} required placeholder={t('ed.commentPh')} /><button type="submit">{t('ed.post')}</button></form><div className="document-studio__comments">{comments.length === 0 ? <p>{t('ed.commentsEmpty')}</p> : comments.map((comment) => <article className={comment.resolvedAt ? 'is-resolved' : ''} key={comment.id}><div><strong>{comment.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</time></div><p>{comment.body}</p><button type="button" onClick={() => void toggleComment(comment)}>{comment.resolvedAt ? t('ed.reopen') : t('ed.resolve')}</button></article>)}</div></section>}
+          {activePanel === 'OUTLINE' && <section className="document-studio__panel"><h2><button type="button" className="document-studio__collapse" aria-expanded={outlineOpen} onClick={() => setOutlineOpen((open) => !open)}><span aria-hidden>{outlineOpen ? '▾' : '▸'}</span> {t('ed.onThisPage')}</button></h2>{!outlineOpen ? null : outline.length === 0 ? <p>{t('ed.outlineEmpty')}</p> : <nav aria-label={t('ed.onThisPage')}>{outline.map((block) => <a className={`${headingLevel(block) > 1 ? 'is-nested' : ''}${(outline.some((item) => item.id === activeHeading) ? activeHeading : outline[0]?.id) === block.id ? ' is-current' : ''}`} aria-current={(outline.some((item) => item.id === activeHeading) ? activeHeading : outline[0]?.id) === block.id ? 'location' : undefined} key={block.id} href={`#block-${block.id}`} onClick={(event) => { event.preventDefault(); document_scrollTo(block.id); window.history.replaceState(null, '', `#block-${block.id}`); }}>{block.text}</a>)}</nav>}</section>}
+          {activePanel === 'COMMENTS' && <section className="document-studio__panel"><h2>{t('ed.tab.comments')}</h2>
+            <form className="document-studio__comment-form" onSubmit={addComment}>
+              {commentTarget && <p className="document-studio__comment-target">{t('ed.commentingOn', { quote: commentTarget.quote || '…' })} <button type="button" onClick={() => setCommentTarget(null)} aria-label={t('ed.clearTarget')} title={t('ed.clearTarget')}>×</button></p>}
+              <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={2000} required placeholder={t('ed.commentPh')} /><button type="submit">{t('ed.post')}</button>
+            </form>
+            <div className="document-studio__comments">{comments.length === 0 ? <p>{t('ed.commentsEmpty')}</p> : comments.filter((comment) => !comment.parentId).map((comment) => <article className={comment.resolvedAt ? 'is-resolved' : ''} key={comment.id}>
+              <div><strong>{comment.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</time></div>
+              {comment.quote && <blockquote className="document-studio__quote">{comment.quote}</blockquote>}
+              <p>{comment.body}</p>
+              {comments.filter((reply) => reply.parentId === comment.id).slice().reverse().map((reply) => <div className="document-studio__reply" key={reply.id}><div><strong>{reply.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(reply.createdAt))}</time></div><p>{reply.body}</p></div>)}
+              {replyTo?.id === comment.id ? <form className="document-studio__reply-form" onSubmit={sendReply}><textarea autoFocus value={replyTo.text} onChange={(event) => setReplyTo({ id: comment.id, text: event.target.value })} maxLength={2000} required placeholder={t('ed.replyPh')} aria-label={t('ed.replyPh')} /><button type="submit">{t('ed.post')}</button></form> : null}
+              <div className="document-studio__comment-actions">
+                {comment.blockId && blocks.some((block) => block.id === comment.blockId) && <button type="button" onClick={() => document_scrollTo(comment.blockId!)}>{t('ed.goToBlock')}</button>}
+                {replyTo?.id !== comment.id && <button type="button" onClick={() => setReplyTo({ id: comment.id, text: '' })}>{t('ed.reply')}</button>}
+                <button type="button" onClick={() => void toggleComment(comment)}>{comment.resolvedAt ? t('ed.reopen') : t('ed.resolve')}</button>
+              </div>
+            </article>)}</div></section>}
           {activePanel === 'HISTORY' && <section className="document-studio__panel"><h2>{t('ed.versionHistory')}</h2><form className="document-studio__version-form" onSubmit={saveVersion}><input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} maxLength={120} placeholder={t('ed.versionNotePh')} /><button type="submit">{t('ed.saveVersion')}</button></form><div className="document-studio__versions">{versions.length === 0 ? <p>{t('ed.versionsEmpty')}</p> : versions.map((version) => <article key={version.id}><strong>{version.label || version.title}</strong><small>{version.createdBy.displayName} · {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(version.createdAt))}</small><button type="button" onClick={() => void restoreVersion(version)}>{t('ed.restore')}</button></article>)}</div></section>}
         </aside>
       </div>

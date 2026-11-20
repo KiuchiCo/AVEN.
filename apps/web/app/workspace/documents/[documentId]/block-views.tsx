@@ -247,6 +247,17 @@ export function DatabaseBlock({ databaseId, view, linked, create, readOnly, onCh
     finally { setBusy(false); }
   }
   const titleProperty = database?.properties.find((property) => property.id === 'name') ?? database?.properties[0];
+  const [draft, setDraft] = useState('');
+  /** Adds a record to the real database (the same one the Databases page shows); nothing is copied into the document. */
+  async function addRecord() {
+    if (!database || !titleProperty || !draft.trim()) return;
+    setBusy(true); setError('');
+    try {
+      const made = await api<DbRecord>(`/databases/${database.id}/records`, { method: 'POST', body: { values: { [titleProperty.id]: draft.trim() } } });
+      setDatabases((current) => (current ?? []).map((item) => (item.id === database.id ? { ...item, records: [...item.records, made] } : item))); setDraft('');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('bl.newRecordFailed')); }
+    finally { setBusy(false); }
+  }
   const total = Math.max(1, ...groups.map((group) => group.count));
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const dateProperty = database?.properties.find((property) => property.type === 'date');
@@ -294,6 +305,10 @@ export function DatabaseBlock({ databaseId, view, linked, create, readOnly, onCh
       : view === 'LIST' ? <ul className="document-database__list">{database.records.map((record) => <li key={record.id}><strong>{show(record.values[titleProperty?.id ?? '']) || t('db.untitled')}</strong><span>{database.properties.filter((property) => property.id !== titleProperty?.id).slice(0, 2).map((property) => show(record.values[property.id])).filter(Boolean).join(' · ')}</span></li>)}</ul>
       : <div className="document-table__scroll"><table className="document-database__table"><thead><tr>{database.properties.map((property) => <th key={property.id}>{property.name}</th>)}</tr></thead><tbody>{database.records.map((record) => <tr key={record.id}>{database.properties.map((property) => <td key={property.id}>{show(record.values[property.id])}</td>)}</tr>)}</tbody></table></div>}
     {database && database.records.length === 0 && <p className="document-image__missing">{t('db.addToSee')}</p>}
+    {database && !readOnly && titleProperty && ['TABLE', 'BOARD', 'GALLERY', 'LIST', 'FEED', 'DASHBOARD'].includes(view) && <form className="document-database__new" onSubmit={(event) => { event.preventDefault(); void addRecord(); }}>
+      <input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={200} placeholder={t('bl.newRecordPh')} aria-label={t('bl.newRecordPh')} />
+      <button type="submit" disabled={!draft.trim() || busy}>{t('bl.addRecord')}</button>
+    </form>}
   </div>;
 }
 

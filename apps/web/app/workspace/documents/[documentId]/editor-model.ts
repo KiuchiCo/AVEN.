@@ -51,17 +51,21 @@ export function findSlash(text: string, caret: number): { start: number; query: 
 }
 
 /** Block types matching what was typed, best matches first. `label` is the visible (translated) name of each type. */
-export function filterSlash(query: string, label: (item: SlashItem) => string): SlashItem[] {
+export function filterSlash(query: string, label: (item: SlashItem) => string, recent: readonly string[] = []): SlashItem[] {
   const q = query.trim().toLocaleLowerCase();
-  if (!q) return slashItems;
+  const used = (item: SlashItem) => { const at = recent.indexOf(item.id); return at < 0 ? recent.length : at; };
+  if (!q) return [...slashItems].sort((a, b) => used(a) - used(b));
+  // True when the letters of `q` appear in `text` in order ("tdl" finds "to-do list").
+  const fuzzy = (text: string) => { let at = 0; for (const char of text) if (char === q[at] && ++at === q.length) return true; return false; };
   const score = (item: SlashItem) => {
     const name = label(item).toLocaleLowerCase();
     if (name.startsWith(q)) return 0;
     if (item.keywords.some((word) => word.startsWith(q))) return 1;
     if (name.includes(q) || item.keywords.some((word) => word.includes(q))) return 2;
-    return 3;
+    if (q.length > 1 && (fuzzy(name.replace(/[^a-z0-9]/g, '')) || item.keywords.some((word) => fuzzy(word)))) return 3;
+    return 4;
   };
-  return slashItems.map((item) => ({ item, rank: score(item) })).filter((entry) => entry.rank < 3).sort((a, b) => a.rank - b.rank).map((entry) => entry.item);
+  return slashItems.map((item) => ({ item, rank: score(item) })).filter((entry) => entry.rank < 4).sort((a, b) => a.rank - b.rank || used(a.item) - used(b.item)).map((entry) => entry.item);
 }
 
 // ---- Markdown shortcuts ----------------------------------------------------------------------------------------------
@@ -202,8 +206,8 @@ export function applySlash(blocks: Block[], id: string, slash: { start: number; 
 
 // ---- Inline formatting -----------------------------------------------------------------------------------------------
 
-export type Mark = 'bold' | 'italic' | 'code' | 'strike';
-const markers: Record<Mark, string> = { bold: '**', italic: '*', code: '`', strike: '~~' };
+export type Mark = 'bold' | 'italic' | 'code' | 'strike' | 'underline' | 'highlight';
+const markers: Record<Mark, string> = { bold: '**', italic: '*', code: '`', strike: '~~', underline: '++', highlight: '==' };
 
 /** Wraps the selection in a mark, or removes it when the selection is already wrapped. Returns the new text and selection. */
 export function toggleMark(text: string, start: number, end: number, mark: Mark): { text: string; start: number; end: number } {
@@ -237,7 +241,10 @@ export function safeHref(url: string): string | null {
   return null;
 }
 
-export type Inline = { kind: 'text' | 'bold' | 'italic' | 'code' | 'strike' | 'link'; text: string; href?: string };
+/** Underline and highlight only start at the beginning of a word, so "C++ and C++" or "a==b==c" stay plain text. */
+const isEdge = (text: string, at: number) => at === 0 || !/[\p{L}\p{N}+=]/u.test(text[at - 1]);
+
+export type Inline = { kind: 'text' | 'bold' | 'italic' | 'code' | 'strike' | 'underline' | 'highlight' | 'link'; text: string; href?: string };
 
 /** Splits text into plain and formatted runs. Unmatched marks stay as literal characters; nothing is ever treated as HTML. */
 export function parseInline(text: string): Inline[] {
@@ -252,6 +259,8 @@ export function parseInline(text: string): Inline[] {
     if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { flush(); out.push({ kind: 'link', text: m[1], href }); i += m[0].length; continue; } }
     if ((m = /^\*\*([^*\n]+?)\*\*/.exec(rest))) { flush(); out.push({ kind: 'bold', text: m[1] }); i += m[0].length; continue; }
     if ((m = /^~~([^~\n]+?)~~/.exec(rest))) { flush(); out.push({ kind: 'strike', text: m[1] }); i += m[0].length; continue; }
+    if (isEdge(text, i) && (m = /^\+\+(\S(?:[^+\n]*?\S)?)\+\+/.exec(rest))) { flush(); out.push({ kind: 'underline', text: m[1] }); i += m[0].length; continue; }
+    if (isEdge(text, i) && (m = /^==(\S(?:[^=\n]*?\S)?)==/.exec(rest))) { flush(); out.push({ kind: 'highlight', text: m[1] }); i += m[0].length; continue; }
     const startsWord = i === 0 || !/[\p{L}\p{N}_]/u.test(text[i - 1]); // snake_case and __dunder__ names are never italics
     if ((m = /^\*([^*\s][^*\n]*?)\*/.exec(rest)) || (startsWord && (m = /^_([^_\s][^_\n]*?)_(?![\p{L}\p{N}_])/u.exec(rest)))) { flush(); out.push({ kind: 'italic', text: m[1] }); i += m[0].length; continue; }
     plain += text[i]; i += 1;
@@ -303,7 +312,7 @@ export function indentBlock(blocks: Block[], id: string, direction: 1 | -1): Blo
 }
 
 /** Where inline formatting sits inside a block's text: styled ranges and the marker characters around them (hidden unless the block is being edited). */
-export type InlineRange = { start: number; end: number; kind: 'bold' | 'italic' | 'code' | 'strike' | 'link' | 'mark'; href?: string };
+export type InlineRange = { start: number; end: number; kind: 'bold' | 'italic' | 'code' | 'strike' | 'underline' | 'highlight' | 'link' | 'mark'; href?: string };
 export function inlineRanges(text: string): InlineRange[] {
   const out: InlineRange[] = [];
   let i = 0;
@@ -315,6 +324,8 @@ export function inlineRanges(text: string): InlineRange[] {
     if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { const label = m[1].length; out.push({ start: i, end: i + 1, kind: 'mark' }, { start: i + 1, end: i + 1 + label, kind: 'link', href }, { start: i + 1 + label, end: i + m[0].length, kind: 'mark' }); i += m[0].length; continue; } }
     if ((m = /^\*\*([^*\n]+?)\*\*/.exec(rest))) { wrap('bold', 2, 2, m[0].length); continue; }
     if ((m = /^~~([^~\n]+?)~~/.exec(rest))) { wrap('strike', 2, 2, m[0].length); continue; }
+    if (isEdge(text, i) && (m = /^\+\+(\S(?:[^+\n]*?\S)?)\+\+/.exec(rest))) { wrap('underline', 2, 2, m[0].length); continue; }
+    if (isEdge(text, i) && (m = /^==(\S(?:[^=\n]*?\S)?)==/.exec(rest))) { wrap('highlight', 2, 2, m[0].length); continue; }
     const startsWord = i === 0 || !/[\p{L}\p{N}_]/u.test(text[i - 1]);
     if ((m = /^\*([^*\s][^*\n]*?)\*/.exec(rest)) || (startsWord && (m = /^_([^_\s][^_\n]*?)_(?![\p{L}\p{N}_])/u.exec(rest)))) { wrap('italic', 1, 1, m[0].length); continue; }
     i += 1;

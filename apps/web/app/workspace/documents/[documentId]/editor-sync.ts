@@ -3,7 +3,7 @@
 // everything else in the document stay where they were.
 import { NodeSelection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
-import { blockToNode, docToBlocks, hasInlineContent, type DocJSON } from './editor-convert.ts';
+import { blockToNode, nodeToBlock, hasInlineContent, type NodeJSON } from './editor-convert.ts';
 import { blankBlock, normalizeBlock, type Block } from './editor-model.ts';
 
 export type Located = { node: PMNode; pos: number; id: string };
@@ -15,7 +15,19 @@ export function locateBlocks(doc: PMNode): Located[] {
   return out;
 }
 
-export function readDoc(doc: PMNode): { title: string; blocks: Block[] } { return docToBlocks(doc.toJSON() as DocJSON); }
+/** Nodes are immutable and shared between versions of the document, so each block is converted once and an unchanged block comes back as the very same object. */
+const converted = new WeakMap<PMNode, Block | null>();
+export function readDoc(doc: PMNode): { title: string; blocks: Block[] } {
+  const title = doc.firstChild?.type.name === 'title' ? doc.firstChild.textContent : '';
+  const blocks: Block[] = [];
+  doc.forEach((node, _offset, index) => {
+    if (index === 0) return;
+    let block = converted.get(node);
+    if (block === undefined) { block = nodeToBlock(node.toJSON() as NodeJSON); converted.set(node, block); }
+    if (block) blocks.push(block);
+  });
+  return { title, blocks };
+}
 
 /** Replaces the text of a node by changing only the middle that differs, so a caret before or after the change keeps its place. */
 function setNodeText(tr: Transaction, pos: number, node: PMNode, next: string) {
@@ -84,3 +96,17 @@ export function selectBlock(tr: Transaction, id: string, caret: number, end = ca
 }
 
 export const sameBlocks = (a: Block[], b: Block[]) => a.length === b.length && a.every((block, index) => JSON.stringify(normalizeBlock(block)) === JSON.stringify(normalizeBlock(b[index])));
+
+export type FoundRange = { from: number; to: number };
+/** Every place `query` occurs in the text of the document body (not the title), ignoring case, in reading order. */
+export function findMatches(doc: PMNode, query: string): FoundRange[] {
+  const needle = query.toLocaleLowerCase();
+  if (!needle) return [];
+  const out: FoundRange[] = [];
+  doc.forEach((node, offset, index) => {
+    if (index === 0 || !node.isTextblock) return;
+    const text = node.textContent.toLocaleLowerCase();
+    for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + needle.length)) out.push({ from: offset + 1 + at, to: offset + 1 + at + needle.length });
+  });
+  return out;
+}

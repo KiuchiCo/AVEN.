@@ -177,3 +177,22 @@ test('pasted lines become the blocks they describe, and the text after the caret
   assert.equal(pasteLines([b('a', 'x')], 'a', 1, 1, 'single line', newId), null);
   assert.equal(pasteLines([b('a', 'x', 'CODE')], 'a', 1, 1, 'a\nb', newId), null);
 });
+
+test('filterSlash matches letters in order and puts recently used blocks first', () => {
+  assert.ok(filterSlash('tdl', label).some((item) => item.id === 'todo-list'), 'fuzzy match finds to-do list');
+  assert.equal(filterSlash('zzzzqq', label).length, 0);
+  const first = filterSlash('', label, ['mermaid', 'equation']).map((item) => item.id);
+  assert.deepEqual(first.slice(0, 2), ['mermaid', 'equation']);
+  assert.equal(filterSlash('head', label)[0].id.startsWith('heading'), true);
+});
+test('findSlash ignores slashes inside URLs and words', () => {
+  assert.equal(findSlash('see https://aven.app/docs', 25), null);
+  assert.equal(findSlash('and/or', 6), null);
+});
+
+test('underline and highlight marks wrap words but leave C++ and comparisons alone', () => {
+  assert.deepEqual(parseInline('a ++under++ b ==mark== c').map((run) => run.kind), ['text', 'underline', 'text', 'highlight', 'text']);
+  assert.deepEqual(parseInline('C++ and C++ plus a==b==c').map((run) => run.kind), ['text']);
+  assert.equal(toggleMark('word', 0, 4, 'underline').text, '++word++');
+  assert.equal(toggleMark('++word++', 2, 6, 'underline').text, 'word');
+});

@@ -5,14 +5,16 @@ import { Extension, Node } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { inlineRanges } from './editor-model.ts';
-import { selectionInBlock } from './editor-sync.ts';
+import { findMatches, selectionInBlock } from './editor-sync.ts';
 
 export type LiveState = {
   cursors: Record<string, { userId: string; name: string; start: number; end: number; colour: string }[]>;
   others: Record<string, { name: string; colour: string }>;
   placeholders: Record<string, string>;
+  /** Find in document: what is searched for and which match is the current one. */
+  find: { query: string; current: number } | null;
 };
-export const emptyLive = (): LiveState => ({ cursors: {}, others: {}, placeholders: {} });
+export const emptyLive = (): LiveState => ({ cursors: {}, others: {}, placeholders: {}, find: null });
 
 export const Doc = Node.create({ name: 'doc', topNode: true, content: 'title block+' });
 export const Text = Node.create({ name: 'text', group: 'inline' });
@@ -80,16 +82,22 @@ const noMarks = new Set(['CODE', 'EQUATION', 'MERMAID']);
 export const liveKey = new PluginKey('avenDecorations');
 
 /** Formatting, list numbers, placeholders, other people's carets and who is where: all drawn over the text without changing it. */
-export const Decorations = Extension.create<{ live: LiveState }>({
+/** Nodes are immutable and shared between document versions, so what was parsed for one is reused until that block's text changes. */
+const parsed = new WeakMap<object, ReturnType<typeof inlineRanges>>();
+function rangesOf(node: { textContent: string }) { let found = parsed.get(node); if (!found) { found = inlineRanges(node.textContent); parsed.set(node, found); } return found; }
+
+export const Decorations = Extension.create<{ live: () => LiveState }>({
   name: 'avenDecorations',
-  addOptions() { return { live: emptyLive() }; },
+  // A function, because Tiptap copies plain-object options and the editor has to keep updating the one object it hands over.
+  addOptions() { const state = emptyLive(); return { live: () => state }; },
   addProseMirrorPlugins() {
-    const live = this.options.live;
+    const getLive = this.options.live;
     return [new Plugin({
       key: liveKey,
       props: {
         decorations(state) {
           const out: Decoration[] = []; const counters: number[] = [];
+          const live = getLive();
           const here = selectionInBlock(state);
           state.doc.forEach((node, offset, index) => {
             if (index === 0) { if (node.content.size === 0) out.push(Decoration.node(offset, offset + node.nodeSize, { class: 'is-empty', 'data-placeholder': live.placeholders.TITLE ?? '' })); return; }
@@ -104,13 +112,14 @@ export const Decorations = Extension.create<{ live: LiveState }>({
             } else counters.length = 0;
             if ((node.type.name === 'textBlock' || node.type.name === 'toggleBlock' || node.type.name === 'syncedBlock') && !noMarks.has(type)) {
               const active = here?.id === id;
-              for (const range of inlineRanges(node.textContent)) out.push(Decoration.inline(offset + 1 + range.start, offset + 1 + range.end, { class: range.kind === 'mark' ? `md-mark${active ? ' md-mark--shown' : ''}` : `md-${range.kind}`, ...(range.href ? { 'data-href': range.href } : {}) }));
+              for (const range of rangesOf(node)) out.push(Decoration.inline(offset + 1 + range.start, offset + 1 + range.end, { class: range.kind === 'mark' ? `md-mark${active ? ' md-mark--shown' : ''}` : `md-${range.kind}`, ...(range.href ? { 'data-href': range.href } : {}) }));
             }
             for (const cursor of live.cursors[id] ?? []) {
               const at = offset + 1 + Math.min(cursor.end, node.content.size);
               out.push(Decoration.widget(at, () => { const caret = document.createElement('span'); caret.className = 'aven-caret'; caret.style.background = cursor.colour; const label = document.createElement('span'); label.className = 'aven-caret__name'; label.textContent = cursor.name; label.style.background = cursor.colour; caret.appendChild(label); return caret; }, { key: `caret-${cursor.userId}-${at}`, side: 1 }));
             }
           });
+          if (live.find?.query) findMatches(state.doc, live.find.query).forEach((range, at) => out.push(Decoration.inline(range.from, range.to, { class: at === live.find?.current ? 'aven-find aven-find--current' : 'aven-find' })));
           return DecorationSet.create(state.doc, out);
         },
       },
