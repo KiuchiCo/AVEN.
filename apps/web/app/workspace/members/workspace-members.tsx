@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
@@ -14,6 +15,7 @@ const roleKeys = { OWNER: 'role.owner', ADMINISTRATOR: 'role.administrator', MAN
 export function WorkspaceMembers() {
   const { getToken } = useAuth();
   const t = useT();
+  const router = useRouter();
   const roleLabel = (value: string) => (value in roleKeys ? t(roleKeys[value as keyof typeof roleKeys]) : value);
   const { user, workspace } = useWorkspaceSession();
   const [data, setData] = useState<WorkspaceData>({ members: [], invitations: [] });
@@ -29,7 +31,8 @@ export function WorkspaceMembers() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const canInvite = ['OWNER', 'ADMINISTRATOR'].includes(workspace.role ?? '');
-  const canManageMembers = workspace.role === 'OWNER';
+  const isOwner = workspace.role === 'OWNER';
+  const canManageMembers = isOwner || workspace.role === 'ADMINISTRATOR';
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -105,8 +108,28 @@ export function WorkspaceMembers() {
     finally { setBusy(false); }
   }
 
+  async function makeOwner(member: Member) {
+    if (!window.confirm(t('mem.makeOwnerConfirm', { name: member.displayName, workspace: workspace.name }))) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await request(`/workspaces/${workspace.id}/members/${member.userId}/make-owner`, { method: 'POST' });
+      setNotice(t('mem.ownerMade', { name: member.displayName }));
+      window.location.reload();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not transfer ownership.'); setBusy(false); }
+  }
+
+  async function leaveWorkspace() {
+    if (!window.confirm(t('mem.leaveConfirm', { workspace: workspace.name }))) return;
+    setBusy(true); setError('');
+    try {
+      await request(`/workspaces/${workspace.id}/members/leave`, { method: 'POST' });
+      await fetch('/api/active-workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      router.push('/workspace'); router.refresh();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not leave this workspace.'); setBusy(false); }
+  }
+
   async function removeMember(member: Member) {
-    if (!window.confirm(`Remove ${member.displayName} from ${workspace.name}? Their assigned tasks will become unassigned.`)) return;
+    if (!window.confirm(t('mem.removeConfirm', { name: member.displayName, workspace: workspace.name }))) return;
     setBusy(true); setError(''); setNotice('');
     try {
       await request(`/workspaces/${workspace.id}/members/${member.userId}`, { method: 'DELETE' });
@@ -120,6 +143,7 @@ export function WorkspaceMembers() {
     <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
     <h1>{t('nav.people')}</h1>
     <p className="workspace-section-page__description">{t('mem.desc')}</p>
+    {!isOwner && <p className="members-leave"><span>{t('mem.leaveNote')}</span> <button type="button" disabled={busy} onClick={() => void leaveWorkspace()}>{t('mem.leave')}</button></p>}
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {notice && <p className="members-notice" role="status">{notice}</p>}
     <div className="members-layout">
@@ -129,7 +153,7 @@ export function WorkspaceMembers() {
           const isSelf = member.userId === user.id;
           const currentRole = roleDrafts[member.userId] ?? member.role;
           return <li key={member.userId}><span className="members-avatar" aria-hidden="true">{member.displayName.trim().slice(0, 1).toUpperCase()}</span><div><strong>{member.displayName}{isSelf ? t('mem.you') : ''}</strong><small>{member.email}</small></div>
-            {canManageMembers && !isSelf && member.role !== 'OWNER' ? <div className="members-row-actions"><select aria-label={t('mem.roleFor', { name: member.displayName })} value={currentRole} onChange={(event) => setRoleDrafts((current) => ({ ...current, [member.userId]: event.target.value }))}><option value="ADMINISTRATOR">{t('role.administrator')}</option><option value="MANAGER">{t('role.manager')}</option><option value="MEMBER">{t('role.member')}</option><option value="GUEST">{t('role.guest')}</option></select><button type="button" disabled={busy || currentRole === member.role} onClick={() => void updateRole(member)}>{t('mem.save')}</button><button type="button" className="members-revoke" disabled={busy} onClick={() => void removeMember(member)}>{t('mem.remove')}</button></div> : <span className="members-role">{roleLabel(member.role)}</span>}
+            {canManageMembers && !isSelf && member.role !== 'OWNER' && (isOwner || member.role !== 'ADMINISTRATOR') ? <div className="members-row-actions"><select aria-label={t('mem.roleFor', { name: member.displayName })} value={currentRole} onChange={(event) => setRoleDrafts((current) => ({ ...current, [member.userId]: event.target.value }))}>{isOwner && <option value="ADMINISTRATOR">{t('role.administrator')}</option>}<option value="MANAGER">{t('role.manager')}</option><option value="MEMBER">{t('role.member')}</option><option value="GUEST">{t('role.guest')}</option></select><button type="button" disabled={busy || currentRole === member.role} onClick={() => void updateRole(member)}>{t('mem.save')}</button>{isOwner && !workspace.isPersonal && member.role !== 'GUEST' && <button type="button" disabled={busy} onClick={() => void makeOwner(member)}>{t('mem.makeOwner')}</button>}<button type="button" className="members-revoke" disabled={busy} onClick={() => void removeMember(member)}>{t('mem.remove')}</button></div> : <span className="members-role">{roleLabel(member.role)}</span>}
           </li>;
         })}</ul>}
       </section>

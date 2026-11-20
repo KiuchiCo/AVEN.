@@ -121,6 +121,7 @@ Everything below is real, tested code. Features that need an outside service say
 - **Messaging** — channels and direct messages with live updates, unread counts, @mentions that notify through the Inbox, and files shared from the workspace.
 - **Live documents** — people with a document open see each other, saves appear live, and simultaneous edits to different blocks are merged (block-level, not character-level co-editing).
 - **Sharing and sync** — read-only document links with expiry and revocation; Google Calendar and Outlook sync with encrypted tokens.
+- **Workspace administration** — administrators manage non-administrators, owners can transfer ownership, anyone but the owner can leave, and owners can delete a shared workspace (files included) after typing its name; a paid subscription must be cancelled first.
 - **Analytics, audit log and permissions** — task trends and workload (Pro and above); an exportable audit log and role-based permissions for projects, automations and share links (Business and above).
 - **Notifications** — Inbox, batched email, and browser push notifications (VAPID keys, `npm run vapid:generate --workspace @aven/api`).
 - **Favourites** — pin projects, documents, databases and whiteboards to the sidebar.
@@ -133,7 +134,7 @@ Everything below is real, tested code. Features that need an outside service say
 
 Verified only against local stand-ins, because they need your credentials: Stripe, Anthropic, Resend, Google and Microsoft calendars, S3, Brave Search and push services. Each one reports clearly when it is not configured.
 
-Not built yet: character-level co-editing, scanned-PDF (OCR) and legacy .doc/.xls reading, semantic search, translating every screen, shared organisation-level administration, mobile and desktop apps, offline use.
+Not built yet: character-level co-editing, scanned-PDF (OCR) and legacy .doc/.xls reading, semantic search, translating every screen, mobile and desktop apps, offline use.
 
 ## Local development
 

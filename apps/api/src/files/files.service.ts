@@ -268,6 +268,12 @@ export class FilesService {
   }
 
   /** Permanently removes a file that is already in the recycle bin, including every stored version. */
+  /** Deletes every stored object of a workspace (files and their versions) ahead of the workspace being removed. Best effort per object. */
+  async removeAllObjects(workspaceId: string) {
+    const files = await this.prisma.storedFile.findMany({ where: { workspaceId }, select: { storageKey: true, versions: { select: { storageKey: true } } } });
+    for (const key of files.flatMap((file) => [file.storageKey, ...file.versions.map((version) => version.storageKey)])) await this.storage.delete(key).catch(() => undefined);
+  }
+
   async purge(identity: AuthenticatedIdentity, workspaceId: string, fileId: string) {
     const userId = await this.member(identity, workspaceId, true);
     const file = await this.prisma.storedFile.findFirst({ where: { id: fileId, workspaceId, deletedAt: { not: null } }, select: { id: true, name: true, storageKey: true, versions: { select: { storageKey: true } } } });

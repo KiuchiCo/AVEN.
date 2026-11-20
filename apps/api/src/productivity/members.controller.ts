@@ -25,6 +25,16 @@ export class MembersController {
     return this.invitations.create(identity, workspaceId, body);
   }
 
+  @Post('leave')
+  leave(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
+    return this.invitations.leave(identity, workspaceId);
+  }
+
+  @Post(':memberId/make-owner')
+  makeOwner(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('memberId', new ParseUUIDPipe()) memberId: string) {
+    return this.invitations.transferOwnership(identity, workspaceId, memberId);
+  }
+
   @Patch(':memberId')
   updateMember(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('memberId', new ParseUUIDPipe()) memberId: string, @Body() body: unknown) {
     return this.invitations.updateMember(identity, workspaceId, memberId, body);

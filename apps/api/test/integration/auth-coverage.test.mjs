@@ -27,6 +27,7 @@ const guestAllowed = [
   'PATCH /api/v1/workspaces/:workspaceId/activity/',
   'POST /api/v1/workspaces/:workspaceId/ai/conversations',
   'POST /api/v1/workspaces/:workspaceId/channels/:channelId/read',
+  'POST /api/v1/workspaces/:workspaceId/members/leave',
   'POST /api/v1/workspaces/:workspaceId/favourites',
   'DELETE /api/v1/workspaces/:workspaceId/favourites',
   'POST /api/v1/workspaces/:workspaceId/activity/:activityId/dismiss',
@@ -71,7 +72,9 @@ describe('every route requires sign-in unless listed as public', { skip }, () =>
   test('guests are refused on every route that changes something', async () => {
     await t.user('gwen'); await t.user('olga'); const W = await t.workspace('olga'); await t.member(W.id, 'gwen', 'GUEST');
     const seen = [];
-    for (const { method, path } of routes.filter((route) => route.path.includes(':workspaceId') && !['GET', 'HEAD'].includes(route.method))) {
+    // Leaving really removes the guest, so that route is called last.
+    const leaves = (route) => route.path.endsWith('/members/leave');
+    for (const { method, path } of routes.filter((route) => route.path.includes(':workspaceId') && !['GET', 'HEAD'].includes(route.method)).sort((a, b) => Number(leaves(a)) - Number(leaves(b)))) {
       const url = path.replace(':workspaceId', W.id).replace(/:[A-Za-z]+/g, '11111111-1111-4111-8111-111111111111');
       const response = await fetch(`${t.base.replace('/api/v1', '')}${url}`, { method, headers: t.headers('gwen', url.includes('/files/upload') ? { 'content-type': 'application/octet-stream' } : {}), body: bodyFor(method, path) });
       if (response.status !== 403) seen.push(`${method} ${path} -> ${response.status}`);

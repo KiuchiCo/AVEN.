@@ -1568,6 +1568,18 @@ export const en = {
   'gt.today': "Today",
   'gt.noDatesOne': "{n} task has no dates and isn’t shown.",
   'gt.noDatesMany': "{n} tasks have no dates and aren’t shown.",
+  'mem.makeOwner': "Make owner",
+  'mem.makeOwnerConfirm': "Make {name} the owner of {workspace}? You will become an administrator and {name} will control billing and deletion.",
+  'mem.ownerMade': "{name} is now the owner of this workspace.",
+  'mem.leave': "Leave workspace",
+  'mem.leaveConfirm': "Leave {workspace}? Your tasks here become unassigned, and you will need a new invitation to come back.",
+  'mem.leaveNote': "You can leave this workspace at any time. Owners must transfer ownership first.",
+  'mem.removeConfirm': "Remove {name} from {workspace}? Their assigned tasks will become unassigned.",
+  'set.del.title': "Delete workspace",
+  'set.del.body': "Permanently deletes this workspace and everything in it: projects, tasks, documents, files, messages and history. Other members lose access. This cannot be undone. A workspace with a paid subscription must have it cancelled first.",
+  'set.del.confirmLabel': "Type “{name}” to confirm",
+  'set.del.btn': "Delete this workspace",
+  'set.del.deleting': "Deleting…",
 } as const;
 
 export type Key = keyof typeof en;

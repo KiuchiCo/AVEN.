@@ -6,14 +6,16 @@ import { renderInvitationEmail } from '../email/email-templates.js';
 import { TransactionalEmail } from '../email/transactional-email.service.js';
 import { BillingService } from '../billing/billing.service.js';
 import { EntitlementsService } from '../billing/entitlements.service.js';
+import { FilesService } from '../files/files.service.js';
 import { createInvitationToken, hashInvitationToken } from './invitation-token.js';
+import { canManage, canReceiveOwnership, type Role } from './member-rules.js';
 
 const roles = ['ADMINISTRATOR', 'MANAGER', 'MEMBER', 'GUEST'] as const;
 type InviteRole = (typeof roles)[number];
 
 @Injectable()
 export class WorkspaceInvitationsService {
-  constructor(private readonly prisma: PrismaService, private readonly email: TransactionalEmail, private readonly entitlements: EntitlementsService, private readonly billing: BillingService) {}
+  constructor(private readonly prisma: PrismaService, private readonly email: TransactionalEmail, private readonly entitlements: EntitlementsService, private readonly billing: BillingService, private readonly files: FilesService) {}
 
   async list(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.membership(identity, workspaceId);
@@ -61,13 +63,14 @@ export class WorkspaceInvitationsService {
 
   async updateMember(identity: AuthenticatedIdentity, workspaceId: string, memberId: string, input: unknown) {
     const actor = await this.membership(identity, workspaceId);
-    if (actor.role !== 'OWNER') throw new ForbiddenException('Only the workspace owner can change member roles.');
+    if (actor.role !== 'OWNER' && actor.role !== 'ADMINISTRATOR') throw new ForbiddenException('Only workspace owners and administrators can change member roles.');
     const body = objectInput(input);
     const role = roleValue(body.role);
     if (memberId === actor.userId) throw new BadRequestException('You cannot change your own workspace role.');
     const target = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: memberId } }, select: { role: true, user: { select: { displayName: true } } } });
     if (!target) throw new NotFoundException('Workspace member not found.');
-    if (target.role === 'OWNER') throw new BadRequestException('The workspace owner role cannot be changed.');
+    if (target.role === 'OWNER') throw new BadRequestException('The workspace owner role cannot be changed. Transfer ownership instead.');
+    if (!canManage(actor.role as Role, target.role as Role, role as Role)) throw new ForbiddenException('Only the workspace owner can change administrators or make someone an administrator.');
     if (target.role === 'GUEST' && role !== 'GUEST') await this.entitlements.assertCanAddMember(workspaceId, { includePending: true });
     await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.workspaceMember.updateMany({ where: { workspaceId, userId: memberId, role: { not: 'OWNER' } }, data: { role } });
@@ -80,18 +83,73 @@ export class WorkspaceInvitationsService {
 
   async removeMember(identity: AuthenticatedIdentity, workspaceId: string, memberId: string) {
     const actor = await this.membership(identity, workspaceId);
-    if (actor.role !== 'OWNER') throw new ForbiddenException('Only the workspace owner can remove members.');
-    if (memberId === actor.userId) throw new BadRequestException('You cannot remove yourself as the workspace owner.');
+    if (actor.role !== 'OWNER' && actor.role !== 'ADMINISTRATOR') throw new ForbiddenException('Only workspace owners and administrators can remove members.');
+    if (memberId === actor.userId) throw new BadRequestException('Use “Leave workspace” to remove yourself.');
     const target = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: memberId } }, select: { role: true, user: { select: { displayName: true } } } });
     if (!target) throw new NotFoundException('Workspace member not found.');
     if (target.role === 'OWNER') throw new BadRequestException('The workspace owner cannot be removed.');
+    if (!canManage(actor.role as Role, target.role as Role)) throw new ForbiddenException('Only the workspace owner can remove administrators.');
     await this.prisma.$transaction(async (transaction) => {
       const removed = await transaction.workspaceMember.deleteMany({ where: { workspaceId, userId: memberId, role: { not: 'OWNER' } } });
       if (removed.count !== 1) throw new NotFoundException('Workspace member not found.');
+      await transaction.task.updateMany({ where: { workspaceId, assigneeId: memberId }, data: { assigneeId: null } });
       await transaction.workspaceActivity.create({ data: { workspaceId, actorId: actor.userId, entityType: 'MEMBER', entityId: memberId, message: `removed ${target.user.displayName} from the workspace` } });
     });
     await this.billing.syncSeatsQuietly(workspaceId);
     return { removed: true };
+  }
+
+  /** Leaving is always allowed except for the owner, who must hand the workspace over first. Nothing they created is deleted. */
+  async leave(identity: AuthenticatedIdentity, workspaceId: string) {
+    const actor = await this.membership(identity, workspaceId);
+    if (actor.role === 'OWNER') throw new BadRequestException('The owner can’t leave. Transfer ownership to someone else first, or delete the workspace.');
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: actor.userId }, select: { displayName: true } });
+    await this.prisma.$transaction(async (transaction) => {
+      const removed = await transaction.workspaceMember.deleteMany({ where: { workspaceId, userId: actor.userId, role: { not: 'OWNER' } } });
+      if (removed.count !== 1) throw new NotFoundException('Workspace not found.');
+      await transaction.task.updateMany({ where: { workspaceId, assigneeId: actor.userId }, data: { assigneeId: null } });
+      await transaction.workspaceActivity.create({ data: { workspaceId, actorId: actor.userId, entityType: 'MEMBER', entityId: actor.userId, message: `${user.displayName} left the workspace` } });
+    });
+    await this.billing.syncSeatsQuietly(workspaceId);
+    return { left: true };
+  }
+
+  /** The owner hands the workspace to another member and becomes an administrator, so the workspace always has exactly one owner. */
+  async transferOwnership(identity: AuthenticatedIdentity, workspaceId: string, memberId: string) {
+    const actor = await this.membership(identity, workspaceId);
+    if (actor.role !== 'OWNER') throw new ForbiddenException('Only the workspace owner can transfer ownership.');
+    if (memberId === actor.userId) throw new BadRequestException('You already own this workspace.');
+    const workspace = await this.prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { personalOwnerId: true } });
+    if (workspace.personalOwnerId) throw new BadRequestException('A personal workspace can’t be transferred.');
+    const target = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: memberId } }, select: { role: true, user: { select: { displayName: true } } } });
+    if (!target) throw new NotFoundException('Workspace member not found.');
+    if (!canReceiveOwnership(target.role as Role)) throw new BadRequestException('Guests can’t own a workspace. Change their role first.');
+    await this.prisma.$transaction(async (transaction) => {
+      const demoted = await transaction.workspaceMember.updateMany({ where: { workspaceId, userId: actor.userId, role: 'OWNER' }, data: { role: 'ADMINISTRATOR' } });
+      if (demoted.count !== 1) throw new ConflictException('Ownership changed while you were transferring it. Refresh and try again.');
+      await transaction.workspaceMember.update({ where: { workspaceId_userId: { workspaceId, userId: memberId } }, data: { role: 'OWNER' } });
+      await transaction.workspaceActivity.create({ data: { workspaceId, actorId: actor.userId, entityType: 'MEMBER', entityId: memberId, message: `made ${target.user.displayName} the workspace owner` } });
+    });
+    await this.billing.syncSeatsQuietly(workspaceId);
+    return { userId: memberId, role: 'OWNER' };
+  }
+
+  /**
+   * Permanently deletes a shared workspace and everything in it, including stored files. Owner only, the name must be typed
+   * to confirm, and a workspace with a paid subscription must have it cancelled first so billing is never left running.
+   */
+  async deleteWorkspace(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
+    const actor = await this.membership(identity, workspaceId);
+    if (actor.role !== 'OWNER') throw new ForbiddenException('Only the workspace owner can delete the workspace.');
+    const workspace = await this.prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { name: true, personalOwnerId: true } });
+    if (workspace.personalOwnerId) throw new BadRequestException('A personal workspace can’t be deleted.');
+    const typed = typeof objectInput(input).name === 'string' ? (objectInput(input).name as string).trim() : '';
+    if (typed !== workspace.name) throw new BadRequestException('Type the workspace’s exact name to confirm deleting it.');
+    const subscription = await this.prisma.subscription.findUnique({ where: { workspaceId }, select: { status: true, providerSubscriptionId: true } });
+    if (subscription?.providerSubscriptionId && ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(subscription.status)) throw new ConflictException('This workspace still has a paid subscription. Cancel it from Settings → Plan and usage (Manage billing) first, then delete the workspace.');
+    await this.files.removeAllObjects(workspaceId);
+    await this.prisma.workspace.delete({ where: { id: workspaceId } });
+    return { deleted: true };
   }
 
   async details(token: string) {

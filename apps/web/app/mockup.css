@@ -237,3 +237,9 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 /* Live documents */
 .document-presence { margin: 4px 0 8px; font-size: 13px; opacity: .8; }
 .document-presence::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: #5a8f5a; }
+
+/* Workspace administration */
+.members-leave { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; font-size: 14px; opacity: .85; }
+.workspace-settings-card--danger { border-color: #b4483a; }
+.workspace-settings-danger { background: #b4483a; border-color: #b4483a; color: #fff; }
+.workspace-settings-danger:disabled { opacity: .5; }

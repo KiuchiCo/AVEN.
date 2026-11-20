@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
 import { BillingCard } from './billing-card';
+import { DeleteWorkspaceCard } from './delete-workspace-card';
 import { LanguageCard } from './language-card';
 import { PermissionsCard } from './permissions-card';
 import { PushCard } from './push-card';
@@ -121,5 +122,6 @@ export default function WorkspaceSettingsPage() {
       </form>
       <dl><div><dt>{t('set.ws.role')}</dt><dd>{session.workspace.role?.toLowerCase() ?? 'member'}</dd></div><div><dt>{t('set.ws.members')}</dt><dd>{session.workspace.memberCount ?? 1}</dd></div><div><dt>{t('set.ws.type')}</dt><dd>{session.workspace.isPersonal ? t('set.ws.personal') : t('set.ws.shared')}</dd></div></dl>
     </div>
+    <DeleteWorkspaceCard />
   </section>;
 }
