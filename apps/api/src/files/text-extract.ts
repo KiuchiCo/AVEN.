@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { OFFICE_EXTENSIONS, officeToText } from './office-text.js';
 
 export const KNOWLEDGE_TEXT_LIMIT = 20_000;
 export const READABLE_EXTENSIONS = ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'html', 'htm', 'log'] as const;
@@ -17,17 +18,27 @@ export function htmlToText(html: string): string {
 }
 
 /**
- * Turns an uploaded file into plain text for a Knowledge entry. Only text formats are read (nothing is guessed from
- * binary files such as PDFs or Word documents), and the result is cut to what a Knowledge entry can hold.
+ * Turns an uploaded file into plain text for a Knowledge entry. Text formats and Word, PowerPoint and Excel (zip+XML) files are read (nothing is guessed from
+ * other binary files such as PDFs), and the result is cut to what a Knowledge entry can hold.
  */
 export function extractText(name: string, mimeType: string, bytes: Buffer): { text: string; truncated: boolean } {
   const ext = extension(name);
+  if ((OFFICE_EXTENSIONS as readonly string[]).includes(ext)) {
+    const raw = officeToText(ext, bytes);
+    if (raw === null) throw new BadRequestException(`That ${ext.toUpperCase()} file couldn’t be read. It may be damaged or password-protected.`);
+    return finish(raw);
+  }
   const readable = (READABLE_EXTENSIONS as readonly string[]).includes(ext) || mimeType.startsWith('text/') || mimeType === 'application/json';
-  if (!readable) throw new BadRequestException(`AVEN can read text files (${READABLE_EXTENSIONS.map((e) => `.${e}`).join(', ')}). PDFs and Word documents can’t be read yet.`);
+  if (!readable) throw new BadRequestException(`AVEN can read text files (${READABLE_EXTENSIONS.map((e) => `.${e}`).join(', ')}). Word (.docx), PowerPoint (.pptx) and Excel (.xlsx) files can be read too. PDFs and older .doc/.xls files can’t be read yet.`);
   if (bytes.includes(0)) throw new BadRequestException('That file looks like binary data, not text.');
   let text = bytes.toString('utf8').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
   if (ext === 'html' || ext === 'htm' || mimeType === 'text/html') text = htmlToText(text);
   else if (ext === 'json' || mimeType === 'application/json') { try { text = JSON.stringify(JSON.parse(text), null, 2); } catch { /* keep the raw text */ } }
+  return finish(text);
+}
+
+function finish(input: string): { text: string; truncated: boolean } {
+  let text = input.replace(/\r\n?/g, '\n');
   text = text.split('\n').map((line) => line.replace(/[ \t]+$/g, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   if (!text) throw new BadRequestException('There is no readable text in that file.');
   if (text.length <= KNOWLEDGE_TEXT_LIMIT) return { text, truncated: false };
