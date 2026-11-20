@@ -3,7 +3,7 @@
 import { UserButton, useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { WorkspaceSession } from './layout';
 import { timeZoneCookie, timeZoneCookieValue } from '../time-zone-script';
 import type { Key } from '../i18n/en';
@@ -21,7 +21,12 @@ export function useWorkspaceSession() {
   return session;
 }
 
+const noSubscription = () => () => undefined;
+
 export function WorkspaceShell({ session, children }: Readonly<{ session: WorkspaceSession; children: ReactNode }>) {
+  // Pages show dates and times in this person's own locale and time zone, which the server can't know. Rendering page
+  // content only once the browser has taken over means the server's guess is never compared with the real thing.
+  const ready = useSyncExternalStore(noSubscription, () => true, () => false);
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -158,7 +163,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
 
           <main className="workspace-content">
             {session.workspace.role === 'GUEST' && <p className="workspace-readonly-banner" role="status">Guest access is read-only. You can browse workspace information, but editing is disabled.</p>}
-            {children}
+            {ready ? children : null}
           </main>
         </div>
       </div>
