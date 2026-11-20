@@ -15,10 +15,11 @@ export function PageHeader({ eyebrow, title, description, icon, children }: { ey
 }
 
 /** A figure with an icon, a large serif number and what it counts. `delta` shows a small trend pill (up is good unless `bad`). */
-export function StatCard({ icon, value, label, tone = 'bronze', delta, bad }: { icon: IconName; value: ReactNode; label: ReactNode; tone?: 'bronze' | 'green' | 'violet' | 'blue' | 'red'; delta?: ReactNode; bad?: boolean }) {
+export function StatCard({ icon, value, label, tone = 'bronze', delta, bad, aside }: { icon: IconName; value: ReactNode; label: ReactNode; tone?: 'bronze' | 'green' | 'violet' | 'blue' | 'red'; delta?: ReactNode; bad?: boolean; aside?: ReactNode }) {
   return <div className={`rd-stat rd-stat--${tone}`}>
     <span className="rd-tile" aria-hidden="true"><Icon name={icon} size={24} /></span>
     <div><strong>{value}</strong><span>{label}</span></div>
+    {aside}
     {delta !== undefined && <em className={`rd-delta${bad ? ' rd-delta--bad' : ''}`}>{delta}</em>}
   </div>;
 }
@@ -54,6 +55,7 @@ const arts: Record<string, ReactNode> = {
   stack: <><path d="m60 22 38 20-38 20-38-20z" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" strokeLinejoin="round" /><path d="m22 58 38 20 38-20M22 74l38 20 38-20" fill="none" stroke="#a48766" strokeWidth="2.5" strokeLinejoin="round" /></>,
   check: <><rect x="28" y="28" width="64" height="64" rx="14" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" /><path d="m44 62 12 12 22-26" fill="none" stroke="#a48766" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></>,
   search: <><circle cx="54" cy="54" r="26" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" /><path d="m74 74 22 22" stroke="#a48766" strokeWidth="3" strokeLinecap="round" /></>,
+  chat: <><path d="M24 34a8 8 0 0 1 8-8h56a8 8 0 0 1 8 8v36a8 8 0 0 1-8 8H56L38 94V78h-6a8 8 0 0 1-8-8z" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" strokeLinejoin="round" /><path d="M40 46h40M40 58h26" stroke="#a48766" strokeWidth="2.5" strokeLinecap="round" /></>,
   folder: <><path d="M20 40a8 8 0 0 1 8-8h22l8 10h34a8 8 0 0 1 8 8v36a8 8 0 0 1-8 8H28a8 8 0 0 1-8-8z" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" strokeLinejoin="round" /></>,
 };
 
@@ -68,4 +70,12 @@ export function EmptyState({ art = 'stack', title, text, children, compact }: { 
 /** A small coloured pill, for statuses, priorities and counts. */
 export function Pill({ tone = 'neutral', children }: { tone?: 'neutral' | 'green' | 'amber' | 'red' | 'blue' | 'violet' | 'bronze'; children: ReactNode }) {
   return <span className={`rd-pill rd-pill--${tone}`}>{children}</span>;
+}
+
+const avatarTones = ['#e8c9a8', '#d8b9b5', '#cdd6c4', '#c9d4e6', '#e0cfa6', '#d6c7e0'];
+/** A round initials badge; the tone comes from the name so a person keeps their colour everywhere. */
+export function Avatar({ name, size = 36, online }: { name: string; size?: number; online?: boolean }) {
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toLocaleUpperCase() ?? '').join('') || '?';
+  const tone = avatarTones[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % avatarTones.length];
+  return <span className="rd-avatar" style={{ width: size, height: size, background: tone, fontSize: Math.round(size * 0.38) }} aria-hidden="true">{initials}{online !== undefined && <i className={online ? 'is-on' : ''} />}</span>;
 }

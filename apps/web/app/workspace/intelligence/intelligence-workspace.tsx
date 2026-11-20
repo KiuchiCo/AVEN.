@@ -7,7 +7,7 @@ import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
 import { AssistantChat } from './assistant-chat';
-import { PageHeader } from '../ui';
+import { PageHeader, PillTabs } from '../ui';
 
 type Briefing = {
   generatedAt: string;
@@ -41,6 +41,7 @@ export function IntelligenceWorkspace() {
   const [reviewingPlan, setReviewingPlan] = useState(false);
   const [savingPlan, setSavingPlan] = useState(false);
   const [planNotice, setPlanNotice] = useState('');
+  const [tab, setTab] = useState<'ASK' | 'SEARCH' | 'INSIGHTS' | 'PLANNER'>('ASK');
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -131,13 +132,12 @@ export function IntelligenceWorkspace() {
 
   return <div className="workspace-section-page intelligence-page">
     <header className="intelligence-hero">
-      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('in.title')} description={t('in.heroDesc')} icon="sparkle" />
+      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('in.title')} description={t('in.heroDesc')} />
       <span className="intelligence-hero__date">{today}</span>
     </header>
-    <AssistantChat />
+    <PillTabs label={t('in.tabsAria')} value={tab} onChange={setTab} items={[{ key: 'ASK', label: t('in.tab.ask'), icon: 'chat' }, { key: 'SEARCH', label: t('in.tab.search'), icon: 'search' }, { key: 'INSIGHTS', label: t('in.tab.insights'), icon: 'chart' }, { key: 'PLANNER', label: t('in.tab.planner'), icon: 'target' }]} />
     {error && <p className="productivity-error" role="alert">{error}</p>}
-
-    <section className="intelligence-ask" aria-labelledby="intelligence-ask-title">
+    {tab === 'ASK' && <div className="intelligence-top"><AssistantChat /><section className="intelligence-ask" aria-labelledby="intelligence-ask-title">
       <div><span className="intelligence-spark" aria-hidden="true">✧</span><p className="workspace-eyebrow">{t('in.quickSearch')}</p><h2 id="intelligence-ask-title">{t('in.findTitle')}</h2><p>{t('in.findHint')}</p></div>
       <form onSubmit={(event) => void ask(event)}>
         <label className="sr-only" htmlFor="intelligence-question">{t('in.askLabel')}</label>
@@ -146,37 +146,43 @@ export function IntelligenceWorkspace() {
       </form>
       <div className="intelligence-prompts">{prompts.map((prompt) => <button key={prompt} type="button" disabled={asking} onClick={() => void ask(undefined, prompt)}>{prompt}</button>)}</div>
       {answer && <div className="intelligence-answer" aria-live="polite"><p>{answer}</p>{results.length > 0 && <ul>{results.map((result) => <li key={`${result.type}-${result.id}`}><Link href={result.href}><span>{result.type}</span><strong>{result.title}</strong><small>{result.detail}</small></Link></li>)}</ul>}</div>}
-    </section>
-
+    </section></div>}
+    {tab === 'SEARCH' && <section className="intelligence-ask" aria-labelledby="intelligence-ask-title">
+      <div><span className="intelligence-spark" aria-hidden="true">✧</span><p className="workspace-eyebrow">{t('in.quickSearch')}</p><h2 id="intelligence-ask-title">{t('in.findTitle')}</h2><p>{t('in.findHint')}</p></div>
+      <form onSubmit={(event) => void ask(event)}>
+        <label className="sr-only" htmlFor="intelligence-question">{t('in.askLabel')}</label>
+        <input id="intelligence-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder={t('in.askPh')} maxLength={100} />
+        <button type="submit" disabled={asking || question.trim().length < 2}>{asking ? t('in.looking') : t('in.search')}</button>
+      </form>
+      <div className="intelligence-prompts">{prompts.map((prompt) => <button key={prompt} type="button" disabled={asking} onClick={() => void ask(undefined, prompt)}>{prompt}</button>)}</div>
+      {answer && <div className="intelligence-answer" aria-live="polite"><p>{answer}</p>{results.length > 0 && <ul>{results.map((result) => <li key={`${result.type}-${result.id}`}><Link href={result.href}><span>{result.type}</span><strong>{result.title}</strong><small>{result.detail}</small></Link></li>)}</ul>}</div>}
+    </section>}
     {loading ? <div className="intelligence-loading" role="status">{t('in.loadingBrief')}</div> : briefing && <>
-      <section className="intelligence-stats" aria-label={t('in.glance')}>
+      {tab === 'ASK' && <div className="intelligence-columns intelligence-columns--wide"><section className="intelligence-stats" aria-label={t('in.glance')}><header className="intelligence-stats__head"><h2>{t('in.snapshot')}</h2><p>{t('in.snapshotSub')}</p></header><div className="intelligence-stats__grid">
         <article><span>{t('in.openTasks')}</span><strong>{briefing.summary.openTasks}</strong><small>{t('in.acrossWs')}</small></article>
         <article className={briefing.summary.overdueTasks ? 'has-alert' : ''}><span>{t('in.overdue')}</span><strong>{briefing.summary.overdueTasks}</strong><small>{t('in.needReview')}</small></article>
         <article><span>{t('in.dueWeek')}</span><strong>{briefing.summary.dueThisWeek}</strong><small>{t('in.tasksAndProjects')}</small></article>
         <article><span>{t('in.activeProjects')}</span><strong>{briefing.summary.activeProjects}</strong><small>{t('in.inProgressOrPlanned')}</small></article>
-      </section>
-
-      <div className="intelligence-columns">
-        <section className="intelligence-panel" aria-labelledby="intelligence-insights-title"><header><div><p className="workspace-eyebrow">{t('in.basedOn')}</p><h2 id="intelligence-insights-title">{t('in.notice')}</h2></div><button type="button" onClick={() => void reload()} disabled={loading}>{t('in.refresh')}</button></header>
+      </div></section><section className="intelligence-panel" aria-labelledby="intelligence-calendar-title"><header><div><p className="workspace-eyebrow">{t('in.next7')}</p><h2 id="intelligence-calendar-title">{t('in.onCalendar')}</h2></div><Link href="/workspace/calendar">{t('in.openCalendar')}</Link></header>
+          {briefing.events.length ? <ul className="intelligence-event-list">{briefing.events.slice(0, 6).map((event) => <li key={event.id}><time>{new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(event.startsAt))}<strong>{new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(event.startsAt))}</strong></time><div><strong>{event.title}</strong>{event.taskTitle && <small>{t('in.linkedTask', { name: event.taskTitle })}</small>}</div></li>)}</ul> : <div className="intelligence-blank"><strong>{t('in.nothingWeek')}</strong><p>{t('in.eventsAppear')}</p></div>}
+        </section></div>}
+      {tab === 'INSIGHTS' && <><section className="intelligence-stats" aria-label={t('in.glance')}><header className="intelligence-stats__head"><h2>{t('in.snapshot')}</h2><p>{t('in.snapshotSub')}</p></header><div className="intelligence-stats__grid">
+        <article><span>{t('in.openTasks')}</span><strong>{briefing.summary.openTasks}</strong><small>{t('in.acrossWs')}</small></article>
+        <article className={briefing.summary.overdueTasks ? 'has-alert' : ''}><span>{t('in.overdue')}</span><strong>{briefing.summary.overdueTasks}</strong><small>{t('in.needReview')}</small></article>
+        <article><span>{t('in.dueWeek')}</span><strong>{briefing.summary.dueThisWeek}</strong><small>{t('in.tasksAndProjects')}</small></article>
+        <article><span>{t('in.activeProjects')}</span><strong>{briefing.summary.activeProjects}</strong><small>{t('in.inProgressOrPlanned')}</small></article>
+      </div></section><div className="intelligence-columns"><section className="intelligence-panel" aria-labelledby="intelligence-insights-title"><header><div><p className="workspace-eyebrow">{t('in.basedOn')}</p><h2 id="intelligence-insights-title">{t('in.notice')}</h2></div><button type="button" onClick={() => void reload()} disabled={loading}>{t('in.refresh')}</button></header>
           <div className="intelligence-insights">{briefing.insights.map((insight) => <article className={`intelligence-insight is-${insight.tone}`} key={insight.id}><span aria-hidden="true">{insight.tone === 'urgent' ? '!' : insight.tone === 'warm' ? '◇' : '✓'}</span><div><h3>{insight.title}</h3><p>{insight.detail}</p><Link href={insight.href}>{insight.action} →</Link></div></article>)}</div>
           <small className="intelligence-footnote">{t('in.footnote', { time: new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(briefing.generatedAt)) })}</small>
-        </section>
-        <section className="intelligence-panel" aria-labelledby="intelligence-focus-title"><header><div><p className="workspace-eyebrow">{t('in.nextStep')}</p><h2 id="intelligence-focus-title">{t('in.priorityTasks')}</h2></div><Link href="/workspace/tasks">{t('in.seeAll')}</Link></header>
+        </section><section className="intelligence-panel" aria-labelledby="intelligence-focus-title"><header><div><p className="workspace-eyebrow">{t('in.nextStep')}</p><h2 id="intelligence-focus-title">{t('in.priorityTasks')}</h2></div><Link href="/workspace/tasks">{t('in.seeAll')}</Link></header>
           {briefing.focusTasks.length ? <ol className="intelligence-task-list">{briefing.focusTasks.map((task) => <li key={task.id}><span className={`intelligence-priority is-${task.priority.toLowerCase()}`}>{t(`prio.${task.priority.toLowerCase()}` as 'prio.low')}</span><div><Link href={`/workspace/tasks/${task.id}`}><strong>{task.title}</strong></Link><small>{task.projectName ?? t('in.wsTask')}{task.dueAt ? t('in.dueOn', { date: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(task.dueAt)) }) : t('in.noDue')}</small><TaskLabels labels={task.labels} compact /></div></li>)}</ol> : <div className="intelligence-blank"><strong>{t('in.noOpen')}</strong><p>{t('in.noOpenHint')}</p><Link href="/workspace/tasks">{t('in.openTasksLink')}</Link></div>}
-        </section>
-      </div>
-
-      <div className="intelligence-columns">
-        <section className="intelligence-panel" aria-labelledby="intelligence-calendar-title"><header><div><p className="workspace-eyebrow">{t('in.next7')}</p><h2 id="intelligence-calendar-title">{t('in.onCalendar')}</h2></div><Link href="/workspace/calendar">{t('in.openCalendar')}</Link></header>
+        </section></div><div className="intelligence-columns"><section className="intelligence-panel" aria-labelledby="intelligence-calendar-title"><header><div><p className="workspace-eyebrow">{t('in.next7')}</p><h2 id="intelligence-calendar-title">{t('in.onCalendar')}</h2></div><Link href="/workspace/calendar">{t('in.openCalendar')}</Link></header>
           {briefing.events.length ? <ul className="intelligence-event-list">{briefing.events.slice(0, 6).map((event) => <li key={event.id}><time>{new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(event.startsAt))}<strong>{new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(event.startsAt))}</strong></time><div><strong>{event.title}</strong>{event.taskTitle && <small>{t('in.linkedTask', { name: event.taskTitle })}</small>}</div></li>)}</ul> : <div className="intelligence-blank"><strong>{t('in.nothingWeek')}</strong><p>{t('in.eventsAppear')}</p></div>}
-        </section>
-        <section className="intelligence-panel intelligence-panel--context" aria-labelledby="intelligence-context-title"><header><div><p className="workspace-eyebrow">{t('in.yourWs')}</p><h2 id="intelligence-context-title">{t('in.context')}</h2></div></header>
+        </section><section className="intelligence-panel intelligence-panel--context" aria-labelledby="intelligence-context-title"><header><div><p className="workspace-eyebrow">{t('in.yourWs')}</p><h2 id="intelligence-context-title">{t('in.context')}</h2></div></header>
           <div className="intelligence-context-grid"><Link href="/workspace/projects"><strong>{briefing.summary.activeProjects}</strong><span>{t('nav.projects')}</span></Link><Link href="/workspace/documents"><strong>{briefing.summary.documents}</strong><span>{t('nav.documents')}</span></Link><Link href="/workspace/knowledge"><strong>{briefing.summary.knowledge}</strong><span>{t('in.knowledgeItems')}</span></Link><Link href="/workspace/databases"><strong>{briefing.summary.databases}</strong><span>{t('nav.databases')}</span></Link><Link href="/workspace/calendar"><strong>{briefing.summary.eventsThisWeek}</strong><span>{t('in.eventsWeek')}</span></Link></div>
           <p className="intelligence-privacy-note">{t('in.privacy', { name: workspace.name })}</p>
-        </section>
-      </div>
-
-      <section className="intelligence-plan-panel" aria-labelledby="intelligence-plan-title">
+        </section></div></>}
+      {(tab === 'ASK' || tab === 'PLANNER') && <section className="intelligence-plan-panel" aria-labelledby="intelligence-plan-title">
         <div className="intelligence-plan-panel__intro"><span aria-hidden="true">✧</span><div><p className="workspace-eyebrow">{t('in.planEyebrow')}</p><h2 id="intelligence-plan-title">{t('in.planTitle')}</h2><p>{t('in.planIntro')}</p></div></div>
         {planNotice && <p className="intelligence-plan-notice" role="status">{planNotice} <Link href="/workspace/projects">{t('in.openProjects')}</Link></p>}
         <form className="intelligence-plan-form" onSubmit={(event) => void submitPlan(event)}>
@@ -191,7 +197,7 @@ export function IntelligenceWorkspace() {
           <div className="intelligence-plan-form__actions">{reviewingPlan && <button type="button" className="intelligence-plan-secondary" onClick={() => setReviewingPlan(false)}>{t('in.editPlan')}</button>}<button type="submit" disabled={savingPlan || loading || !planName.trim() || (!planTasks.length && !planMilestones.length)}>{savingPlan ? t('in.creating') : reviewingPlan ? t('in.approve') : t('in.reviewPlan')}</button></div>
         </form>
         <p className="intelligence-privacy-note">{t('in.planPrivacy')}</p>
-      </section>
+      </section>}
     </>}
   </div>;
 }

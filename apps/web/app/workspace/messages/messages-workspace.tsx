@@ -10,6 +10,8 @@ import { useT } from '../../i18n';
 import { Composer } from './composer';
 import { MessageBody } from './message-body';
 import { readEvents } from './sse';
+import { Icon } from '../home-icons';
+import { Avatar, EmptyState, PillTabs } from '../ui';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export type Channel = { id: string; kind: 'CHANNEL' | 'DIRECT' | 'GROUP'; name: string | null; topic: string; unread: number; participants: Participant[] };
@@ -39,6 +41,10 @@ export function MessagesWorkspace() {
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   const [error, setError] = useState('');
   const [live, setLive] = useState(false);
+  const [scope, setScope] = useState<'ALL' | 'CHANNELS' | 'DMS'>('ALL');
+  const [tab, setTab] = useState<'MESSAGES' | 'FILES'>('MESSAGES');
+  const [info, setInfo] = useState(false);
+  const [adding, setAdding] = useState(false);
   const active = useRef<string | null>(null);
   const openThread = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -179,49 +185,91 @@ export function MessagesWorkspace() {
   const peers = members.filter((member) => member.userId !== user.id && member.role !== 'GUEST');
   const publicChannels = channels.filter((item) => item.kind === 'CHANNEL').sort(byName);
   const privateChats = channels.filter((item) => item.kind !== 'CHANNEL').sort((a, b) => label(a).localeCompare(label(b)));
-  const dot = (id: string) => <span className={`chat-presence${online.includes(id) ? ' chat-presence--on' : ''}`} aria-label={online.includes(id) ? t('msg.online') : t('msg.offline')} />;
-  const chatDot = (item: Channel) => item.kind === 'DIRECT' ? dot(item.participants.find((person) => person.id !== user.id)?.id ?? '') : null;
 
-  const renderMessage = (message: Message, inThread: boolean) => <article key={message.id} className="chat-message">
-    <header><strong>{message.author.displayName}</strong><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</time>{message.editedAt && !message.deletedAt && <small>{t('msg.edited')}</small>}</header>
-    {message.deletedAt ? <p className="chat-deleted">{t('msg.deleted')}</p> : editing?.id === message.id ? <div className="chat-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label={t('msg.editLabel')} /><button onClick={() => void saveEdit()} disabled={!editing.body.trim()}>{t('msg.save')}</button><button onClick={() => setEditing(null)}>{t('msg.cancel')}</button></div> : <>{message.body && <p><MessageBody body={message.body} names={names} /></p>}{message.files?.length > 0 && <ul className="chat-files">{message.files.map((file) => <li key={file.id}><button type="button" onClick={() => void download(file).catch(fail)}>{file.name}</button> <small>{formatBytes(file.sizeBytes)}</small></li>)}</ul>}</>}
-    {!message.deletedAt && editing?.id !== message.id && <div className="chat-actions">
-      {!inThread && <button onClick={() => openReplies(message)}>{message.replyCount ? t(message.replyCount === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: message.replyCount }) : readOnly ? '' : t('msg.reply')}</button>}
-      {!readOnly && message.author.id === user.id && <button onClick={() => setEditing({ id: message.id, body: message.body })}>{t('msg.edit')}</button>}
-      {!readOnly && (message.author.id === user.id || canModerate) && <button onClick={() => void remove(message)}>{t('msg.delete')}</button>}
-    </div>}
+  const when = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dayOf = (iso: string) => new Date(iso).toDateString();
+  const dayTitle = (iso: string) => dayOf(iso) === new Date().toDateString() ? `${t('msg.today')}, ${new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}` : new Date(iso).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+  const sharedFiles = visible.filter((message) => !message.deletedAt).flatMap((message) => (message.files ?? []).map((file) => ({ ...file, author: message.author, createdAt: message.createdAt })));
+  const roster = channel?.kind === 'CHANNEL' ? members : (channel?.participants ?? []).map((person) => ({ userId: person.id, displayName: person.displayName, role: members.find((member) => member.userId === person.id)?.role ?? 'MEMBER' }));
+  const fileCard = (file: { id: string; name: string; mimeType: string; sizeBytes: number }) => <div key={file.id} className="msgs-file"><span className="msgs-file__icon"><Icon name="doc" size={22} /></span><span className="msgs-file__meta"><strong>{file.name}</strong><small>{formatBytes(file.sizeBytes)} · {(file.name.split('.').pop() ?? file.mimeType).toLocaleUpperCase()}</small></span><button type="button" className="rd-iconbtn" aria-label={t('msg.download', { name: file.name })} onClick={() => void download(file).catch(fail)}><Icon name="download" size={18} /></button></div>;
+
+  const renderMessage = (message: Message, inThread: boolean) => <article key={message.id} className="msgs-message">
+    <Avatar name={message.author.displayName} size={42} online={online.includes(message.author.id)} />
+    <div className="msgs-message__main">
+      <header><strong>{message.author.displayName}</strong><time dateTime={message.createdAt}>{when(message.createdAt)}</time>{message.editedAt && !message.deletedAt && <small>{t('msg.edited')}</small>}
+        {!message.deletedAt && editing?.id !== message.id && !readOnly && (message.author.id === user.id || canModerate) && <span className="msgs-message__tools">
+          {!inThread && <button type="button" className="rd-iconbtn" aria-label={t('msg.reply')} onClick={() => openReplies(message)}><Icon name="chat" size={16} /></button>}
+          {message.author.id === user.id && <button type="button" className="rd-iconbtn" aria-label={t('msg.edit')} onClick={() => setEditing({ id: message.id, body: message.body })}><Icon name="edit" size={16} /></button>}
+          <button type="button" className="rd-iconbtn" aria-label={t('msg.delete')} onClick={() => void remove(message)}><Icon name="trash" size={16} /></button></span>}
+      </header>
+      {message.deletedAt ? <p className="chat-deleted">{t('msg.deleted')}</p> : editing?.id === message.id ? <div className="msgs-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label={t('msg.editLabel')} /><div><button type="button" className="rd-btn" onClick={() => void saveEdit()} disabled={!editing.body.trim()}>{t('msg.save')}</button><button type="button" className="rd-btn rd-btn--soft" onClick={() => setEditing(null)}>{t('msg.cancel')}</button></div></div> : <>
+        {message.body && <p><MessageBody body={message.body} names={names} /></p>}
+        {message.files?.length > 0 && <div className="msgs-files">{message.files.map(fileCard)}</div>}</>}
+      {!message.deletedAt && !inThread && (message.replyCount > 0 || !readOnly) && <button type="button" className="msgs-replies" onClick={() => openReplies(message)}>{message.replyCount ? <><strong>{t(message.replyCount === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: message.replyCount })}</strong><Icon name="chevron" size={14} /></> : <span>{t('msg.reply')}</span>}</button>}
+    </div>
   </article>;
 
-  return <section className={`chat${thread ? ' chat--thread' : ''}`}>
-    <aside className="chat-channels" aria-label={t('msg.conversations')}>
-      <form className="chat-search" onSubmit={search} role="search"><label className="visually-hidden" htmlFor="chat-search">{t('msg.searchLabel')}</label><input id="chat-search" value={query} placeholder={t('msg.searchLabel')} onChange={(event) => { setQuery(event.target.value); if (!event.target.value) setHits(null); }} /></form>
-      <h2>{t('msg.channels')} <span className={`chat-live${live ? ' chat-live--on' : ''}`} title={live ? t('msg.live') : t('msg.reconnecting')} role="status" aria-label={live ? t('msg.liveOn') : t('msg.reconnectingShort')} /></h2>
-      <ul>{publicChannels.map((item) => <li key={item.id}><button aria-current={item.id === activeId} onClick={() => { setHits(null); setThread(null); setActiveId(item.id); }}>{label(item)}{item.unread > 0 && <span className="chat-unread" aria-label={t('shell.unread', { n: item.unread })}>{item.unread}</span>}</button></li>)}</ul>
-      {!readOnly && <form onSubmit={createChannel}><label className="visually-hidden" htmlFor="new-channel">{t('msg.newChannelLabel')}</label><input id="new-channel" value={newChannel} maxLength={40} placeholder={t('msg.newChannel')} onChange={(event) => setNewChannel(event.target.value)} /><button disabled={!newChannel.trim()}>{t('msg.add')}</button></form>}
-      <h2>{t('msg.dms')}</h2>
-      <ul>{privateChats.map((item) => <li key={item.id}><button aria-current={item.id === activeId} onClick={() => { setHits(null); setThread(null); setActiveId(item.id); }}><span className="chat-name">{chatDot(item)}{label(item)}</span>{item.unread > 0 && <span className="chat-unread" aria-label={`${item.unread} unread`}>{item.unread}</span>}</button></li>)}</ul>
-      {!readOnly && (picking === null ? <button className="chat-new" onClick={() => setPicking([])} disabled={!peers.length}>{peers.length ? t('msg.newMessage') : t('msg.invitePeople')}</button> : <fieldset className="chat-picker"><legend>{t('msg.messageWho')}</legend>
-        {peers.map((member) => <label key={member.userId}><input type="checkbox" checked={picking.includes(member.userId)} disabled={!picking.includes(member.userId) && picking.length >= 7} onChange={(event) => setPicking((current) => (event.target.checked ? [...(current ?? []), member.userId] : (current ?? []).filter((id) => id !== member.userId)))} />{dot(member.userId)}{member.displayName}</label>)}
-        <div><button onClick={() => void startConversation()} disabled={!picking.length}>{picking.length > 1 ? t('msg.startGroup') : t('msg.open')}</button><button onClick={() => setPicking(null)}>{t('msg.cancel')}</button></div></fieldset>)}
+  const inScope = (item: Channel) => scope === 'ALL' || (scope === 'CHANNELS') === (item.kind === 'CHANNEL');
+  const sideOpen = Boolean(thread) || info;
+  const stack = roster.slice(0, 3);
+
+  return <section className={`msgs${sideOpen ? ' msgs--side' : ''}`}>
+    <aside className="msgs-list" aria-label={t('msg.conversations')}>
+      <div className="msgs-list__head"><h1>{t('nav.messages')}</h1><span className={`chat-live${live ? ' chat-live--on' : ''}`} title={live ? t('msg.live') : t('msg.reconnecting')} role="status" aria-label={live ? t('msg.liveOn') : t('msg.reconnectingShort')} /></div>
+      <form className="rd-search" onSubmit={search} role="search"><Icon name="search" size={18} /><label className="visually-hidden" htmlFor="chat-search">{t('msg.searchLabel')}</label><input id="chat-search" value={query} placeholder={t('msg.searchLabel')} onChange={(event) => { setQuery(event.target.value); if (!event.target.value) setHits(null); }} /></form>
+      <PillTabs size="small" label={t('msg.conversations')} value={scope} onChange={setScope} items={[{ key: 'ALL', label: t('msg.scope.all') }, { key: 'CHANNELS', label: t('msg.scope.channels') }, { key: 'DMS', label: t('msg.scope.dms') }]} />
+      {scope !== 'DMS' && <section className="msgs-group"><header><h2>{t('msg.channels')}</h2>{!readOnly && <button type="button" className="rd-iconbtn" aria-label={t('msg.addChannel')} aria-expanded={adding} onClick={() => setAdding((open) => !open)}><Icon name="plus" size={18} /></button>}</header>
+        {adding && !readOnly && <form className="msgs-add" onSubmit={(event) => { void createChannel(event).then(() => setAdding(false)); }}><label className="visually-hidden" htmlFor="new-channel">{t('msg.newChannelLabel')}</label><input id="new-channel" autoFocus value={newChannel} maxLength={40} placeholder={t('msg.newChannel')} onChange={(event) => setNewChannel(event.target.value)} /><button className="rd-btn" disabled={!newChannel.trim()}>{t('msg.add')}</button></form>}
+        <ul>{publicChannels.filter(inScope).map((item) => <li key={item.id}><button type="button" aria-current={item.id === activeId} onClick={() => { setHits(null); setThread(null); setInfo(false); setActiveId(item.id); }}><span className="msgs-list__name">{label(item)}</span>{item.unread > 0 && <span className="chat-unread" aria-label={t('shell.unread', { n: item.unread })}>{item.unread}</span>}</button></li>)}</ul></section>}
+      {scope !== 'CHANNELS' && <section className="msgs-group"><header><h2>{t('msg.dms')}</h2>{!readOnly && <button type="button" className="rd-iconbtn" aria-label={peers.length ? t('msg.newMessage') : t('msg.invitePeople')} disabled={!peers.length} aria-expanded={picking !== null} onClick={() => setPicking((current) => (current === null ? [] : null))}><Icon name="plus" size={18} /></button>}</header>
+        {picking !== null && !readOnly && <fieldset className="msgs-picker"><legend>{t('msg.messageWho')}</legend>
+          {peers.map((member) => <label key={member.userId}><input type="checkbox" checked={picking.includes(member.userId)} disabled={!picking.includes(member.userId) && picking.length >= 7} onChange={(event) => setPicking((current) => (event.target.checked ? [...(current ?? []), member.userId] : (current ?? []).filter((id) => id !== member.userId)))} /><Avatar name={member.displayName} size={24} online={online.includes(member.userId)} />{member.displayName}</label>)}
+          <div><button type="button" className="rd-btn" onClick={() => void startConversation()} disabled={!picking.length}>{picking.length > 1 ? t('msg.startGroup') : t('msg.open')}</button><button type="button" className="rd-btn rd-btn--soft" onClick={() => setPicking(null)}>{t('msg.cancel')}</button></div></fieldset>}
+        <ul>{privateChats.filter(inScope).map((item) => { const other = item.participants.find((person) => person.id !== user.id); return <li key={item.id}><button type="button" aria-current={item.id === activeId} onClick={() => { setHits(null); setThread(null); setInfo(false); setActiveId(item.id); }}><Avatar name={label(item)} size={30} online={item.kind === 'DIRECT' ? online.includes(other?.id ?? '') : undefined} /><span className="msgs-list__name">{label(item)}</span>{item.unread > 0 && <span className="chat-unread" aria-label={`${item.unread} unread`}>{item.unread}</span>}</button></li>; })}</ul>
+        {!readOnly && !peers.length && <p className="rd-muted">{t('msg.invitePeople')}</p>}</section>}
     </aside>
-    <div className="chat-main">
+    <div className="msgs-main">
       {error && <p className="workspace-settings-status" role="alert">{error}</p>}
-      {hits ? <div className="chat-results"><header><h1>{t('msg.results')}</h1><button onClick={() => { setHits(null); setQuery(''); }}>{t('msg.close')}</button></header>
-        {hits.length === 0 ? <p className="workspace-settings-note">{t('msg.noMatch', { q: query })}</p> : <ul>{hits.map((hit) => <li key={hit.id}><button onClick={() => jump(hit)}><small>{label(hit.channel)} · {hit.author.displayName} · {new Date(hit.createdAt).toLocaleDateString()}</small><span>{hit.body.replace(/@\[([^\]]*)\]\([^)]*\)/g, '@$1').slice(0, 200)}</span></button></li>)}</ul>}</div>
-      : !channel ? <p className="workspace-settings-note">{channels.length ? t('msg.choose') : readOnly ? t('msg.noChannels') : t('msg.createFirst')}</p> : <>
-        <header><h1>{label(channel)}</h1>{channel.topic && <p>{channel.topic}</p>}{channel.kind === 'GROUP' && <p>{channel.participants.map((person) => person.displayName).join(', ')}</p>}</header>
-        <div className="chat-thread" aria-live="polite">
-          {hasMore && <button className="chat-older" onClick={() => void older()}>{t('msg.older')}</button>}
-          {visible.map((message) => renderMessage(message, false))}
-          <div ref={endRef} />
+      {hits ? <div className="msgs-results"><header><h2>{t('msg.results')}</h2><button type="button" className="rd-btn rd-btn--soft" onClick={() => { setHits(null); setQuery(''); }}>{t('msg.close')}</button></header>
+        {hits.length === 0 ? <EmptyState art="search" compact title={t('msg.noMatch', { q: query })} /> : <ul>{hits.map((hit) => <li key={hit.id}><button type="button" onClick={() => jump(hit)}><small>{label(hit.channel)} · {hit.author.displayName} · {new Date(hit.createdAt).toLocaleDateString()}</small><span>{hit.body.replace(/@\[([^\]]*)\]\([^)]*\)/g, '@$1').slice(0, 200)}</span></button></li>)}</ul>}</div>
+      : !channel ? <EmptyState art="chat" title={channels.length ? t('msg.choose') : readOnly ? t('msg.noChannels') : t('msg.createFirst')} />
+      : <>
+        <header className="msgs-head">
+          <div className="msgs-head__title"><h2>{label(channel)}</h2><p>{channel.topic || t(channel.kind === 'CHANNEL' ? 'msg.kind.channel' : channel.kind === 'GROUP' ? 'msg.kind.group' : 'msg.kind.direct')}</p></div>
+          <div className="msgs-head__tools">
+            <div className="msgs-stack" aria-label={t('msg.members')}>{stack.map((person) => <Avatar key={'userId' in person ? person.userId : ''} name={person.displayName} size={32} />)}{roster.length > 3 && <span>+{roster.length - 3}</span>}</div>
+            <details className="rd-menu"><summary className="rd-iconbtn rd-iconbtn--boxed" aria-label={t('msg.moreActions')}><Icon name="more" size={20} /></summary><div className="rd-menu__list">
+              <button type="button" onClick={() => void call(`/${channel.id}/read`, 'POST').then(() => setChannels((list) => list.map((item) => (item.id === channel.id ? { ...item, unread: 0 } : item)))).catch(fail)}><Icon name="checkCircle" size={16} />{t('msg.markRead')}</button>
+              {hasMore && <button type="button" onClick={() => void older()}><Icon name="history" size={16} />{t('msg.loadOlder')}</button>}</div></details>
+            <button type="button" className={`rd-iconbtn rd-iconbtn--boxed${info ? ' is-active' : ''}`} aria-label={t('msg.info')} aria-pressed={info} onClick={() => { setThread(null); openThread.current = null; setInfo((open) => !open); }}><Icon name="info" size={20} /></button>
+          </div>
+        </header>
+        <PillTabs label={t('msg.conversations')} value={tab} onChange={setTab} items={[{ key: 'MESSAGES', label: t('msg.tabMessages'), icon: 'chat' }, { key: 'FILES', label: t('msg.tabFiles'), icon: 'attach', count: sharedFiles.length || undefined }]} />
+        <div className="msgs-panel">
+          {tab === 'FILES' ? <div className="msgs-filelist">{sharedFiles.length === 0 ? <EmptyState art="folder" compact title={t('msg.noFiles')} /> : sharedFiles.map((file) => <div key={file.id}>{fileCard(file)}<small className="rd-muted">{file.author.displayName} · {new Date(file.createdAt).toLocaleDateString()}</small></div>)}</div>
+          : <div className="msgs-thread" aria-live="polite">
+            {hasMore && <button type="button" className="rd-btn rd-btn--soft msgs-older" onClick={() => void older()}>{t('msg.older')}</button>}
+            {visible.length === 0 && <p className="rd-muted msgs-hello">{t('msg.conversationEmpty')}</p>}
+            {visible.map((message, index) => <div key={message.id}>{(index === 0 || dayOf(visible[index - 1].createdAt) !== dayOf(message.createdAt)) && <p className="msgs-day"><span>{dayTitle(message.createdAt)}</span></p>}{renderMessage(message, false)}</div>)}
+            <div ref={endRef} />
+          </div>}
+          {readOnly ? <p className="workspace-settings-note">{t('msg.guests')}</p> : <Composer label={t('msg.composerLabel', { name: label(channel) })} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds)} />}
         </div>
-        {readOnly ? <p className="workspace-settings-note">{t('msg.guests')}</p> : <Composer label={t('msg.composerLabel', { name: label(channel) })} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds)} />}
       </>}
     </div>
-    {thread && channel && <aside className="chat-side" aria-label={t('msg.thread')}>
-      <header><h2>{t('msg.thread')}</h2><button onClick={() => { openThread.current = null; setThread(null); }} aria-label={t('msg.closeThread')}>{t('msg.close')}</button></header>
-      <div className="chat-thread">{renderMessage(thread.root, true)}<p className="chat-side__count">{t(thread.replies.length === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: thread.replies.length })}</p>{thread.replies.map((reply) => renderMessage(reply, true))}</div>
-      {!readOnly && <Composer label={t('msg.reply')} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds, thread.root.id)} compact />}
+    {sideOpen && channel && <aside className="msgs-side" aria-label={thread ? t('msg.thread') : t('msg.info')}>
+      {thread ? <>
+        <header><h2>{t('msg.thread')}</h2><button type="button" className="rd-iconbtn" onClick={() => { openThread.current = null; setThread(null); }} aria-label={t('msg.closeThread')}><Icon name="close" size={18} /></button></header>
+        <div className="msgs-thread">{renderMessage(thread.root, true)}<p className="chat-side__count">{t(thread.replies.length === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: thread.replies.length })}</p>{thread.replies.map((reply) => renderMessage(reply, true))}</div>
+        {!readOnly && <Composer label={t('msg.reply')} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds, thread.root.id)} compact />}
+      </> : <>
+        <header><h2>{t('msg.info')}</h2><button type="button" className="rd-iconbtn" onClick={() => setInfo(false)} aria-label={t('msg.close')}><Icon name="close" size={18} /></button></header>
+        <div className="msgs-info"><h3>{label(channel)}</h3><p className="rd-muted">{channel.topic || t(channel.kind === 'CHANNEL' ? 'msg.kind.channel' : channel.kind === 'GROUP' ? 'msg.kind.group' : 'msg.kind.direct')}</p>
+          <h4>{t('msg.members')} <span>{roster.length}</span></h4>
+          <ul className="msgs-roster">{roster.map((person) => { const id = 'userId' in person ? person.userId : ''; return <li key={id}><Avatar name={person.displayName} size={34} online={online.includes(id)} /><span><strong>{person.displayName}</strong><small>{({ OWNER: t('role.owner'), ADMINISTRATOR: t('role.administrator'), MANAGER: t('role.manager'), MEMBER: t('role.member'), GUEST: t('role.guest') } as Record<string, string>)[person.role] ?? person.role.toLowerCase()}</small></span></li>; })}</ul>
+          <h4>{t('msg.sharedHere')} <span>{sharedFiles.length}</span></h4>
+          {sharedFiles.length === 0 ? <p className="rd-muted">{t('msg.noFiles')}</p> : <div className="msgs-files">{sharedFiles.slice(0, 5).map(fileCard)}</div>}
+        </div></>}
     </aside>}
   </section>;
 }

@@ -17,6 +17,7 @@ const paths: Record<string, ReactNode> = {
   send: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
   paper: <><path d="m21 3-9 18-2.5-7.5L2 11z" /></>,
   chevron: <><path d="m8 10 4 4 4-4" /></>,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5.5M12 7.6v.1" /></>,
   bolt: <><path d="m13 2-8 11h6l-1 9 8-11h-6z" /></>,
   play: <><circle cx="12" cy="12" r="8.5" /><path d="m10.5 8.8 4.2 3.2-4.2 3.2z" /></>,
   checkCircle: <><circle cx="12" cy="12" r="8.5" /><path d="m8.5 12.2 2.5 2.5 4.5-5" /></>,

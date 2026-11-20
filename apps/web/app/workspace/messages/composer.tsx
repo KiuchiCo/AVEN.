@@ -4,6 +4,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { useT } from '../../i18n';
 import { useFilesApi } from '../files/use-files-api';
 import { activeMention, mentionToken } from './mention-text';
+import { Icon } from '../home-icons';
 
 type Member = { userId: string; displayName: string };
 
@@ -59,7 +60,11 @@ export function Composer({ label, members, selfId, onSend, compact = false }: { 
         }} />
     </div>
     {(files.length > 0 || problem) && <ul className="chat-compose__files" aria-label={t('msg.filesAria')}>{files.map((file) => <li key={file.id}>{file.name} <button type="button" aria-label={t('msg.removeFile', { name: file.name })} onClick={() => setFiles(files.filter((item) => item.id !== file.id))}>×</button></li>)}{problem && <li role="alert">{problem}</li>}</ul>}
-    <label className="chat-compose__attach" aria-disabled={uploading || files.length >= 5}>{uploading ? t('msg.uploading') : t('msg.attach')}<input type="file" multiple disabled={uploading || files.length >= 5} onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; if (selected.length) void attach(selected); }} /></label>
-    <button className="workspace-settings-save" disabled={(!draft.trim() && !files.length) || uploading}>{t('msg.send')}</button>
+    <div className="chat-compose__bar">
+      <button type="button" className="rd-iconbtn rd-iconbtn--boxed" aria-label={t('msg.mentionBtn')} onClick={() => { const at = field.current?.selectionStart ?? draft.length; const next = `${draft.slice(0, at)}@${draft.slice(at)}`; setDraft(next); requestAnimationFrame(() => { field.current?.focus(); field.current?.setSelectionRange(at + 1, at + 1); setCaret(at + 1); }); }}><Icon name="users" size={18} /></button>
+      <label className="rd-iconbtn rd-iconbtn--boxed chat-compose__attach" aria-disabled={uploading || files.length >= 5} title={uploading ? t('msg.uploading') : t('msg.attach')}><Icon name="attach" size={18} /><span className="visually-hidden">{uploading ? t('msg.uploading') : t('msg.attach')}</span><input type="file" multiple disabled={uploading || files.length >= 5} onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; if (selected.length) void attach(selected); }} /></label>
+      <span className="chat-compose__hint">{t('msg.sendHint')}</span>
+      <button type="submit" className="rd-btn" disabled={(!draft.trim() && !files.length) || uploading}><Icon name="send" size={18} />{t('msg.send')}</button>
+    </div>
   </form>;
 }

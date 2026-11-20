@@ -105,7 +105,7 @@ export default function WorkspaceSettingsPage() {
   }
 
   return <section className="workspace-settings-page">
-    <PageHeader eyebrow={t('set.eyebrow')} title={t('set.title')} description={t('set.sub')} icon="gear" />
+    <PageHeader eyebrow={t('set.eyebrow')} title={t('set.title')} description={t('set.sub')} icon="sliders" />
     <AccountSettings />
     <ThemeCard />
     <LanguageCard />

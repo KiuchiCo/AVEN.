@@ -15,7 +15,8 @@ import type { ProjectTemplate, TemplateMilestone, TemplateTask } from './templat
 import { csvCell, parseTaskCsv, type TaskImportRow } from './task-csv';
 import { baseFor } from '../task-offline';
 import { useTaskSync } from '../task-sync';
-import { PageHeader } from '../ui';
+import { EmptyState, PageHeader } from '../ui';
+import { Icon, type IconName } from '../home-icons';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Member = { userId: string; displayName: string; role: string };
@@ -25,6 +26,13 @@ type TaskViewFilters = { projectId: string; search: string; status: string; prio
 type SavedTaskView = { id: string; name: string; filters: TaskViewFilters; createdBy?: { id: string; displayName: string } };
 type TaskLabelUsage = { label: string; taskCount: number };
 
+const columnMeta: Record<string, { icon: IconName; art: 'stack' | 'search' | 'check' | 'folder'; empty: Key; text: Key }> = {
+  TODO: { icon: 'list', art: 'stack', empty: 'pj.col.todoEmpty', text: 'pj.col.todoEmptyText' },
+  IN_PROGRESS: { icon: 'refresh', art: 'stack', empty: 'pj.col.doingEmpty', text: 'pj.col.doingEmptyText' },
+  IN_REVIEW: { icon: 'search', art: 'search', empty: 'pj.col.reviewEmpty', text: 'pj.col.reviewEmptyText' },
+  COMPLETED: { icon: 'checkCircle', art: 'check', empty: 'pj.col.doneEmpty', text: 'pj.col.doneEmptyText' },
+  CANCELLED: { icon: 'close', art: 'folder', empty: 'pj.col.cancelEmpty', text: 'pj.col.cancelEmptyText' },
+};
 const columns: { status: string; title: Key }[] = [
   { status: 'TODO', title: 'status.todo' },
   { status: 'IN_PROGRESS', title: 'status.inProgress' },
@@ -552,15 +560,15 @@ export default function ProjectsPage() {
 
       <div className="productivity-forms">
         <form className="productivity-form" onSubmit={submitProject}>
-          <h2>{t('pj.newProject')}</h2>
+          <h2><span className="rd-tile"><Icon name="folder" size={22} /></span>{t('pj.newProject')}</h2>
           <label>{t('pj.projectName')}<input name="name" maxLength={160} required placeholder={t('pj.projectNamePh')} /></label>
-          <label>{t('db.description')} <span>{t('doc.optional')}</span><input name="description" maxLength={5000} placeholder={t('pj.descPh')} /></label>
+          <label>{t('db.description')} <span>{t('doc.optional')}</span><textarea name="description" maxLength={5000} rows={3} placeholder={t('pj.descPh')} /></label>
           <div className="productivity-form__row"><label>{t('pj.status')}<select name="status" defaultValue="PLANNING"><option value="PLANNING">{t('pj.s.planning')}</option><option value="IN_PROGRESS">{t('pj.s.inProgress')}</option><option value="ON_HOLD">{t('pj.s.onHold')}</option><option value="COMPLETED">{t('pj.s.completed')}</option></select></label><label>{t('pj.dueDate')} <span>{t('doc.optional')}</span><input name="dueAt" type="date" /></label></div>
           <label>{t('pj.budget')} <span>{t('pj.budgetHint')}</span><input name="budgetTotal" type="number" min="0" step="0.01" placeholder="25000.00" /></label>
-          <button type="submit" disabled={busy}>{busy ? t('set.saving') : t('pj.createProject')}</button>
+          <button type="submit" disabled={busy}>{busy ? t('set.saving') : t('pj.createProject')}{!busy && <Icon name="arrow" size={16} />}</button>
         </form>
         <form className="productivity-form" onSubmit={submitTask}>
-          <h2>{t('pj.newTask')}</h2>
+          <h2><span className="rd-tile"><Icon name="checkCircle" size={22} /></span>{t('pj.newTask')}</h2>
           <label>{t('pj.taskName')}<input name="title" maxLength={200} required placeholder={t('pj.taskNamePh')} /></label>
           <div className="productivity-form__row">
             <label>{t('kn.project')}<select name="projectId" value={selectedProject} onChange={(event) => { setSelectedProject(event.target.value); setSelectedTaskIds([]); }}><option value="">{t('doc.noProject')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
@@ -568,7 +576,7 @@ export default function ProjectsPage() {
           </div>
           <label>{t('pj.assignTo')} <span>{t('doc.optional')}</span><select name="assigneeId" defaultValue=""><option value="">{t('pj.unassigned')}</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
           <label>{t('pj.dueDate')} <span>{t('doc.optional')}</span><input name="dueAt" type="date" /></label>
-          <button type="submit" disabled={busy}>{busy ? t('set.saving') : t('pj.createTask')}</button>
+          <button type="submit" disabled={busy}>{busy ? t('set.saving') : t('pj.createTask')}{!busy && <Icon name="arrow" size={16} />}</button>
         </form>
       </div>
 
@@ -617,9 +625,16 @@ export default function ProjectsPage() {
       </section>
 
       <section className="productivity-board" aria-labelledby="task-board-title">
-        <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{selectedProjectName ? t('pj.projectEyebrow', { name: selectedProjectName }) : t('pj.wsTasks')}</p><h2 id="task-board-title">{t('pj.board')}</h2></div></div>
+        <header className="board-head"><div><p className="workspace-eyebrow">{selectedProjectName ? t('pj.projectEyebrow', { name: selectedProjectName }) : t('pj.wsTasks')}</p><h2 id="task-board-title">{t('pj.board')}</h2><p className="rd-muted">{t('pj.boardDesc')}</p></div>
+          <div className="board-head__actions">
+            <label className="rd-btn rd-btn--soft"><Icon name="download" size={18} />{t('pj.importBtn')}<input type="file" hidden accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>
+            <button type="button" className="rd-btn rd-btn--soft" onClick={exportTasksCsv} disabled={!boardTasks.length}><Icon name="upload" size={18} />{t('pj.exportCsv')}</button>
+            <details className="rd-menu"><summary className="rd-btn rd-btn--soft"><Icon name="sliders" size={18} />{t('pj.bulkActions')}<Icon name="chevron" size={14} /></summary><div className="rd-menu__list">
+              <button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice(t('pj.selectedFirst500')); }}><Icon name="checkCircle" size={16} />{t('pj.selectVisible')}</button>
+              <button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}><Icon name="close" size={16} />{t('pj.clearSelection')}</button></div></details>
+          </div></header>
         <div className="task-view-tools" aria-label={t('pj.filtersAria')}>
-          <label>{t('pj.search')}<input type="search" value={taskSearch} onChange={(event) => { setTaskSearch(event.target.value); setSelectedTaskIds([]); }} placeholder={t('pj.searchPh')} /></label>
+          <label>{t('pj.search')}<input type="search" value={taskSearch} onChange={(event) => { setTaskSearch(event.target.value); setSelectedTaskIds([]); }} placeholder={t('pj.searchTasksPh')} /></label>
           <label>{t('pj.status')}<select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">{t('pj.allStatuses')}</option>{columns.map((column) => <option key={column.status} value={column.status}>{t(column.title)}</option>)}</select></label>
           <label>{t('pj.priority')}<select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">{t('pj.allPriorities')}</option><option value="LOW">{prio('LOW')}</option><option value="MEDIUM">{prio('MEDIUM')}</option><option value="HIGH">{prio('HIGH')}</option><option value="URGENT">{prio('URGENT')}</option></select></label>
           <label>{t('pj.assignee')}<select value={assigneeFilter} onChange={(event) => { setAssigneeFilter(event.target.value); setSelectedTaskIds([]); }}><option value="ALL">{t('pj.anyone')}</option><option value="UNASSIGNED">{t('pj.unassigned')}</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
@@ -643,16 +658,16 @@ export default function ProjectsPage() {
           {taskLabelUsages.length === 0 ? <p>{t('pj.noLabels')}</p> : <ul>{taskLabelUsages.map((item) => <li key={item.label}><span><strong>#{item.label}</strong><small>{t(item.taskCount === 1 ? 'pj.taskOne' : 'pj.taskMany', { n: item.taskCount })}</small></span><button type="button" disabled={busy} onClick={() => { setRenameLabelFrom(item.label); setRenameLabelTo(''); document.querySelector('.task-label-manager form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>{t('pj.rename')}</button><button type="button" disabled={busy} onClick={() => void deleteWorkspaceTaskLabel(item.label)}>{t('pj.removeEverywhere')}</button></li>)}</ul>}
           <p>{t('pj.labelsHint')}</p>
         </details>
-        <div className="project-task-tools"><div className="project-task-tools__top"><span>{t('pj.inView', { n: boardTasks.length })}</span><div><button type="button" onClick={() => { setSelectedTaskIds(boardTasks.slice(0, 500).map((task) => task.id)); if (boardTasks.length > 500) setNotice(t('pj.selectedFirst500')); }}>{t('pj.selectVisible')}</button><button type="button" disabled={!selectedTaskIds.length} onClick={() => setSelectedTaskIds([])}>{t('pj.clearSelection')}</button><button type="button" onClick={exportTasksCsv} disabled={!boardTasks.length}>{t('pj.exportCsv')}</button></div></div>
+        <div className="project-task-tools"><div className="project-task-tools__top"><span>{t('pj.inView', { n: boardTasks.length })}</span></div>
           {selectedTaskIds.length > 0 && <form className="project-task-bulk" onSubmit={bulkUpdateSelectedTasks}><strong>{t('pj.selectedN', { n: selectedTaskIds.length })}</strong><label>{t('pj.status')}<select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)}><option value="">{t('pj.keepCurrent')}</option>{columns.map((column) => <option key={column.status} value={column.status}>{t(column.title)}</option>)}</select></label><label>{t('pj.priority')}<select value={bulkPriority} onChange={(event) => setBulkPriority(event.target.value)}><option value="">{t('pj.keepCurrent')}</option><option value="LOW">{prio('LOW')}</option><option value="MEDIUM">{prio('MEDIUM')}</option><option value="HIGH">{prio('HIGH')}</option><option value="URGENT">{prio('URGENT')}</option></select></label><label>{t('pj.assignTo')}<select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)}><option value="">{t('pj.keepCurrent')}</option><option value="__clear__">{t('pj.unassign')}</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label><label>{t('pj.startDate')}<select value={bulkStartMode} onChange={(event) => setBulkStartMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">{t('pj.keepCurrent')}</option><option value="SET">{t('pj.setDate')}</option><option value="CLEAR">{t('pj.clearDate')}</option></select></label>{bulkStartMode === 'SET' && <label>{t('pj.newStartDate')}<input type="date" value={bulkStartDate} onChange={(event) => setBulkStartDate(event.target.value)} /></label>}<label>{t('pj.dueDate')}<select value={bulkDueMode} onChange={(event) => setBulkDueMode(event.target.value as 'KEEP' | 'SET' | 'CLEAR')}><option value="KEEP">{t('pj.keepCurrent')}</option><option value="SET">{t('pj.setDate')}</option><option value="CLEAR">{t('pj.clearDate')}</option></select></label>{bulkDueMode === 'SET' && <label>{t('pj.newDueDate')}<input type="date" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>}<label>{t('pj.labels')}<select value={bulkLabelMode} onChange={(event) => setBulkLabelMode(event.target.value as 'KEEP' | 'ADD' | 'REMOVE' | 'REPLACE')}><option value="KEEP">{t('pj.keepCurrent')}</option><option value="ADD">{t('pj.b.add')}</option><option value="REMOVE">{t('pj.b.remove')}</option><option value="REPLACE">{t('pj.b.replace')}</option></select></label>{bulkLabelMode !== 'KEEP' && <label>{t('pj.labelNames')}<input value={bulkLabels} onChange={(event) => setBulkLabels(event.target.value)} placeholder={t('pj.labelNamesPh')} maxLength={330} /></label>}{bulkLabelMode === 'REPLACE' && <small className="project-task-bulk__hint">{t('pj.bulkHint')}</small>}<button type="submit" disabled={busy}>{busy ? t('pj.updating') : t('pj.applyChanges')}</button><button type="button" className="project-task-bulk__duplicate" onClick={() => void duplicateSelectedTasks()} disabled={busy || selectedTaskIds.length > 100}>{busy ? t('pj.working') : t('pj.dupChecklists')}</button>{selectedTaskIds.length > 100 && <small>{t('pj.dupLimit')}</small>}</form>}
-          <form className="project-task-import" onSubmit={importTasksCsv}><label>{t('pj.importCsv')}<input type="file" accept=".csv,text/csv" onChange={(event) => void readTaskCsv(event)} /></label>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{t('pj.rows', { n: importRows.length })} · {importMode === 'UPSERT' ? t('pj.importUpsert', { u: importRows.filter((task) => task.id).length, c: importRows.filter((task) => !task.id).length }) : (importRows.some((task) => task.projectId !== undefined) ? t('pj.importCsvValues') : selectedProjectName ? t('pj.importToProject', { name: selectedProjectName }) : t('pj.importToWs'))}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><label>{t('pj.importBehavior')}<select value={importMode} onChange={(event) => setImportMode(event.target.value as 'CREATE' | 'UPSERT')}><option value="CREATE">{t('pj.importCreate')}</option><option value="UPSERT" disabled={!importRows.some((task) => task.id)}>{t('pj.importSync')}</option></select></label>{importMode === 'UPSERT' && <small>{t('pj.importSyncHint')}</small>}<button type="submit" disabled={busy || !importRows.length}>{busy ? t('pj.importing') : importMode === 'UPSERT' ? t('pj.syncCsv') : t('pj.importTasks')}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); setImportMode('CREATE'); }}>{t('msg.cancel')}</button></div>}<small>{t('pj.csvHint')}</small></form>
+          <form className="project-task-import" onSubmit={importTasksCsv}>{importFileName && <div className="project-task-import__preview"><strong>{importFileName}</strong><span>{t('pj.rows', { n: importRows.length })} · {importMode === 'UPSERT' ? t('pj.importUpsert', { u: importRows.filter((task) => task.id).length, c: importRows.filter((task) => !task.id).length }) : (importRows.some((task) => task.projectId !== undefined) ? t('pj.importCsvValues') : selectedProjectName ? t('pj.importToProject', { name: selectedProjectName }) : t('pj.importToWs'))}</span><small>{importRows.slice(0, 3).map((task) => task.title).join(' · ')}{importRows.length > 3 ? ' …' : ''}</small><label>{t('pj.importBehavior')}<select value={importMode} onChange={(event) => setImportMode(event.target.value as 'CREATE' | 'UPSERT')}><option value="CREATE">{t('pj.importCreate')}</option><option value="UPSERT" disabled={!importRows.some((task) => task.id)}>{t('pj.importSync')}</option></select></label>{importMode === 'UPSERT' && <small>{t('pj.importSyncHint')}</small>}<button type="submit" disabled={busy || !importRows.length}>{busy ? t('pj.importing') : importMode === 'UPSERT' ? t('pj.syncCsv') : t('pj.importTasks')}</button><button type="button" onClick={() => { setImportRows([]); setImportFileName(''); setImportMode('CREATE'); }}>{t('msg.cancel')}</button></div>}<small>{t('pj.csvHint')}</small></form>
         </div>
         {loading ? <p className="productivity-message">{t('pj.loadingTasks')}</p> : (
           <div className="productivity-columns">{columns.map((column) => {
             const records = boardTasks.filter((task) => task.status === column.status);
             return <section className="productivity-column" key={column.status} aria-label={t('pj.columnAria', { title: t(column.title), n: records.length })}>
-              <h3>{t(column.title)}<span>{records.length}</span></h3>
-              {records.length === 0 ? <p className="productivity-column__empty">{t('pj.nothingHere')}</p> : records.map((task) => <article className="productivity-task" key={task.id}>
+              <h3><span className="productivity-column__title"><Icon name={columnMeta[column.status].icon} size={20} />{t(column.title)}</span><span>{records.length}</span></h3>
+              {records.length === 0 ? <div className="productivity-column__empty"><EmptyState art={columnMeta[column.status].art} compact title={t(columnMeta[column.status].empty)} text={t(columnMeta[column.status].text)} /></div> : records.map((task) => <article className="productivity-task" key={task.id}>
                 <label className="project-task-select"><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={(event) => { if (event.target.checked && selectedTaskIds.length >= 500) { setError('Bulk actions support up to 500 selected tasks.'); return; } setSelectedTaskIds((ids) => event.target.checked ? [...ids, task.id] : ids.filter((id) => id !== task.id)); }} /><span>{t('pj.selectTask')}</span></label>
                 <Link href={`/workspace/tasks/${task.id}`} className="productivity-task__title">{task.title}</Link><TaskBadges task={task} />
                 {task.project && <span className="productivity-task__project">{task.project.name}</span>}
@@ -662,6 +677,7 @@ export default function ProjectsPage() {
                 <div className="productivity-task__footer"><label className="visually-hidden" htmlFor={`priority-${task.id}`}>{t('pj.priorityFor', { title: task.title })}</label><select className={`productivity-priority productivity-priority--${task.priority.toLowerCase()}`} id={`priority-${task.id}`} value={task.priority} disabled={busy} onChange={(event) => void updateTask(task, 'priority', event.target.value)}><option value="LOW">{prio('LOW')}</option><option value="MEDIUM">{prio('MEDIUM')}</option><option value="HIGH">{prio('HIGH')}</option><option value="URGENT">{prio('URGENT')}</option></select><label className="visually-hidden" htmlFor={`status-${task.id}`}>{t('tasks.statusFor', { title: task.title })}</label><select id={`status-${task.id}`} value={task.status} disabled={busy} onChange={(event) => void changeStatus(task, event.target.value)}>{columns.map((option) => <option key={option.status} value={option.status}>{t(option.title)}</option>)}</select></div>
                 <div className="productivity-task__due"><label htmlFor={`due-${task.id}`}>{t('pj.dueLabel')}</label><input id={`due-${task.id}`} type="date" value={task.dueAt?.slice(0, 10) ?? ''} disabled={busy} onChange={(event) => void updateTask(task, 'dueAt', event.target.value)} /><span className={task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? 'productivity-task__overdue' : ''}>{task.dueAt && new Date(task.dueAt) < new Date(new Date().toDateString()) && task.status !== 'COMPLETED' ? t('pj.overdue') : ''}</span></div>
               </article>)}
+              <button type="button" className="productivity-column__add" onClick={() => { const field = document.querySelector<HTMLInputElement>('.productivity-form input[name="title"]'); field?.scrollIntoView({ behavior: 'smooth', block: 'center' }); field?.focus(); }}><Icon name="plus" size={16} />{t('pj.addTask')}</button>
             </section>;
           })}</div>
         )}

@@ -7,6 +7,7 @@ import { useT } from '../i18n';
 import type { Key } from '../i18n/en';
 import { useWorkspaceSession } from './workspace-shell';
 import { PageHeader } from './ui';
+import { Icon } from './home-icons';
 
 type Property = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string; rollupRelationId?: string; rollupPropertyId?: string; rollupFunction?: string };
 const isComputed = (property: Property) => property.type === 'formula' || property.type === 'rollup';
@@ -479,30 +480,29 @@ export function DatabasesWorkspace() {
 
   return (
     <div className="workspace-section-page connected-page database-page">
-      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.databases')} description={t('db.desc')} icon="database" />
+      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.databases')} description={t('db.desc')} />
       {error && <p className="productivity-error" role="alert">{error}</p>}
       <div className="database-toolbar">
-        <label>{t('db.workspaceDb')}<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); setViewLayout('TABLE'); setGroupByPropertyId('status'); setCalendarDatePropertyId(''); setChartPropertyId(''); }} disabled={!databases.length}>
+        <label className="database-picker">{t('db.workspaceDb')}<span><span className="rd-tile rd-tile--sm"><Icon name="database" size={18} /></span><select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); setViewLayout('TABLE'); setGroupByPropertyId('status'); setCalendarDatePropertyId(''); setChartPropertyId(''); }} disabled={!databases.length}>
           {databases.length ? databases.map((database) => <option key={database.id} value={database.id}>{database.name}</option>) : <option value="">{t('db.createFirst')}</option>}
-        </select></label>
+        </select></span></label>
         <span>{selected ? t(selected.records.length === 1 ? 'db.recordOne' : 'db.recordMany', { n: selected.records.length }) : t('db.startSimple')}</span>
       </div>
 
       <div className="database-layout">
         <form className="productivity-form database-create" onSubmit={createDatabase}>
-          <p className="workspace-eyebrow">{t('db.newTable')}</p>
-          <h2>{t('db.createTitle')}</h2>
+          <h2><span className="rd-tile rd-tile--lg"><Icon name="database" size={26} /></span>{t('db.createTitle')}</h2>
           <p>{t('db.createHint')}</p>
           <label>{t('db.name')}<input name="name" required maxLength={160} placeholder={t('db.namePh')} /></label>
-          <label>{t('db.description')} <span>{t('doc.optional')}</span><input name="description" maxLength={500} placeholder={t('db.descPh')} /></label>
-          <button type="submit" disabled={busy}>{busy ? t('set.saving') : t('db.create')}</button>
+          <label>{t('db.description')} <span>{t('doc.optional')}</span><textarea name="description" rows={4} maxLength={500} placeholder={t('db.descPh')} /></label>
+          <button type="submit" disabled={busy}>{busy ? t('set.saving') : <><Icon name="plus" size={18} />{t('db.create')}</>}</button>
         </form>
 
         <section className="database-table-card" aria-label={selected?.name ?? t('db.recordsAria')}>
           {loading ? <p className="productivity-message">{t('db.loading')}</p> : !selected ? (
             <div className="database-empty"><span aria-hidden="true">▤</span><h2>{t('db.firstTable')}</h2><p>{t('db.firstTableHint')}</p></div>
           ) : <>
-            <div className="database-table-heading"><div><p className="workspace-eyebrow">{t('db.viewWord', { layout: t(`db.l.${viewLayout.toLowerCase()}` as Key).toLocaleUpperCase() })}</p><h2>{selected.name} <FavouriteStar kind="DATABASE" entityId={selected.id} /></h2><p>{selected.description || t('db.defaultDesc')}</p></div><span>{t('db.recordMany', { n: selected.records.length })}</span></div>
+            <div className="database-table-heading"><div><p className="workspace-eyebrow">{t('db.viewWord', { layout: t(`db.l.${viewLayout.toLowerCase()}` as Key).toLocaleUpperCase() })}</p><h2>{selected.name} <FavouriteStar kind="DATABASE" entityId={selected.id} /></h2><p>{selected.description || t('db.defaultDesc')}</p></div><span className="rd-pill rd-pill--sand">{t('db.recordMany', { n: selected.records.length })}</span></div>
             <form className="database-add-property" key={`${selected.id}:${selected.name}:${selected.description ?? ''}`} onSubmit={updateDatabase} aria-label={t('db.editDetails')}>
               <label>{t('db.name')}<input name="databaseName" required maxLength={160} defaultValue={selected.name} /></label>
               <label>{t('db.description')}<input name="databaseDescription" maxLength={500} defaultValue={selected.description ?? ''} /></label>
@@ -518,7 +518,7 @@ export function DatabasesWorkspace() {
                 <label>{t('db.summarise')}<select name="rollupFunction" value={rollupFunction} onChange={(event) => setRollupFunction(event.target.value)}>{rollupFunctionLabels.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>
                 {rollupFunction !== 'count' && <label>{t('db.numberProperty')}<select name="rollupPropertyId" required defaultValue=""><option value="" disabled>{rollupTargets.length ? t('db.chooseProperty') : t('db.noNumberProps')}</option>{rollupTargets.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}</select></label>}
               </>)}
-              <button type="submit" disabled={busy}>{busy ? t('db.adding') : t('db.addProperty')}</button>
+              <button type="submit" disabled={busy}>{busy ? t('db.adding') : <><Icon name="plus" size={16} />{t('db.addProperty')}</>}</button>
             </form>
             <div className="database-view-controls" aria-label={t('db.viewControls')}>
               <label>{t('db.savedView')}<select value={selectedViewId} onChange={(event) => applyView(event.target.value)}><option value="">{t('db.customView')}</option>{selected.views.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select></label>
@@ -533,7 +533,7 @@ export function DatabasesWorkspace() {
               </select></label>
               <label>{t('db.order')}<select value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as 'asc' | 'desc'); setSelectedViewId(''); }}><option value="asc">{t('db.asc')}</option><option value="desc">{t('db.desc2')}</option></select></label>
               <span className="database-view-count">{filterQuery.trim() ? t('db.countOf', { shown: visibleRecords.length, total: selected.records.length }) : t('db.recordMany', { n: selected.records.length })}</span>
-              <button type="button" className={`database-relation-toggle${showRelationMap ? ' is-active' : ''}`} onClick={() => setShowRelationMap((current) => !current)}>{t('db.relations')}</button>
+              <button type="button" className={`database-relation-toggle${showRelationMap ? ' is-active' : ''}`} onClick={() => setShowRelationMap((current) => !current)}><Icon name="link" size={16} />{t('db.relations')}</button>
             </div>
             {showRelationMap && <section className="database-relation-map" aria-label={t('db.relationMap')}>
               <div className="database-relation-map__node is-current"><span>{t('db.thisDb')}</span><strong>{selected.name}</strong><small>{t('db.recordMany', { n: selected.records.length })}</small></div>
@@ -546,9 +546,9 @@ export function DatabasesWorkspace() {
             </section>}
             {notice && <p className="database-import-notice" role="status">{notice}</p>}
             <form className="database-csv-tools" onSubmit={importCsv}>
-              <label>{t('db.importCsv')}<input name="csvFile" type="file" accept=".csv,text/csv" required /></label>
-              <button type="submit" disabled={busy}>{busy ? t('db.importing') : t('db.importRows')}</button>
-              <button type="button" onClick={exportCsv} disabled={busy}>{t('db.exportVisible', { n: visibleRecords.length })}</button>
+              <span className="rd-tile"><Icon name="upload" size={20} /></span><label>{t('db.importCsv')}<input name="csvFile" type="file" accept=".csv,text/csv" required /></label>
+              <button type="submit" disabled={busy}>{busy ? t('db.importing') : <><Icon name="download" size={16} />{t('db.importRows')}</>}</button>
+              <button type="button" onClick={exportCsv} disabled={busy}><Icon name="upload" size={16} />{t('db.exportVisible', { n: visibleRecords.length })}</button>
               <small>{t('db.csvHint')}</small>
             </form>
             <form className="database-save-view" onSubmit={saveCurrentView}>
@@ -661,7 +661,7 @@ export function DatabasesWorkspace() {
                     <td>{t('db.editing')}</td><td><form className="database-row-actions" onSubmit={saveRecord}><button type="submit" disabled={busy}>{t('db.save')}</button><button type="button" onClick={() => setEditingId('')}>{t('db.cancel')}</button></form></td>
                   </> : <>
                     {selected.properties.map((property) => <td key={property.id}>{property.type === 'status' ? <span className="database-status">{String(record.values[property.id] ?? '—')}</span> : property.type === 'checkbox' ? (record.values[property.id] ? t('db.yes') : t('db.no')) : propertyValueLabel(property, record.values[property.id])}</td>)}
-                    <td>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</td><td><div className="database-row-actions"><button className="database-row-edit" type="button" onClick={() => startEdit(record)}>{t('db.edit')}</button><button className="database-row-edit" type="button" onClick={() => void duplicateRecord(record)} disabled={busy}>{t('db.duplicate')}</button><button className="database-row-edit" type="button" onClick={() => void deleteRecord(record)} disabled={busy}>{t('db.delete')}</button></div></td>
+                    <td>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</td><td><div className="database-row-actions"><button className="database-row-edit" type="button" onClick={() => startEdit(record)}><Icon name="edit" size={15} />{t('db.edit')}</button><button className="database-row-edit" type="button" onClick={() => void duplicateRecord(record)} disabled={busy}><Icon name="copy" size={15} />{t('db.duplicate')}</button><button className="database-row-edit" type="button" onClick={() => void deleteRecord(record)} disabled={busy}><Icon name="trash" size={15} />{t('db.delete')}</button></div></td>
                   </>}
                 </tr>)}
                 {!selected.records.length && <tr><td colSpan={selected.properties.length + 3} className="database-table-empty">{t('db.emptyTable')}</td></tr>}
