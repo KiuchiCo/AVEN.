@@ -1,7 +1,0 @@
-.document-studio__quote { margin: 6px 0; padding: 2px 10px; border-left: 3px solid var(--m-focus); color: var(--m-muted); font-size: 13px; font-style: italic; }
-.document-studio__reply { margin: 8px 0 0 10px; padding-left: 10px; border-left: 1px solid var(--m-border); }
-.document-studio__comment-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.document-studio__comment-target { margin: 0 0 6px; font-size: 12.5px; color: var(--m-muted); } .document-studio__comment-target button { border: 0; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; }
-.document-studio__reply-form { display: grid; gap: 6px; margin-top: 8px; } .document-studio__reply-form textarea { border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-field); font: 14px var(--aven-interface-font); padding: 8px; }
-.document-move ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; } .document-move li button { width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-field); cursor: pointer; font: 14px var(--aven-interface-font); } .document-move li button:hover { background: var(--m-chip); }
-.aven-block.is-flash { background: rgb(164 135 102 / 22%); transition: background .6s; }
