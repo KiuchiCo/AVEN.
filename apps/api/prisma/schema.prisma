@@ -555,14 +555,22 @@ model DocumentComment {
   documentId  String    @db.Uuid
   createdById String    @db.Uuid
   body        String    @db.VarChar(2000)
+  /// The block this comment is about, and the words it quotes from that block, so it can be shown beside them.
+  blockId     String?   @db.VarChar(64)
+  quote       String?   @db.VarChar(300)
+  /// Set on a reply: the comment it answers (always a top-level comment of the same document).
+  parentId    String?   @db.Uuid
   resolvedAt  DateTime? @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   document    Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
   createdBy   User      @relation("DocumentCommentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  parent      DocumentComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     DocumentComment[] @relation("CommentReplies")
 
   @@index([workspaceId, documentId, resolvedAt, createdAt])
+  @@index([parentId])
   @@map("document_comments")
 }
 

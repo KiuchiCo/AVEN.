@@ -924,10 +924,10 @@ export class ProductivityService {
   }
 
   /** Lets anyone with this document open know a newer version exists. Never blocks or fails a save. */
-  private async announceSave(documentId: string, updatedAt: Date, actorId: string) {
+  private async announceSave(documentId: string, updatedAt: Date, actorId: string, replaced = false) {
     try {
       const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { displayName: true } });
-      this.documentEvents.publish(documentId, { type: 'saved', updatedAt: updatedAt.toISOString(), by: { id: actorId, name: actor?.displayName ?? 'Someone' } });
+      this.documentEvents.publish(documentId, { type: 'saved', updatedAt: updatedAt.toISOString(), by: { id: actorId, name: actor?.displayName ?? 'Someone' }, ...(replaced ? { replaced: true } : {}) });
     } catch { /* live updates are best-effort */ }
   }
 
@@ -983,7 +983,7 @@ export class ProductivityService {
     });
     await this.recordActivity(workspaceId, actorId, 'DOCUMENT', documentId, `restored a version of “${restored.title}”`);
     this.textSessions.drop(documentId);
-    await this.announceSave(documentId, restored.updatedAt, actorId);
+    await this.announceSave(documentId, restored.updatedAt, actorId, true);
     return restored;
   }
 
@@ -1001,7 +1001,15 @@ export class ProductivityService {
     const body = objectInput(input);
     const message = textField(body.body, 'Comment', 2000);
     const document = await this.requireDocument(workspaceId, documentId);
-    const comment = await this.prisma.documentComment.create({ data: { workspaceId, documentId, createdById: actorId, body: message }, include: { createdBy: { select: { id: true, displayName: true } } } });
+    const blockId = body.blockId == null ? null : textField(body.blockId, 'Block', 64);
+    const quote = body.quote == null || body.quote === '' ? null : textField(body.quote, 'Quote', 300);
+    let parentId: string | null = null;
+    if (body.parentId != null) {
+      const parent = await this.prisma.documentComment.findFirst({ where: { id: String(body.parentId), documentId, workspaceId, parentId: null } });
+      if (!parent) throw new NotFoundException('The comment you are replying to was not found.');
+      parentId = parent.id;
+    }
+    const comment = await this.prisma.documentComment.create({ data: { workspaceId, documentId, createdById: actorId, body: message, blockId: parentId ? null : blockId, quote: parentId ? null : quote, parentId }, include: { createdBy: { select: { id: true, displayName: true } } } });
     await this.recordActivity(workspaceId, actorId, 'DOCUMENT', documentId, `commented on “${document.title}”`);
     return comment;
   }

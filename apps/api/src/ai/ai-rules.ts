@@ -236,3 +236,38 @@ export function describeAction(tool: string, input: Record<string, unknown>, tas
     default: return { summary: tool, details: [] };
   }
 }
+
+export const WRITING_ACTIONS = ['rewrite', 'grammar', 'tone', 'summarize', 'expand', 'outline', 'explain', 'actions', 'ask'] as const;
+export type WritingAction = (typeof WRITING_ACTIONS)[number];
+const TONES = ['professional', 'friendly', 'concise', 'confident'] as const;
+
+/** Checks what the editor sent for a writing action. Anything unexpected is refused before the model is called. */
+export function parseWritingRequest(body: unknown): { action: WritingAction; text: string; tone: string; question: string; documentId: string | null } {
+  const input = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+  const action = WRITING_ACTIONS.find((item) => item === input.action);
+  if (!action) throw new BadRequestException('Choose one of the writing actions.');
+  const text = typeof input.text === 'string' ? input.text.trim() : '';
+  if (text.length > 8000) throw new BadRequestException('Select up to 8,000 characters.');
+  if (action !== 'ask' && action !== 'outline' && !text) throw new BadRequestException('Select some text first.');
+  const tone = TONES.find((item) => item === input.tone) ?? 'professional';
+  const question = typeof input.question === 'string' ? input.question.trim().slice(0, 1000) : '';
+  if (action === 'ask' && !question) throw new BadRequestException('Write a question about the document.');
+  const documentId = typeof input.documentId === 'string' && /^[0-9a-f-]{36}$/i.test(input.documentId) ? input.documentId : null;
+  return { action, text, tone, question, documentId };
+}
+
+export function writingPrompt(action: WritingAction, tone: string): string {
+  const base = 'You are the writing assistant inside AVEN Documents. Reply with only the result, no preamble and no quotation marks. Keep the language of the text. Inline marks like **bold** may stay. Use plain Markdown-style lines ("- item", "# heading") when the result is a list or outline.';
+  const task: Record<WritingAction, string> = {
+    rewrite: 'Rewrite the text so it is clearer and reads better. Keep the meaning and roughly the length.',
+    grammar: 'Fix spelling, grammar and punctuation only. Do not change wording or meaning otherwise.',
+    tone: `Rewrite the text in a ${tone} tone. Keep the meaning.`,
+    summarize: 'Summarise the text in a few short sentences.',
+    expand: 'Expand these notes into well-formed paragraphs. Do not invent facts that are not implied.',
+    outline: 'Write a clear outline (headings and bullet points) for the topic or text given.',
+    explain: 'Explain the selected text simply, as for someone new to the subject.',
+    actions: 'List the action items in the text, one per line, each starting with "- " and phrased as a short task. If there are none, reply "No action items found."',
+    ask: 'Answer the question using only the document provided. If the document does not contain the answer, say so.',
+  };
+  return `${base}\n\n${task[action]}`;
+}

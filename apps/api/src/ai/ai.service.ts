@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { EntitlementsService } from '../billing/entitlements.service.js';
-import { BadRequestException, ConflictException, HttpException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { IntelligenceService } from '../productivity/intelligence.service.js';
 import { ProductivityService } from '../productivity/productivity.service.js';
-import { allTools, checkToolInput, citedSources, clip, creditsFor, describeAction, documentText, estimateTokens, isWriteTool, monthWindow, parseDecision, parseUserMessage, systemPrompt, toDocumentContent, windowHistory, type SourceRef, type StoredTurn } from './ai-rules.js';
+import { parseWritingRequest, writingPrompt, allTools, checkToolInput, citedSources, clip, creditsFor, describeAction, documentText, estimateTokens, isWriteTool, monthWindow, parseDecision, parseUserMessage, systemPrompt, toDocumentContent, windowHistory, type SourceRef, type StoredTurn } from './ai-rules.js';
 import { agentSection, generalAgent, systemAgents, type AgentDefinition } from './agents.js';
 import type { LlmBlock, LlmMessage } from './llm.js';
 import { AI_SETTINGS, LLM_PROVIDER, WEB_SEARCH, type AiSettings, type OptionalProvider, type OptionalWebSearch } from './tokens.js';
@@ -111,6 +111,30 @@ export class AiService {
     return { id: conversation.id, title: conversation.title, agentKey: conversation.agentKey, messages };
   }
 
+  /** One writing action on selected text (or a question about the open document). Nothing is stored; the credits are counted like any other AI use. */
+  async assist(identity: AuthenticatedIdentity, workspaceId: string, body: unknown) {
+    const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId);
+    const membership = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId } }, select: { role: true } });
+    if (membership?.role === 'GUEST') throw new ForbiddenException('Guests cannot use AI writing actions.');
+    const request = parseWritingRequest(body);
+    if (!this.provider) throw new ServiceUnavailableException('AVEN Intelligence needs a model provider. Set ANTHROPIC_API_KEY for the API and restart it.');
+    const creditLimit = await this.entitlements.limit(workspaceId, 'aiCredits');
+    if (creditLimit !== null && await this.creditsUsed(workspaceId) >= creditLimit) throw new HttpException('This workspace has used its AI credits for the month. They reset at the start of next month.', 402);
+    let prompt = request.text;
+    if (request.action === 'ask' || (request.action === 'outline' && !request.text)) {
+      const document = request.documentId ? await this.prisma.document.findFirst({ where: { id: request.documentId, workspaceId }, select: { title: true, content: true } }) : null;
+      if (!document) throw new NotFoundException('That document was not found in this workspace.');
+      prompt = request.action === 'ask' ? `Document “${document.title}”:\n${clip(documentText(document.content), 24_000)}\n\nQuestion: ${request.question}` : `Topic: ${document.title}`;
+    }
+    const messages: LlmMessage[] = [{ role: 'user', content: [{ type: 'text', text: prompt }] }];
+    let answer = ''; let inputTokens = 0; let outputTokens = 0;
+    for await (const event of this.provider.stream({ system: writingPrompt(request.action, request.tone), messages, tools: [], maxTokens: 1500 })) {
+      if (event.type === 'text') answer += event.text; else if (event.type === 'usage') { inputTokens = event.inputTokens; outputTokens = event.outputTokens; }
+    }
+    const credits = await this.recordUsage({ workspaceId, userId, conversationId: null }, inputTokens || estimateTokens(prompt), outputTokens || estimateTokens(answer));
+    return { text: answer.trim(), creditsUsed: credits };
+  }
+
   // ---- sending a message -----------------------------------------------------------------------------------
 
   /** Validates everything that can fail before streaming starts, stores the member's message, and returns the run. */
@@ -198,7 +222,7 @@ export class AiService {
     emit({ type: 'delta', text }); emit({ type: 'done', messageId: saved.id, creditsUsed });
   }
 
-  private async recordUsage(context: { workspaceId: string; userId: string; conversationId: string }, inputTokens: number, outputTokens: number) {
+  private async recordUsage(context: { workspaceId: string; userId: string; conversationId: string | null }, inputTokens: number, outputTokens: number) {
     const credits = creditsFor(inputTokens, outputTokens);
     await this.prisma.aiUsage.create({ data: { workspaceId: context.workspaceId, userId: context.userId, conversationId: context.conversationId, model: this.provider!.model, inputTokens, outputTokens, credits } });
     return credits;

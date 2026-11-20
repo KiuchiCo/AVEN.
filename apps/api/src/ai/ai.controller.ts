@@ -16,6 +16,7 @@ export class AiController {
   constructor(private readonly ai: AiService, private readonly agents: AiAgentsService) {}
 
   @Get('status') status(@CurrentIdentity() who: AuthenticatedIdentity, @workspace() ws: string) { return this.ai.status(who, ws); }
+  @Post('assist') assist(@CurrentIdentity() who: AuthenticatedIdentity, @workspace() ws: string, @Body() body: unknown) { return this.ai.assist(who, ws, body); }
   @Get('conversations') list(@CurrentIdentity() who: AuthenticatedIdentity, @workspace() ws: string) { return this.ai.list(who, ws); }
   @Post('conversations') create(@CurrentIdentity() who: AuthenticatedIdentity, @workspace() ws: string, @Body() body: unknown) { return this.ai.create(who, ws, body); }
 

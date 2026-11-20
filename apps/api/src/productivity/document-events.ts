@@ -5,7 +5,8 @@ export type Viewer = { id: string; name: string };
 export type PresentViewer = Viewer & { blockId: string | null };
 export type DocumentEvent =
   | { type: 'presence'; viewers: PresentViewer[] }
-  | { type: 'saved'; updatedAt: string; by: Viewer }
+  /** `replaced` is set when the whole content was swapped (a restored version): open editors must drop what they hold, not keep it. */
+  | { type: 'saved'; updatedAt: string; by: Viewer; replaced?: boolean }
   /** An accepted edit to the text of one block. Only people who may read the document are subscribed, so it is safe to carry the change. */
   /** Where someone's caret (or selection) is in a block's text, in the text as of `revision`. `start` is null when they left the block. Sent in order with the text events. */
   | { type: 'cursor'; blockId: string; revision: number; start: number | null; end: number | null; by: Viewer; clientId: string | null }
