@@ -145,6 +145,8 @@ model Workspace {
   name               String               @db.VarChar(120)
   createdById        String               @db.Uuid
   personalOwnerId    String?              @unique @db.Uuid
+  /// Business-plan role requirements (see billing/permission-rules.ts). Empty means everyone can.
+  permissionPolicy   Json                 @default("{}") @db.JsonB
   createdAt          DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime             @updatedAt @db.Timestamptz(3)
   createdBy          User                 @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: Restrict)

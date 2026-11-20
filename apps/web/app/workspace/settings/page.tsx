@@ -4,6 +4,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { BillingCard } from './billing-card';
+import { PermissionsCard } from './permissions-card';
 import { ThemeCard } from './theme-card';
 import { TimeZoneCard } from './time-zone-card';
 
@@ -102,6 +103,7 @@ export default function WorkspaceSettingsPage() {
     <ThemeCard />
     <TimeZoneCard />
     <BillingCard />
+    <PermissionsCard />
     <div className="workspace-settings-card">
       <div><h2>Workspace details</h2><p>Members will see this name in their workspace switcher.</p></div>
       <form onSubmit={save}>

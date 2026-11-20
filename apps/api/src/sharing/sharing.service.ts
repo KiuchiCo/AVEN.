@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PermissionsService } from '../billing/permissions.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { readApiEnvironment } from '../config/api-environment.js';
@@ -11,7 +12,7 @@ const GONE = 'This link is no longer available.';
 
 @Injectable()
 export class SharingService {
-  constructor(private readonly prisma: PrismaService, private readonly files: FilesService) {}
+  constructor(private readonly prisma: PrismaService, private readonly files: FilesService, private readonly permissions: PermissionsService) {}
 
   private async document(workspaceId: string, documentId: string) {
     const document = await this.prisma.document.findFirst({ where: { id: documentId, workspaceId }, select: { id: true, title: true } });
@@ -22,6 +23,7 @@ export class SharingService {
   /** The secret is shown once, here. Only its hash is kept, so a link can be revoked but never looked up again. */
   async create(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, input: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
+    await this.permissions.assert(workspaceId, userId, 'sharing');
     const document = await this.document(workspaceId, documentId);
     const expiresAt = parseExpiry(input && typeof input === 'object' ? (input as { expiresInDays?: unknown }).expiresInDays : undefined);
     const active = await this.prisma.documentShare.count({ where: { documentId, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } });

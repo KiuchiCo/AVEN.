@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PermissionsService } from '../billing/permissions.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -10,7 +11,7 @@ const automationActions = ['SET_TASK_PRIORITY', 'ADD_ACTIVITY_NOTE'] as const;
 
 @Injectable()
 export class AutomationsService {
-  constructor(private readonly prisma: PrismaService, private readonly triggers: WorkflowTriggersService) {}
+  constructor(private readonly prisma: PrismaService, private readonly triggers: WorkflowTriggersService, private readonly permissions: PermissionsService) {}
 
   async list(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.membership(identity, workspaceId);
@@ -29,6 +30,7 @@ export class AutomationsService {
 
   async create(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const actorId = await this.membership(identity, workspaceId, true);
+    await this.permissions.assert(workspaceId, actorId, 'automations');
     const body = objectInput(input);
     const name = textField(body.name, 'Automation name', 120);
     const fromStatus = optionalEnum(body.fromStatus, taskStatuses, 'Starting task status');
@@ -48,6 +50,7 @@ export class AutomationsService {
 
   async update(identity: AuthenticatedIdentity, workspaceId: string, ruleId: string, input: unknown) {
     const actorId = await this.membership(identity, workspaceId, true);
+    await this.permissions.assert(workspaceId, actorId, 'automations');
     const body = objectInput(input);
     const data: { name?: string; enabled?: boolean } = {};
     if ('name' in body) data.name = textField(body.name, 'Automation name', 120);
@@ -65,6 +68,7 @@ export class AutomationsService {
 
   async remove(identity: AuthenticatedIdentity, workspaceId: string, ruleId: string) {
     const actorId = await this.membership(identity, workspaceId, true);
+    await this.permissions.assert(workspaceId, actorId, 'automations');
     const rule = await this.prisma.automationRule.findFirst({ where: { id: ruleId, workspaceId }, select: { id: true, name: true } });
     if (!rule) throw new NotFoundException('Automation not found in this workspace.');
     await this.prisma.$transaction([

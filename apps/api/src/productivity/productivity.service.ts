@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { PermissionsService } from '../billing/permissions.service.js';
 import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
@@ -32,7 +33,7 @@ const databaseRecordSearchMaxScan = 3000;
 
 @Injectable()
 export class ProductivityService {
-  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService) {}
 
   async listProjects(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
@@ -87,6 +88,7 @@ export class ProductivityService {
 
   async applyProjectTemplate(identity: AuthenticatedIdentity, workspaceId: string, templateId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
+    await this.permissions.assert(workspaceId, actorId, 'projects');
     const body = objectInput(input);
     const name = textField(body.name, 'Project name', 160);
     const template = await this.prisma.projectTemplate.findFirst({ where: { id: templateId, workspaceId } });
@@ -229,6 +231,7 @@ export class ProductivityService {
 
   async createProject(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const userId = await this.requireMembership(identity, workspaceId, true);
+    await this.permissions.assert(workspaceId, userId, 'projects');
     const body = objectInput(input);
     const name = textField(body.name, 'Project name', 160);
     const description = optionalText(body.description, 'Project description', 5000);

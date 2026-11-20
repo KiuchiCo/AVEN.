@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { PermissionsService } from '../billing/permissions.service.js';
 import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
@@ -12,7 +13,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class WorkflowsService {
-  constructor(private readonly prisma: PrismaService, private readonly runner: WorkflowRunner, private readonly entitlements: EntitlementsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly runner: WorkflowRunner, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService) {}
 
   private options() { return { allowPrivateWebhooks: readApiEnvironment().workflowAllowPrivateWebhooks }; }
 
@@ -50,6 +51,7 @@ export class WorkflowsService {
 
   async create(identity: AuthenticatedIdentity, workspaceId: string, body: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
+    await this.permissions.assert(workspaceId, userId, 'automations');
     const input = parseWorkflow(body, this.options());
     await this.entitlements.assertCanAdd(workspaceId, 'workflows');
     await this.assertSteps(workspaceId, input.steps);
@@ -120,6 +122,7 @@ export class WorkflowsService {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
     const workflow = await this.prisma.workflow.findFirst({ where: { id: workflowId, workspaceId } });
     if (!workflow) throw new NotFoundException('Workflow not found in this workspace.');
+    await this.permissions.assert(workspaceId, userId, 'automations');
     const role = await this.roleOf(workspaceId, userId);
     if (workflow.createdById !== userId && role !== 'OWNER' && role !== 'ADMINISTRATOR') throw new ForbiddenException('Only the workflow’s creator or a workspace administrator can change it.');
     return { workflow, userId };

@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Req, ServiceUnavailableException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { readApiEnvironment } from '../config/api-environment.js';
 import { BillingService, type StripeEvent } from './billing.service.js';
+import { PermissionsService } from './permissions.service.js';
 import { verifyStripeSignature } from './stripe.js';
 
 type Who = AuthenticatedIdentity;
@@ -13,8 +14,10 @@ const workspace = () => Param('workspaceId', new ParseUUIDPipe());
 @Controller('workspaces/:workspaceId/billing')
 @UseGuards(ClerkAuthGuard)
 export class BillingController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(private readonly billing: BillingService, private readonly permissions: PermissionsService) {}
 
+  @Get('permissions') getPermissions(@CurrentIdentity() who: Who, @workspace() ws: string) { return this.permissions.get(who, ws); }
+  @Put('permissions') setPermissions(@CurrentIdentity() who: Who, @workspace() ws: string, @Body() body: unknown) { return this.permissions.update(who, ws, body); }
   @Get() overview(@CurrentIdentity() who: Who, @workspace() ws: string) { return this.billing.overview(who, ws); }
   @Post('checkout') @HttpCode(200) checkout(@CurrentIdentity() who: Who, @workspace() ws: string, @Body() body: unknown) { return this.billing.checkout(who, ws, body); }
   @Post('portal') @HttpCode(200) portal(@CurrentIdentity() who: Who, @workspace() ws: string) { return this.billing.portal(who, ws); }
