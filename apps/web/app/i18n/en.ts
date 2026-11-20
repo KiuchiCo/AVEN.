@@ -2271,6 +2271,13 @@ export const en = {
   'bl.transcribeNote': "Live transcription uses your browser's speech service, which may send the audio to its provider. Review the text before relying on it.",
   'bl.noTranscribe': "This browser can't transcribe speech live. Recording still works, and you can type the notes yourself.",
   'bl.speechDenied': "Speech transcription was blocked. Allow the microphone and speech recognition for this site.",
+  'ed.unknownBlock': "This block type isn't supported here.",
+  'ed.titlePh': "Untitled",
+  'ed.writePh': "Write something, or type / for blocks",
+  'ed.documentLabel': "Document",
+  'ed.blockMenu': "Block options",
+  'ed.turnInto': "Turn into",
+  'ed.dragging': "Drop the block where you want it.",
 } as const;
 
 export type Key = keyof typeof en;

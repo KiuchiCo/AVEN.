@@ -2272,4 +2272,11 @@ export const fr: Dictionary = {
   'bl.transcribeNote': "La transcription utilise le service vocal du navigateur, qui peut envoyer l’audio à son fournisseur. Relisez le texte.",
   'bl.noTranscribe': "Ce navigateur ne peut pas transcrire en direct. L’enregistrement fonctionne et vous pouvez saisir les notes.",
   'bl.speechDenied': "La transcription a été bloquée. Autorisez le micro et la reconnaissance vocale pour ce site.",
+  'ed.unknownBlock': "Ce type de bloc n’est pas pris en charge ici.",
+  'ed.titlePh': "Sans titre",
+  'ed.writePh': "Écrivez quelque chose, ou tapez / pour les blocs",
+  'ed.documentLabel': "Document",
+  'ed.blockMenu': "Options du bloc",
+  'ed.turnInto': "Transformer en",
+  'ed.dragging': "Déposez le bloc à l’endroit voulu.",
 };

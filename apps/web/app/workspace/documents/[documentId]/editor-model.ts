@@ -22,6 +22,7 @@ export type Block = {
   tabs?: TabPane[];                             // tabs block
   syncId?: string;                              // synced block: every block with the same id shows the same text
   date?: string; attendees?: string; actions?: string; // meeting notes (text = title, body = notes, fileId = recording)
+  indent?: number;                              // nesting depth of a list item (Tab / Shift+Tab), 0-5
 };
 export type Focus = { id: string; caret: number };
 export type EditResult = { blocks: Block[]; focus: Focus };
@@ -260,3 +261,91 @@ export function parseInline(text: string): Inline[] {
 }
 
 export const hasInlineMarks = (text: string) => parseInline(text).some((run) => run.kind !== 'text');
+
+// ---- The canonical block ------------------------------------------------------------------------------------------------------
+
+const defaultsOf = (block: Block): Partial<Record<keyof Block, unknown>> => ({ checked: false, level: block.type === 'TOGGLE' ? 0 : undefined, indent: 0 });
+const KEY_ORDER: (keyof Block)[] = ['id', 'type', 'text', 'checked', 'rows', 'fileId', 'level', 'body', 'url', 'docId', 'databaseId', 'view', 'create', 'linked', 'tabs', 'syncId', 'date', 'attendees', 'actions', 'indent'];
+/**
+ * One shape for a block, whatever it came from: known fields only, always in the same order, empty and default values left out
+ * (`checked` stays, because older documents always carry it). The editor, the saved document and the merge all compare blocks in this
+ * shape, so reading a document into the editor and writing it back changes nothing.
+ */
+export function normalizeBlock(input: Block): Block {
+  const out: Record<string, unknown> = {};
+  const skip = defaultsOf(input);
+  for (const key of KEY_ORDER) {
+    const value = input[key];
+    if (value === undefined || value === null) continue;
+    if (key === 'checked') { out.checked = value === true; continue; }
+    if (key in skip && skip[key] === value) continue;
+    if ((key === 'create' || key === 'linked') && value !== true) continue;
+    if ((key === 'body' || key === 'url' || key === 'docId' || key === 'databaseId' || key === 'syncId' || key === 'fileId' || key === 'date' || key === 'attendees' || key === 'actions') && value === '') continue;
+    out[key] = value;
+  }
+  if (!('checked' in out)) out.checked = false;
+  const ordered: Record<string, unknown> = {};
+  for (const key of KEY_ORDER) if (key in out) ordered[key] = out[key];
+  return ordered as Block;
+}
+
+/** Tab on a list item nests it one level deeper (never deeper than one below the item above); Shift+Tab brings it back out. */
+export function indentBlock(blocks: Block[], id: string, direction: 1 | -1): Block[] | null {
+  const at = indexOf(blocks, id); if (at < 0) return null;
+  const block = blocks[at];
+  if (block.type !== 'BULLET' && block.type !== 'NUMBERED' && block.type !== 'TODO') return null;
+  const current = block.indent ?? 0;
+  const previous = blocks[at - 1];
+  const ceiling = previous && (previous.type === 'BULLET' || previous.type === 'NUMBERED' || previous.type === 'TODO') ? Math.min(5, (previous.indent ?? 0) + 1) : 0;
+  const next = Math.max(0, Math.min(ceiling, current + direction));
+  if (next === current) return null;
+  return blocks.map((item, index) => (index === at ? normalizeBlock({ ...item, indent: next }) : item));
+}
+
+/** Where inline formatting sits inside a block's text: styled ranges and the marker characters around them (hidden unless the block is being edited). */
+export type InlineRange = { start: number; end: number; kind: 'bold' | 'italic' | 'code' | 'strike' | 'link' | 'mark'; href?: string };
+export function inlineRanges(text: string): InlineRange[] {
+  const out: InlineRange[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const rest = text.slice(i);
+    let m: RegExpExecArray | null;
+    const wrap = (kind: InlineRange['kind'], open: number, close: number, length: number) => { out.push({ start: i, end: i + open, kind: 'mark' }, { start: i + open, end: i + length - close, kind }, { start: i + length - close, end: i + length, kind: 'mark' }); i += length; };
+    if ((m = /^`([^`\n]+)`/.exec(rest))) { wrap('code', 1, 1, m[0].length); continue; }
+    if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { const label = m[1].length; out.push({ start: i, end: i + 1, kind: 'mark' }, { start: i + 1, end: i + 1 + label, kind: 'link', href }, { start: i + 1 + label, end: i + m[0].length, kind: 'mark' }); i += m[0].length; continue; } }
+    if ((m = /^\*\*([^*\n]+?)\*\*/.exec(rest))) { wrap('bold', 2, 2, m[0].length); continue; }
+    if ((m = /^~~([^~\n]+?)~~/.exec(rest))) { wrap('strike', 2, 2, m[0].length); continue; }
+    const startsWord = i === 0 || !/[\p{L}\p{N}_]/u.test(text[i - 1]);
+    if ((m = /^\*([^*\s][^*\n]*?)\*/.exec(rest)) || (startsWord && (m = /^_([^_\s][^_\n]*?)_(?![\p{L}\p{N}_])/u.exec(rest)))) { wrap('italic', 1, 1, m[0].length); continue; }
+    i += 1;
+  }
+  return out;
+}
+
+/** Pasted text, one line at a time: "- x", "1. x", "# x", "[ ] x", "> x" become the block they describe; anything else is a paragraph. */
+export function lineToBlock(line: string, newId: () => string): Block {
+  const rules: [RegExp, Partial<Block>][] = [
+    [/^#### (.*)$/, { type: 'HEADING_4' }], [/^### (.*)$/, { type: 'HEADING_3' }], [/^## (.*)$/, { type: 'HEADING_2' }], [/^# (.*)$/, { type: 'HEADING_1' }],
+    [/^\[[xX]\] (.*)$/, { type: 'TODO', checked: true }], [/^\[ ?\] (.*)$/, { type: 'TODO' }],
+    [/^[-*+] (.*)$/, { type: 'BULLET' }], [/^\d+[.)] (.*)$/, { type: 'NUMBERED' }], [/^> (.*)$/, { type: 'QUOTE' }],
+  ];
+  for (const [pattern, change] of rules) { const match = pattern.exec(line); if (match) return normalizeBlock({ ...blankBlock(newId()), ...change, text: match[1] }); }
+  return normalizeBlock({ ...blankBlock(newId()), text: line });
+}
+
+/** Pasting several lines into a block: the first line joins the text at the caret, the rest become new blocks after it. */
+export function pasteLines(blocks: Block[], id: string, start: number, end: number, text: string, newId: () => string): EditResult | null {
+  const at = indexOf(blocks, id); if (at < 0) return null;
+  const block = blocks[at];
+  if (!isTextBlock(block.type) || keepsNewlines(block.type)) return null;
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  if (lines.length < 2) return null;
+  const head = block.text.slice(0, start), tail = block.text.slice(end);
+  const middle = lines.slice(1, -1).map((line) => lineToBlock(line, newId));
+  const lastLine = lines[lines.length - 1];
+  const last = lineToBlock(lastLine, newId); const lastKeeps = last.type === 'PARAGRAPH';
+  const lastBlock = normalizeBlock({ ...last, text: last.text + tail });
+  const first = normalizeBlock({ ...block, text: head + lines[0] });
+  const created = [...middle, lastBlock];
+  return { blocks: [...blocks.slice(0, at), first, ...created, ...blocks.slice(at + 1)], focus: { id: lastBlock.id, caret: lastKeeps ? lastLine.length : last.text.length } };
+}

@@ -2272,4 +2272,11 @@ export const de: Dictionary = {
   'bl.transcribeNote': "Die Live-Transkription nutzt den Sprachdienst des Browsers, der Audio an seinen Anbieter senden kann. Prüfe den Text vor der Verwendung.",
   'bl.noTranscribe': "Dieser Browser kann nicht live transkribieren. Aufnehmen funktioniert, die Notizen kannst du selbst tippen.",
   'bl.speechDenied': "Die Transkription wurde blockiert. Erlaube Mikrofon und Spracherkennung für diese Website.",
+  'ed.unknownBlock': "Dieser Blocktyp wird hier nicht unterstützt.",
+  'ed.titlePh': "Ohne Titel",
+  'ed.writePh': "Schreibe etwas oder tippe / für Blöcke",
+  'ed.documentLabel': "Dokument",
+  'ed.blockMenu': "Block-Optionen",
+  'ed.turnInto': "Umwandeln in",
+  'ed.dragging': "Lass den Block an der gewünschten Stelle los.",
 };

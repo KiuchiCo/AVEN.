@@ -136,3 +136,44 @@ test('parseInline understands marks and leaves everything else as text', () => {
   assert.deepEqual(parseInline('an _emphasised_ word').map((x) => x.kind), ['text', 'italic', 'text']);
   assert.equal(hasInlineMarks('plain'), false); assert.equal(hasInlineMarks('**b**'), true);
 });
+
+import { indentBlock, inlineRanges, normalizeBlock } from '../app/workspace/documents/[documentId]/editor-model.ts';
+
+test('normalizeBlock gives every block one canonical shape', () => {
+  const messy = { text: 'Hi', type: 'PARAGRAPH', id: 'a', checked: false, indent: 0, body: '', url: undefined, create: false, junk: 1 };
+  assert.deepEqual(Object.keys(normalizeBlock(messy)), ['id', 'type', 'text', 'checked']);
+  assert.equal(JSON.stringify(normalizeBlock(normalizeBlock(messy))), JSON.stringify(normalizeBlock(messy)));
+  assert.deepEqual(Object.keys(normalizeBlock({ id: 'a', type: 'TOGGLE', text: 'T', level: 2, body: 'x', checked: true })), ['id', 'type', 'text', 'checked', 'level', 'body']);
+  assert.equal(normalizeBlock({ id: 'a', type: 'TOGGLE', text: 'T', level: 0 }).level, undefined);
+});
+
+test('Tab nests a list item under the one above, never deeper than one level below it', () => {
+  const list = [b('a', 'one', 'BULLET'), b('b', 'two', 'BULLET'), b('c', 'three', 'BULLET')];
+  const once = indentBlock(list, 'b', 1);
+  assert.equal(once[1].indent, 1);
+  assert.equal(indentBlock(once, 'c', 1)[2].indent, 1, 'the third item can nest to the second item\'s level plus one');
+  assert.equal(indentBlock(list, 'a', 1), null, 'the first item cannot nest');
+  assert.equal(indentBlock([b('a', 'x'), b('b', 'y')], 'b', 1), null, 'paragraphs do not nest');
+  assert.equal(indentBlock(once, 'b', -1)[1].indent, undefined);
+});
+
+test('inlineRanges finds styled text and the marker characters around it', () => {
+  const ranges = inlineRanges('a **b** c');
+  assert.deepEqual(ranges.map((r) => [r.kind, r.start, r.end]), [['mark', 2, 4], ['bold', 4, 5], ['mark', 5, 7]]);
+  assert.deepEqual(inlineRanges('plain text'), []);
+  assert.deepEqual(inlineRanges('window.__pwned=1'), []);
+  const link = inlineRanges('see [docs](https://a.test)')[1];
+  assert.equal(link.kind, 'link'); assert.equal(link.href, 'https://a.test');
+});
+
+import { lineToBlock, pasteLines } from '../app/workspace/documents/[documentId]/editor-model.ts';
+
+test('pasted lines become the blocks they describe, and the text after the caret follows the last line', () => {
+  assert.equal(lineToBlock('- item', newId).type, 'BULLET'); assert.equal(lineToBlock('### Title', newId).type, 'HEADING_3');
+  assert.equal(lineToBlock('[x] done', newId).checked, true); assert.equal(lineToBlock('plain', newId).type, 'PARAGRAPH');
+  const result = pasteLines([b('a', 'Hello world')], 'a', 6, 6, 'one\n- two\nthree', newId);
+  assert.deepEqual(result.blocks.map((x) => `${x.type}:${x.text}`), ['PARAGRAPH:Hello one', 'BULLET:two', 'PARAGRAPH:threeworld']);
+  assert.deepEqual(result.focus.caret, 5);
+  assert.equal(pasteLines([b('a', 'x')], 'a', 1, 1, 'single line', newId), null);
+  assert.equal(pasteLines([b('a', 'x', 'CODE')], 'a', 1, 1, 'a\nb', newId), null);
+});
