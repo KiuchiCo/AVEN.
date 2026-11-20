@@ -2,6 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useMemo, useState } from 'react';
+import { useT } from '../../i18n';
 import { timeZoneCookieValue } from '../../time-zone-script';
 import { useWorkspaceSession } from '../workspace-shell';
 
@@ -11,6 +12,7 @@ const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const deviceZone = () => { try { return (Intl.DateTimeFormat as unknown as { deviceZone?: string }).deviceZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } };
 
 export function TimeZoneCard() {
+  const t = useT();
   const { user } = useWorkspaceSession();
   const { getToken } = useAuth();
   const [zone, setZone] = useState(user.timeZone ?? '');
@@ -33,15 +35,15 @@ export function TimeZoneCard() {
   }
 
   return <div className="workspace-settings-card">
-    <div><h2>Time zone</h2><p>Times across AVEN, including the calendar, messages and activity, are shown in this zone. Leave it on your device’s zone unless you want something different.</p></div>
+    <div><h2>{t('set.tz.title')}</h2><p>{t('set.tz.hint')}</p></div>
     <div className="workspace-settings-toggles">
-      <label htmlFor="time-zone">Show times in</label>
+      <label htmlFor="time-zone">{t('set.tz.label')}</label>
       <select id="time-zone" value={zone} onChange={(event) => setZone(event.target.value)} disabled={busy}>
-        <option value="">My device’s time zone ({deviceZone()})</option>
+        <option value="">{t('set.tz.device', { zone: deviceZone() })}</option>
         {zones.map((name) => <option key={name} value={name}>{name.replaceAll('_', ' ')}</option>)}
       </select>
-      {preview && <p className="workspace-settings-note" suppressHydrationWarning>It’s {preview} there.</p>}
-      <button className="workspace-settings-save" onClick={() => void save()} disabled={busy || zone === (user.timeZone ?? '')}>{busy ? 'Saving…' : 'Save time zone'}</button>
+      {preview && <p className="workspace-settings-note" suppressHydrationWarning>{t('set.tz.preview', { time: preview })}</p>}
+      <button className="workspace-settings-save" onClick={() => void save()} disabled={busy || zone === (user.timeZone ?? '')}>{busy ? t('set.saving') : t('set.tz.save')}</button>
     </div>
     {status && <p className="workspace-settings-status" role="alert">{status}</p>}
   </div>;

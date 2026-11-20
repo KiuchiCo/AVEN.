@@ -2,6 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useEffect, useState, type FormEvent } from 'react';
+import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
 import { BillingCard } from './billing-card';
 import { LanguageCard } from './language-card';
@@ -16,6 +17,7 @@ type Profile = { displayName: string; email: string; notifyTeamActivity: boolean
 
 function AccountSettings() {
   const { getToken } = useAuth();
+  const t = useT();
   const [saved, setSaved] = useState<Profile | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [status, setStatus] = useState('');
@@ -49,29 +51,29 @@ function AccountSettings() {
 
   function saveName(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void update({ displayName }, 'Your name was updated.', true);
+    void update({ displayName }, t('set.profile.saved'), true);
   }
 
-  if (!saved) return <div className="workspace-settings-card"><p role="status">{status || 'Loading your settings…'}</p></div>;
+  if (!saved) return <div className="workspace-settings-card"><p role="status">{status || t('set.loading')}</p></div>;
 
   return <>
     <div className="workspace-settings-card">
-      <div><h2>Your profile</h2><p>Teammates see this name on comments, assignments and activity.</p></div>
+      <div><h2>{t('set.profile.title')}</h2><p>{t('set.profile.hint')}</p></div>
       <form onSubmit={saveName}>
-        <label htmlFor="display-name">Display name</label>
+        <label htmlFor="display-name">{t('set.profile.name')}</label>
         <input id="display-name" maxLength={120} value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
-        <label htmlFor="account-email">Email</label>
+        <label htmlFor="account-email">{t('set.profile.email')}</label>
         <input id="account-email" value={saved.email} disabled readOnly />
-        <p className="workspace-settings-note">Your email comes from your sign-in account and can’t be changed here.</p>
-        <button className="workspace-settings-save" disabled={busy || !displayName.trim() || displayName.trim() === saved.displayName}>{busy ? 'Saving…' : 'Save name'}</button>
+        <p className="workspace-settings-note">{t('set.profile.emailNote')}</p>
+        <button className="workspace-settings-save" disabled={busy || !displayName.trim() || displayName.trim() === saved.displayName}>{busy ? t('set.saving') : t('set.profile.save')}</button>
       </form>
     </div>
     <div className="workspace-settings-card">
-      <div><h2>Inbox notifications</h2><p>Choose what appears in your Inbox. Changes apply immediately and to every workspace you belong to.</p></div>
+      <div><h2>{t('set.notif.title')}</h2><p>{t('set.notif.hint')}</p></div>
       <div className="workspace-settings-toggles">
-        <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.notifyTaskUpdates} disabled={busy} onChange={(event) => void update({ notifyTaskUpdates: event.target.checked }, 'Notification settings saved.')} /><span><strong>Mentions and task updates</strong><small>Comments, mentions, assignments and changes to tasks you follow.</small></span></label>
-        <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.notifyTeamActivity} disabled={busy} onChange={(event) => void update({ notifyTeamActivity: event.target.checked }, 'Notification settings saved.')} /><span><strong>Team activity</strong><small>Workspace-wide changes to projects, documents, calendar and members.</small></span></label>
-        <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.emailNotifications} disabled={busy || !saved.emailAvailable} onChange={(event) => void update({ emailNotifications: event.target.checked }, event.target.checked ? 'You’ll get a summary email a few minutes after new mentions and task updates, if you haven’t read them by then.' : 'Email notifications are off.')} /><span><strong>Email me a summary</strong><small>{saved.emailAvailable ? 'A short email when you have unread mentions, assignments or changes to tasks you follow. Only new notifications from now on are sent, and anything you read first is left out.' : 'Email isn’t set up for this AVEN installation yet. An administrator can add an email provider to turn this on.'}</small></span></label>
+        <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.notifyTaskUpdates} disabled={busy} onChange={(event) => void update({ notifyTaskUpdates: event.target.checked }, t('set.notif.saved'))} /><span><strong>{t('set.notif.tasks')}</strong><small>{t('set.notif.tasksHint')}</small></span></label>
+        <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.notifyTeamActivity} disabled={busy} onChange={(event) => void update({ notifyTeamActivity: event.target.checked }, t('set.notif.saved'))} /><span><strong>{t('set.notif.team')}</strong><small>{t('set.notif.teamHint')}</small></span></label>
+        <label className="workspace-settings-toggle"><input type="checkbox" checked={saved.emailNotifications} disabled={busy || !saved.emailAvailable} onChange={(event) => void update({ emailNotifications: event.target.checked }, event.target.checked ? t('set.notif.emailOnSaved') : t('set.notif.emailOffSaved'))} /><span><strong>{t('set.notif.email')}</strong><small>{saved.emailAvailable ? t('set.notif.emailHint') : t('set.notif.emailOff')}</small></span></label>
       </div>
       {status && <p className="workspace-settings-status" role="status">{status}</p>}
     </div>
@@ -80,6 +82,7 @@ function AccountSettings() {
 
 export default function WorkspaceSettingsPage() {
   const session = useWorkspaceSession();
+  const t = useT();
   const { getToken } = useAuth();
   const [name, setName] = useState(session.workspace.name);
   const [status, setStatus] = useState('');
@@ -100,7 +103,7 @@ export default function WorkspaceSettingsPage() {
   }
 
   return <section className="workspace-settings-page">
-    <header><p className="workspace-page-eyebrow">SETTINGS</p><h1>Settings</h1><p>Manage your profile, notifications and this workspace.</p></header>
+    <header><p className="workspace-page-eyebrow">{t('set.eyebrow')}</p><h1>{t('set.title')}</h1><p>{t('set.sub')}</p></header>
     <AccountSettings />
     <ThemeCard />
     <LanguageCard />
@@ -109,14 +112,14 @@ export default function WorkspaceSettingsPage() {
     <BillingCard />
     <PermissionsCard />
     <div className="workspace-settings-card">
-      <div><h2>Workspace details</h2><p>Members will see this name in their workspace switcher.</p></div>
+      <div><h2>{t('set.ws.title')}</h2><p>{t('set.ws.hint')}</p></div>
       <form onSubmit={save}>
-        <label htmlFor="workspace-name">Workspace name</label>
+        <label htmlFor="workspace-name">{t('set.ws.name')}</label>
         <input id="workspace-name" maxLength={120} value={name} onChange={(event) => setName(event.target.value)} disabled={session.workspace.role !== 'OWNER'} required />
-        {session.workspace.role === 'OWNER' ? <button className="workspace-settings-save" disabled={busy || !name.trim() || name === session.workspace.name}>{busy ? 'Saving…' : 'Save changes'}</button> : <p className="workspace-settings-note">Only a workspace owner can change these settings.</p>}
+        {session.workspace.role === 'OWNER' ? <button className="workspace-settings-save" disabled={busy || !name.trim() || name === session.workspace.name}>{busy ? t('set.saving') : t('set.ws.save')}</button> : <p className="workspace-settings-note">{t('set.ws.ownerOnly')}</p>}
         {status && <p className="workspace-settings-status" role="status">{status}</p>}
       </form>
-      <dl><div><dt>Your role</dt><dd>{session.workspace.role?.toLowerCase() ?? 'member'}</dd></div><div><dt>Members</dt><dd>{session.workspace.memberCount ?? 1}</dd></div><div><dt>Workspace type</dt><dd>{session.workspace.isPersonal ? 'Personal' : 'Shared'}</dd></div></dl>
+      <dl><div><dt>{t('set.ws.role')}</dt><dd>{session.workspace.role?.toLowerCase() ?? 'member'}</dd></div><div><dt>{t('set.ws.members')}</dt><dd>{session.workspace.memberCount ?? 1}</dd></div><div><dt>{t('set.ws.type')}</dt><dd>{session.workspace.isPersonal ? t('set.ws.personal') : t('set.ws.shared')}</dd></div></dl>
     </div>
   </section>;
 }

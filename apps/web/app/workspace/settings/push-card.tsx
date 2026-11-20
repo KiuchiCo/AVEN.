@@ -2,6 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useState } from 'react';
+import { useT } from '../../i18n';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 type Mode = 'loading' | 'unsupported' | 'off-server' | 'blocked' | 'off' | 'on';
@@ -11,6 +12,7 @@ const keyBytes = (key: string) => { const padded = key.replace(/-/g, '+').replac
 /** Turns browser notifications on or off for this device. */
 export function PushCard() {
   const { getToken } = useAuth();
+  const t = useT();
   const [mode, setMode] = useState<Mode>('loading');
   const [publicKey, setPublicKey] = useState('');
   const [message, setMessage] = useState('');
@@ -45,7 +47,7 @@ export function PushCard() {
       await navigator.serviceWorker.ready;
       const subscription = (await registration.pushManager.getSubscription()) ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) });
       await call('/subscriptions', 'POST', subscription.toJSON());
-      setMode('on'); setMessage('Notifications are on for this device.');
+      setMode('on'); setMessage(t('set.push.nowOn'));
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not turn notifications on.'); }
     finally { setBusy(false); }
   }
@@ -56,20 +58,20 @@ export function PushCard() {
       const registration = await navigator.serviceWorker.getRegistration('/sw.js');
       const subscription = await registration?.pushManager.getSubscription();
       if (subscription) { await call('/subscriptions', 'DELETE', { endpoint: subscription.endpoint }); await subscription.unsubscribe(); }
-      setMode('off'); setMessage('Notifications are off for this device.');
+      setMode('off'); setMessage(t('set.push.nowOff'));
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not turn notifications off.'); }
     finally { setBusy(false); }
   }
 
   const note: Partial<Record<Mode, string>> = {
-    unsupported: 'This browser can’t show push notifications.',
-    'off-server': 'Push notifications aren’t set up for this AVEN installation yet.',
-    blocked: 'Notifications are blocked for this site. Allow them in your browser’s site settings, then come back.',
+    unsupported: t('set.push.unsupported'),
+    'off-server': t('set.push.offServer'),
+    blocked: t('set.push.blocked'),
   };
   return <div className="workspace-settings-card">
-    <div><h2>Browser notifications</h2><p>Get mentions, assignments and followed-task updates on this device, even when AVEN. isn’t open. It follows your “task updates” preference.</p></div>
-    {mode === 'loading' ? <p>Checking…</p> : note[mode] ? <p className="workspace-settings-note">{note[mode]}</p> : <div className="billing-actions">
-      {mode === 'on' ? <button className="workspace-settings-save" disabled={busy} onClick={() => void disable()}>Turn off on this device</button> : <button className="workspace-settings-save" disabled={busy} onClick={() => void enable()}>Turn on for this device</button>}
+    <div><h2>{t('set.push.title')}</h2><p>{t('set.push.hint')}</p></div>
+    {mode === 'loading' ? <p>{t('set.push.checking')}</p> : note[mode] ? <p className="workspace-settings-note">{note[mode]}</p> : <div className="billing-actions">
+      {mode === 'on' ? <button className="workspace-settings-save" disabled={busy} onClick={() => void disable()}>{t('set.push.off')}</button> : <button className="workspace-settings-save" disabled={busy} onClick={() => void enable()}>{t('set.push.on')}</button>}
     </div>}
     {message && <p className="workspace-settings-status" role="status">{message}</p>}
   </div>;
