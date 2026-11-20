@@ -144,6 +144,7 @@ model User {
 }
 
 model Workspace {
+  searchEmbeddings   SearchEmbedding[]
   id                 String               @id @default(uuid()) @db.Uuid
   name               String               @db.VarChar(120)
   createdById        String               @db.Uuid
@@ -1213,4 +1214,24 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+/// Meaning vectors for semantic search: one row per chunk of a document or Knowledge item. Plain float arrays, so no database extension is needed.
+model SearchEmbedding {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  entityType  String    @db.VarChar(20)
+  entityId    String    @db.Uuid
+  chunkIndex  Int
+  /// Hash of the entity's text at the time it was embedded; a different hash means the entity changed and is re-embedded.
+  contentHash String    @db.VarChar(64)
+  model       String    @db.VarChar(100)
+  excerpt     String    @db.VarChar(400)
+  vector      Float[]
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([entityType, entityId, chunkIndex])
+  @@index([workspaceId, entityType])
+  @@map("search_embeddings")
 }

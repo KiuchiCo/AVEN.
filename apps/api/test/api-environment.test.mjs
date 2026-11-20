@@ -61,6 +61,9 @@ test('s3 storage requires its credentials and exposes them when set', async () =
 test('web search is optional and needs a safe base URL', async () => {
   const { readApiEnvironment } = await import('../dist/config/api-environment.js');
   const base = { DATABASE_URL: 'postgresql://u:p@localhost:5432/d' };
+  assert.equal(readApiEnvironment(base).embeddings, undefined);
+  assert.deepEqual(readApiEnvironment({ ...base, EMBEDDINGS_API_KEY: 'k' }).embeddings, { apiKey: 'k', baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-small' });
+  assert.throws(() => readApiEnvironment({ ...base, EMBEDDINGS_API_KEY: 'k', EMBEDDINGS_BASE_URL: 'http://example.com/v1' }), /EMBEDDINGS_BASE_URL/);
   assert.equal(readApiEnvironment(base).webSearch, undefined);
   assert.equal(readApiEnvironment({ ...base, WEB_SEARCH_API_KEY: 'k' }).webSearch.baseUrl, 'https://api.search.brave.com');
   assert.throws(() => readApiEnvironment({ ...base, WEB_SEARCH_API_KEY: 'k', WEB_SEARCH_BASE_URL: 'http://example.com' }), /https/);

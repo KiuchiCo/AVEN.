@@ -23,6 +23,8 @@ export type ApiEnvironment = {
   push?: { publicKey: string; privateKey: string; subject: string };
   /** Optional web search for AVEN Intelligence (Brave Search API). */
   webSearch?: { apiKey: string; baseUrl: string };
+  /** Optional embeddings for semantic search, from any OpenAI-compatible /embeddings endpoint. */
+  embeddings?: { apiKey: string; baseUrl: string; model: string };
   aiModel: string;
   aiBaseUrl: string;
   aiMonthlyCredits: number;
@@ -109,6 +111,12 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   const webSearchBase = source.WEB_SEARCH_BASE_URL?.trim() || 'https://api.search.brave.com';
   try { const parsed = new URL(webSearchBase); if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname))) errors.push('WEB_SEARCH_BASE_URL must be an https address'); } catch { errors.push('WEB_SEARCH_BASE_URL must be a valid URL'); }
   const webSearch = webSearchKey ? { apiKey: webSearchKey, baseUrl: webSearchBase } : undefined;
+  const embeddingsKey = source.EMBEDDINGS_API_KEY?.trim() || undefined;
+  const embeddingsBase = (source.EMBEDDINGS_BASE_URL?.trim() || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const embeddingsModel = source.EMBEDDINGS_MODEL?.trim() || 'text-embedding-3-small';
+  try { const parsed = new URL(embeddingsBase); if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname))) errors.push('EMBEDDINGS_BASE_URL must be an https address'); } catch { errors.push('EMBEDDINGS_BASE_URL must be a valid URL'); }
+  if (embeddingsModel.length > 100 || !/^[\w.:/-]+$/.test(embeddingsModel)) errors.push('EMBEDDINGS_MODEL must be a model identifier');
+  const embeddings = embeddingsKey ? { apiKey: embeddingsKey, baseUrl: embeddingsBase, model: embeddingsModel } : undefined;
   const aiModel = source.AI_MODEL?.trim() || 'claude-sonnet-5-5';
   if (aiModel.length > 100 || !/^[\w.:-]+$/.test(aiModel)) errors.push('AI_MODEL must be a model identifier');
   const aiBaseUrl = source.AI_BASE_URL?.trim() || 'https://api.anthropic.com';
@@ -178,5 +186,5 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, embeddings, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
 }

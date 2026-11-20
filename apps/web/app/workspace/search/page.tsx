@@ -10,6 +10,8 @@ import { TaskLabels } from '../task-labels';
 
 type SearchResult = { id: string; type: string; title: string; detail: string; href: string; updatedAt: string; labels?: string[] };
 type SearchResponse = { query: string; results: SearchResult[] };
+type SemanticStatus = { configured: boolean; entitled: boolean; total: number; pending: number };
+type SemanticState = { results: SearchResult[]; pending: number; failed: boolean };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const filters = ['All', 'Project', 'Task', 'Document', 'Database', 'Record', 'Knowledge', 'Event'];
 const filterKeys: Record<string, Key> = { All: 'act.f.all', Project: 'act.f.project', Task: 'act.f.task', Document: 'act.f.document', Database: 'nav.databases', Record: 'srch.f.record', Knowledge: 'act.f.knowledge', Event: 'srch.f.event' };
@@ -24,6 +26,41 @@ export default function WorkspaceSearchPage() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [status, setStatus] = useState<SemanticStatus | null>(null);
+  const [semantic, setSemantic] = useState<SemanticState>({ results: [], pending: 0, failed: false });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = await getToken();
+        if (!token || !apiBase) return;
+        const response = await fetch(`${apiBase}/workspaces/${workspace.id}/search/semantic/status`, { headers: { Authorization: `Bearer ${token}` } });
+        if (response.ok && !cancelled) setStatus(await response.json() as SemanticStatus);
+      } catch { /* The note about search by meaning is optional. */ }
+    })();
+    return () => { cancelled = true; };
+  }, [getToken, workspace.id]);
+
+  const semanticOn = Boolean(status?.configured && status.entitled);
+  useEffect(() => {
+    let cancelled = false;
+    const trimmed = query.trim();
+    if (!semanticOn || trimmed.length < 2) return;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const token = await getToken();
+          if (!token || !apiBase) return;
+          const response = await fetch(`${apiBase}/workspaces/${workspace.id}/search/semantic?q=${encodeURIComponent(trimmed)}`, { headers: { Authorization: `Bearer ${token}` } });
+          if (!response.ok) throw new Error('unavailable');
+          const data = await response.json() as { results: SearchResult[]; pending: number };
+          if (!cancelled) setSemantic({ results: data.results, pending: data.pending, failed: false });
+        } catch { if (!cancelled) setSemantic({ results: [], pending: 0, failed: true }); }
+      })();
+    }, 400);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [getToken, query, semanticOn, workspace.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +91,11 @@ export default function WorkspaceSearchPage() {
   }, [getToken, query, workspace.id]);
 
   const visibleResults = filter === 'All' ? results : results.filter((item) => item.type === filter);
+  const shown = new Set(results.map((item) => `${item.type}-${item.id}`));
+  const related = query.trim().length < 2 ? [] : semantic.results.filter((item) => !shown.has(`${item.type}-${item.id}`) && (filter === 'All' || item.type === filter));
+  const row = (item: SearchResult) => <Link className="workspace-search-result" key={`${item.type}-${item.id}`} href={item.href}>
+    <span className="workspace-search-result__type">{typeKeys[item.type] ? t(typeKeys[item.type]).replace(/^./, (c) => c.toLocaleUpperCase()) : item.type}</span><span className="workspace-search-result__body"><strong>{item.title}</strong><small>{item.detail}</small></span><time dateTime={item.updatedAt}>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(item.updatedAt))}</time><span aria-hidden="true">→</span>
+  </Link>;
 
   return (
     <div className="workspace-section-page workspace-search-page">
@@ -61,7 +103,7 @@ export default function WorkspaceSearchPage() {
       <h1>{t('shell.pageSearch')}</h1>
       <p className="workspace-section-page__description">{t('srch.desc')}</p>
 
-        <label className="workspace-search-input"><span aria-hidden="true">⌕</span><span className="visually-hidden">{t('srch.label')}</span><input autoFocus type="search" value={query} onChange={(event) => { const next = event.target.value; setQuery(next); setResults([]); setError(''); setLoading(next.trim().length >= 2); }} placeholder={t('srch.placeholder')} /></label>
+        <label className="workspace-search-input"><span aria-hidden="true">⌕</span><span className="visually-hidden">{t('srch.label')}</span><input autoFocus type="search" value={query} onChange={(event) => { const next = event.target.value; setQuery(next); setResults([]); setSemantic({ results: [], pending: 0, failed: false }); setError(''); setLoading(next.trim().length >= 2); }} placeholder={t('srch.placeholder')} /></label>
       {error && <p className="productivity-error" role="alert">{error}</p>}
 
       <section className="workspace-search-results" aria-live="polite" aria-busy={query.trim().length >= 2 && loading}>
@@ -71,6 +113,13 @@ export default function WorkspaceSearchPage() {
             <span className="workspace-search-result__type">{typeKeys[item.type] ? t(typeKeys[item.type]).replace(/^./, (c) => c.toLocaleUpperCase()) : item.type}</span><span className="workspace-search-result__body"><strong>{item.title}</strong><small>{item.detail}</small>{item.type === 'Task' && item.labels && <TaskLabels labels={item.labels} compact />}</span><time dateTime={item.updatedAt}>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(item.updatedAt))}</time><span aria-hidden="true">→</span>
           </Link>)}</div>
         )}
+        {query.trim().length >= 2 && !loading && (related.length > 0 || semantic.failed || semantic.pending > 0) && <section className="workspace-search-related" aria-label={t('srch.sem.title')}>
+          <h2>{t('srch.sem.title')}</h2>
+          {related.length > 0 && <><p className="productivity-message">{t('srch.sem.help')}</p><div className="workspace-search-list">{related.map(row)}</div></>}
+          {semantic.pending > 0 && <p className="productivity-message">{t('srch.sem.indexing', { n: semantic.pending })}</p>}
+          {semantic.failed && <p className="productivity-message">{t('srch.sem.failed')}</p>}
+        </section>}
+        {status && !semanticOn && <p className="productivity-message workspace-search-note">{status.configured ? t('srch.sem.plan') : t('srch.sem.off')}</p>}
       </section>
     </div>
   );
