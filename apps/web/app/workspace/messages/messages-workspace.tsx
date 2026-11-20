@@ -4,13 +4,15 @@ import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { conversationLabel, type Participant } from './conversation-names';
+import { formatBytes } from '../files/types';
+import { useFilesApi } from '../files/use-files-api';
 import { Composer } from './composer';
 import { MessageBody } from './message-body';
 import { readEvents } from './sse';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export type Channel = { id: string; kind: 'CHANNEL' | 'DIRECT' | 'GROUP'; name: string | null; topic: string; unread: number; participants: Participant[] };
-export type Message = { id: string; channelId: string; parentId: string | null; body: string; createdAt: string; editedAt: string | null; deletedAt: string | null; replyCount: number; author: Participant };
+export type Message = { id: string; channelId: string; parentId: string | null; body: string; createdAt: string; editedAt: string | null; deletedAt: string | null; replyCount: number; author: Participant; files: { id: string; name: string; mimeType: string; sizeBytes: number }[] };
 type Member = { userId: string; displayName: string; role: string };
 type Hit = { id: string; channelId: string; parentId: string | null; body: string; createdAt: string; author: Participant; channel: { kind: Channel['kind']; name: string | null; participants: Participant[] } };
 type LiveEvent = { type: 'message' | 'message_updated'; channelId: string; message: Message } | { type: 'message_deleted'; channelId: string; id: string; parentId?: string | null } | { type: 'channel'; channel: Channel } | { type: 'presence'; online: string[] };
@@ -19,6 +21,7 @@ const byName = (a: Channel, b: Channel) => (a.name ?? '').localeCompare(b.name ?
 export function MessagesWorkspace() {
   const { workspace, user } = useWorkspaceSession();
   const { getToken } = useAuth();
+  const { download } = useFilesApi();
   const readOnly = workspace.role === 'GUEST';
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -112,11 +115,11 @@ export function MessagesWorkspace() {
     return () => abort.abort();
   }, [call, getToken, loadChannels, loadMessages, loadThread, workspace.id]);
 
-  async function post(body: string, parentId?: string) {
+  async function post(body: string, fileIds: string[], parentId?: string) {
     if (!activeId) return;
     setError('');
     try {
-      const message = await call<Message>(`/${activeId}/messages`, 'POST', { body, ...(parentId ? { parentId } : {}) });
+      const message = await call<Message>(`/${activeId}/messages`, 'POST', { body, ...(fileIds.length ? { fileIds } : {}), ...(parentId ? { parentId } : {}) });
       if (parentId) { setThread((current) => (current && !current.replies.some((item) => item.id === message.id) ? { ...current, replies: [...current.replies, message] } : current)); setMessages((list) => list.map((item) => (item.id === parentId ? { ...item, replyCount: item.replyCount + 1 } : item))); }
       else setMessages((list) => (list.some((item) => item.id === message.id) ? list : [...list, message]));
     } catch (reason) { fail(reason); throw reason; }
@@ -172,7 +175,7 @@ export function MessagesWorkspace() {
 
   const renderMessage = (message: Message, inThread: boolean) => <article key={message.id} className="chat-message">
     <header><strong>{message.author.displayName}</strong><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</time>{message.editedAt && !message.deletedAt && <small>edited</small>}</header>
-    {message.deletedAt ? <p className="chat-deleted">This message was deleted.</p> : editing?.id === message.id ? <div className="chat-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label="Edit message" /><button onClick={() => void saveEdit()} disabled={!editing.body.trim()}>Save</button><button onClick={() => setEditing(null)}>Cancel</button></div> : <p><MessageBody body={message.body} names={names} /></p>}
+    {message.deletedAt ? <p className="chat-deleted">This message was deleted.</p> : editing?.id === message.id ? <div className="chat-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label="Edit message" /><button onClick={() => void saveEdit()} disabled={!editing.body.trim()}>Save</button><button onClick={() => setEditing(null)}>Cancel</button></div> : <>{message.body && <p><MessageBody body={message.body} names={names} /></p>}{message.files?.length > 0 && <ul className="chat-files">{message.files.map((file) => <li key={file.id}><button type="button" onClick={() => void download(file).catch(fail)}>{file.name}</button> <small>{formatBytes(file.sizeBytes)}</small></li>)}</ul>}</>}
     {!message.deletedAt && editing?.id !== message.id && <div className="chat-actions">
       {!inThread && <button onClick={() => openReplies(message)}>{message.replyCount ? `${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}` : readOnly ? '' : 'Reply'}</button>}
       {!readOnly && message.author.id === user.id && <button onClick={() => setEditing({ id: message.id, body: message.body })}>Edit</button>}
@@ -203,13 +206,13 @@ export function MessagesWorkspace() {
           {visible.map((message) => renderMessage(message, false))}
           <div ref={endRef} />
         </div>
-        {readOnly ? <p className="workspace-settings-note">Guests can read channels but not post.</p> : <Composer label={`Message ${label(channel)}`} members={members} selfId={user.id} onSend={(body) => post(body)} />}
+        {readOnly ? <p className="workspace-settings-note">Guests can read channels but not post.</p> : <Composer label={`Message ${label(channel)}`} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds)} />}
       </>}
     </div>
     {thread && channel && <aside className="chat-side" aria-label="Thread">
       <header><h2>Thread</h2><button onClick={() => { openThread.current = null; setThread(null); }} aria-label="Close thread">Close</button></header>
       <div className="chat-thread">{renderMessage(thread.root, true)}<p className="chat-side__count">{thread.replies.length} {thread.replies.length === 1 ? 'reply' : 'replies'}</p>{thread.replies.map((reply) => renderMessage(reply, true))}</div>
-      {!readOnly && <Composer label="Reply" members={members} selfId={user.id} onSend={(body) => post(body, thread.root.id)} compact />}
+      {!readOnly && <Composer label="Reply" members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds, thread.root.id)} compact />}
     </aside>}
   </section>;
 }

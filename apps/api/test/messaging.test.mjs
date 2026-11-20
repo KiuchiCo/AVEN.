@@ -56,3 +56,16 @@ test('one person can hold only a limited number of live connections, and releasi
   held[0](); held[0](); // releasing twice must not free two slots
   assert.ok(events.acquire('u1')); assert.equal(events.acquire('u1'), null);
 });
+
+test('a message can carry files instead of text, within a limit', async () => {
+  const { parseMessageContent, parseMessageFileIds } = await import('../dist/messaging/message-rules.js');
+  const id = '3b241101-e2bb-4255-8caf-4136c566a962';
+  assert.deepEqual(parseMessageFileIds(undefined), []);
+  assert.deepEqual(parseMessageFileIds([id]), [id]);
+  assert.throws(() => parseMessageFileIds([id, id]), /once/);
+  assert.throws(() => parseMessageFileIds(['nope']), /invalid/);
+  assert.throws(() => parseMessageFileIds(Array.from({ length: 6 }, (_, i) => `3b241101-e2bb-4255-8caf-4136c566a96${i}`)), /up to 5/);
+  assert.equal(parseMessageContent('  ', [id]), '');
+  assert.throws(() => parseMessageContent('  ', []), /Write something/);
+  assert.equal(parseMessageContent(' hi ', [id]), 'hi');
+});

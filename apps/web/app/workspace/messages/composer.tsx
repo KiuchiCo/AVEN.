@@ -1,15 +1,20 @@
 'use client';
 
 import { useRef, useState, type FormEvent } from 'react';
+import { useFilesApi } from '../files/use-files-api';
 import { activeMention, mentionToken } from './mention-text';
 
 type Member = { userId: string; displayName: string };
 
 /** A message box with an @mention picker. Enter sends, Shift+Enter adds a line. */
-export function Composer({ label, members, selfId, onSend, compact = false }: { label: string; members: Member[]; selfId: string; onSend: (body: string) => Promise<void>; compact?: boolean }) {
+export function Composer({ label, members, selfId, onSend, compact = false }: { label: string; members: Member[]; selfId: string; onSend: (body: string, fileIds: string[]) => Promise<void>; compact?: boolean }) {
   const [draft, setDraft] = useState('');
   const [caret, setCaret] = useState(0);
   const [pick, setPick] = useState(0);
+  const [files, setFiles] = useState<{ id: string; name: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [problem, setProblem] = useState('');
+  const { upload } = useFilesApi();
   const field = useRef<HTMLTextAreaElement>(null);
   const typing = activeMention(draft, caret);
   const options = typing ? members.filter((member) => member.userId !== selfId && member.displayName.toLowerCase().includes(typing.query)).slice(0, 6) : [];
@@ -21,8 +26,18 @@ export function Composer({ label, members, selfId, onSend, compact = false }: { 
     requestAnimationFrame(() => { const end = typing.start + inserted.length; field.current?.focus(); field.current?.setSelectionRange(end, end); setCaret(end); });
   }
   async function submit(event?: FormEvent) {
-    event?.preventDefault(); const body = draft.trim(); if (!body) return;
-    try { await onSend(body); setDraft(''); setCaret(0); } catch { /* the page shows the error and the text stays */ }
+    event?.preventDefault(); const body = draft.trim(); if ((!body && !files.length) || uploading) return;
+    try { await onSend(body, files.map((file) => file.id)); setDraft(''); setCaret(0); setFiles([]); } catch { /* the page shows the error and the text stays */ }
+  }
+
+  async function attach(selected: File[]) {
+    setProblem(''); setUploading(true);
+    try {
+      const added: { id: string; name: string }[] = [];
+      for (const file of selected.slice(0, 5 - files.length)) { const saved = await upload(file); added.push({ id: saved.id, name: saved.name }); }
+      setFiles((current) => [...current, ...added]);
+    } catch (reason) { setProblem(reason instanceof Error ? reason.message : 'The file could not be uploaded.'); }
+    finally { setUploading(false); }
   }
 
   return <form className="chat-compose" onSubmit={submit}>
@@ -41,6 +56,8 @@ export function Composer({ label, members, selfId, onSend, compact = false }: { 
           if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit(); }
         }} />
     </div>
-    <button className="workspace-settings-save" disabled={!draft.trim()}>Send</button>
+    {(files.length > 0 || problem) && <ul className="chat-compose__files" aria-label="Files to share">{files.map((file) => <li key={file.id}>{file.name} <button type="button" aria-label={`Remove ${file.name}`} onClick={() => setFiles(files.filter((item) => item.id !== file.id))}>×</button></li>)}{problem && <li role="alert">{problem}</li>}</ul>}
+    <label className="chat-compose__attach" aria-disabled={uploading || files.length >= 5}>{uploading ? 'Uploading…' : 'Attach'}<input type="file" multiple disabled={uploading || files.length >= 5} onChange={(event) => { const selected = [...(event.target.files ?? [])]; event.target.value = ''; if (selected.length) void attach(selected); }} /></label>
+    <button className="workspace-settings-save" disabled={(!draft.trim() && !files.length) || uploading}>Send</button>
   </form>;
 }

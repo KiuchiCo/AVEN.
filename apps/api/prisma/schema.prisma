@@ -717,24 +717,25 @@ model FileFolder {
 
 /// File contents live in object storage under storageKey; only metadata is in PostgreSQL.
 model StoredFile {
-  id          String           @id @default(uuid()) @db.Uuid
-  workspaceId String           @db.Uuid
-  folderId    String?          @db.Uuid
-  createdById String           @db.Uuid
-  name        String           @db.VarChar(255)
-  mimeType    String           @db.VarChar(127)
-  sizeBytes   Int
-  checksum    String           @db.VarChar(64)
-  storageKey  String           @unique @db.VarChar(255)
-  version     Int              @default(1)
-  deletedAt   DateTime?        @db.Timestamptz(3)
-  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
-  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  folder      FileFolder?      @relation(fields: [folderId], references: [id], onDelete: Restrict)
-  createdBy   User             @relation("FileCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  versions    FileVersion[]
-  attachments FileAttachment[]
+  id           String               @id @default(uuid()) @db.Uuid
+  workspaceId  String               @db.Uuid
+  folderId     String?              @db.Uuid
+  createdById  String               @db.Uuid
+  name         String               @db.VarChar(255)
+  mimeType     String               @db.VarChar(127)
+  sizeBytes    Int
+  checksum     String               @db.VarChar(64)
+  storageKey   String               @unique @db.VarChar(255)
+  version      Int                  @default(1)
+  deletedAt    DateTime?            @db.Timestamptz(3)
+  createdAt    DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime             @updatedAt @db.Timestamptz(3)
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folder       FileFolder?          @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  createdBy    User                 @relation("FileCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  versions     FileVersion[]
+  attachments  FileAttachment[]
+  messageFiles ChannelMessageFile[]
 
   @@index([workspaceId, folderId, deletedAt])
   @@index([workspaceId, deletedAt])
@@ -1036,25 +1037,38 @@ model Channel {
 }
 
 model ChannelMessage {
-  id          String           @id @default(uuid()) @db.Uuid
-  channelId   String           @db.Uuid
-  workspaceId String           @db.Uuid
-  authorId    String           @db.Uuid
-  body        String           @db.VarChar(4000)
-  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
-  editedAt    DateTime?        @db.Timestamptz(3)
+  id          String               @id @default(uuid()) @db.Uuid
+  channelId   String               @db.Uuid
+  workspaceId String               @db.Uuid
+  authorId    String               @db.Uuid
+  body        String               @db.VarChar(4000)
+  createdAt   DateTime             @default(now()) @db.Timestamptz(3)
+  editedAt    DateTime?            @db.Timestamptz(3)
   /// A deleted message keeps its row (so the thread order holds) but its text is cleared.
-  deletedAt   DateTime?        @db.Timestamptz(3)
+  deletedAt   DateTime?            @db.Timestamptz(3)
   /// A reply belongs to a root message. Replies to replies are not allowed.
-  parentId    String?          @db.Uuid
-  channel     Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author      User             @relation("ChannelMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  parent      ChannelMessage?  @relation("MessageReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies     ChannelMessage[] @relation("MessageReplies")
+  parentId    String?              @db.Uuid
+  channel     Channel              @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      User                 @relation("ChannelMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  parent      ChannelMessage?      @relation("MessageReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     ChannelMessage[]     @relation("MessageReplies")
+  files       ChannelMessageFile[]
 
   @@index([channelId, createdAt])
   @@index([parentId, createdAt])
   @@map("channel_messages")
+}
+
+/// A workspace file shared in a message. The file itself stays in Files; this only links it.
+model ChannelMessageFile {
+  messageId String         @db.Uuid
+  fileId    String         @db.Uuid
+  message   ChannelMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  file      StoredFile     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, fileId])
+  @@index([fileId])
+  @@map("channel_message_files")
 }
 
 /// Who is in a direct or group conversation. Public channels have no rows: every workspace member can see them.

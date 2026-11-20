@@ -4,15 +4,15 @@ import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { ChannelEvents } from './channel-events.js';
-import { directKey, extractMentionIds, messageLimits, parseBefore, parseChannelName, parseMessageBody, parseParentId, parseParticipants, parseSearchQuery, parseTopic } from './message-rules.js';
+import { directKey, extractMentionIds, messageLimits, parseBefore, parseChannelName, parseMessageBody, parseMessageContent, parseMessageFileIds, parseParentId, parseParticipants, parseSearchQuery, parseTopic } from './message-rules.js';
 
 const authorSelect = { select: { id: true, displayName: true } } as const;
-const messageSelect = { id: true, channelId: true, parentId: true, body: true, createdAt: true, editedAt: true, deletedAt: true, author: authorSelect, _count: { select: { replies: { where: { deletedAt: null } } } } } as const;
+const messageSelect = { id: true, channelId: true, parentId: true, body: true, createdAt: true, editedAt: true, deletedAt: true, author: authorSelect, files: { select: { file: { select: { id: true, name: true, mimeType: true, sizeBytes: true, deletedAt: true } } } }, _count: { select: { replies: { where: { deletedAt: null } } } } } as const;
 const channelSelect = { id: true, kind: true, name: true, topic: true, createdAt: true, members: { select: { user: authorSelect } } } as const;
 const object = (input: unknown) => { if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A JSON object is required.'); return input as Record<string, unknown>; };
 
-type RawMessage = { id: string; channelId: string; parentId: string | null; body: string; createdAt: Date; editedAt: Date | null; deletedAt: Date | null; author: { id: string; displayName: string }; _count: { replies: number } };
-const shape = ({ _count, ...message }: RawMessage) => ({ ...message, replyCount: _count.replies });
+type RawMessage = { id: string; channelId: string; parentId: string | null; body: string; createdAt: Date; editedAt: Date | null; deletedAt: Date | null; author: { id: string; displayName: string }; files: { file: { id: string; name: string; mimeType: string; sizeBytes: number; deletedAt: Date | null } }[]; _count: { replies: number } };
+const shape = ({ _count, files, ...message }: RawMessage) => ({ ...message, files: message.deletedAt ? [] : files.filter(({ file }) => !file.deletedAt).map(({ file: { deletedAt: _gone, ...file } }) => file), replyCount: _count.replies });
 type RawChannel = { id: string; kind: 'CHANNEL' | 'DIRECT' | 'GROUP'; name: string | null; topic: string; createdAt: Date; members: { user: { id: string; displayName: string } }[] };
 const shapeChannel = ({ members, ...channel }: RawChannel, unread = 0) => ({ ...channel, participants: channel.kind === 'CHANNEL' ? [] : members.map((member) => member.user), unread });
 
@@ -116,13 +116,15 @@ export class MessagingService {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
     const channel = await this.channel(workspaceId, channelId, userId);
     const fields = object(input);
-    const body = parseMessageBody(fields.body);
+    const fileIds = parseMessageFileIds(fields.fileIds);
+    const body = parseMessageContent(fields.body, fileIds);
     const parentId = parseParentId(fields.parentId);
+    if (fileIds.length && await this.prisma.storedFile.count({ where: { workspaceId, id: { in: fileIds }, deletedAt: null } }) !== fileIds.length) throw new BadRequestException('One or more files are not in this workspace.');
     if (parentId) {
       const parent = await this.prisma.channelMessage.findFirst({ where: { id: parentId, channelId, workspaceId, parentId: null, deletedAt: null }, select: { id: true } });
       if (!parent) throw new BadRequestException('You can reply to a message in this conversation, but not to a reply.');
     }
-    const message = shape(await this.prisma.channelMessage.create({ data: { channelId, workspaceId, authorId: userId, body, parentId }, select: messageSelect }));
+    const message = shape(await this.prisma.channelMessage.create({ data: { channelId, workspaceId, authorId: userId, body, parentId, files: { create: fileIds.map((fileId) => ({ fileId })) } }, select: messageSelect }));
     await this.markRead(userId, channelId);
     await this.notifyMentions(workspaceId, userId, channel, extractMentionIds(body));
     this.events.publish(workspaceId, { type: 'message', channelId, message }, this.audience(channel));
@@ -152,7 +154,7 @@ export class MessagingService {
     const message = await this.prisma.channelMessage.findFirst({ where: { id: messageId, channelId, workspaceId, deletedAt: null }, select: { authorId: true, parentId: true } });
     if (!message) throw new NotFoundException('Message not found.');
     if (message.authorId !== userId && !['OWNER', 'ADMINISTRATOR'].includes((await this.role(userId, workspaceId)) ?? '')) throw new ForbiddenException('You can only delete your own messages.');
-    await this.prisma.channelMessage.update({ where: { id: messageId }, data: { body: '', deletedAt: new Date() } });
+    await this.prisma.channelMessage.update({ where: { id: messageId }, data: { body: '', deletedAt: new Date(), files: { deleteMany: {} } } });
     this.events.publish(workspaceId, { type: 'message_deleted', channelId, id: messageId, parentId: message.parentId }, this.audience(channel));
     return { id: messageId, deleted: true };
   }

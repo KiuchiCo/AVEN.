@@ -216,3 +216,14 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 .favourite-star.is-on { color: var(--aven-bronze); }
 .favourite-star__error { color: var(--aven-error); font-size: 12px; }
 .workspace-nav__favourites .workspace-nav__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Files shared in messages */
+.chat-files { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chat-files li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--m-line, rgba(0,0,0,.12)); border-radius: 999px; font-size: 13px; }
+.chat-files button { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+.chat-compose__files { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; width: 100%; font-size: 13px; }
+.chat-compose__files li { padding: 2px 8px; border: 1px solid var(--m-line, rgba(0,0,0,.12)); border-radius: 999px; }
+.chat-compose__files button { background: none; border: 0; cursor: pointer; font: inherit; }
+.chat-compose__attach { display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--m-line, rgba(0,0,0,.12)); border-radius: 10px; cursor: pointer; font-size: 13px; }
+.chat-compose__attach input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.chat-compose__attach:focus-within { outline: 2px solid currentColor; outline-offset: 2px; }

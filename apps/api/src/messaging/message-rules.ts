@@ -15,6 +15,22 @@ export function parseTopic(value: unknown): string {
   return value.trim();
 }
 
+/** Up to five workspace files can travel with a message. */
+export const MAX_MESSAGE_FILES = 5;
+export function parseMessageFileIds(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > MAX_MESSAGE_FILES) throw new BadRequestException(`You can share up to ${MAX_MESSAGE_FILES} files in a message.`);
+  const ids = value.map((id) => { if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new BadRequestException('A shared file is invalid.'); return id.toLowerCase(); });
+  if (new Set(ids).size !== ids.length) throw new BadRequestException('A file can only be shared once per message.');
+  return ids;
+}
+
+/** A message needs text, or at least one file. */
+export function parseMessageContent(body: unknown, fileIds: string[]): string {
+  if (fileIds.length && (body === undefined || body === null || (typeof body === 'string' && !body.trim()))) return '';
+  return parseMessageBody(body);
+}
+
 export function parseMessageBody(value: unknown): string {
   const body = typeof value === 'string' ? value.replace(/\r\n/g, '\n').trim() : '';
   if (!body) throw new BadRequestException('Write something to send.');
