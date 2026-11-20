@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
+import { PageHeader } from '../ui';
 
 type Member = { userId: string; displayName: string; email: string; role: string; createdAt: string };
 type Invitation = { id: string; email: string; role: string; expiresAt: string; createdAt: string };
@@ -140,9 +141,7 @@ export function WorkspaceMembers() {
   }
 
   return <div className="workspace-section-page members-page">
-    <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
-    <h1>{t('nav.people')}</h1>
-    <p className="workspace-section-page__description">{t('mem.desc')}</p>
+    <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.people')} description={t('mem.desc')} icon="users" />
     {!isOwner && <p className="members-leave"><span>{t('mem.leaveNote')}</span> <button type="button" disabled={busy} onClick={() => void leaveWorkspace()}>{t('mem.leave')}</button></p>}
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {notice && <p className="members-notice" role="status">{notice}</p>}

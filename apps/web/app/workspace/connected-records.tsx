@@ -9,6 +9,9 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabels } from './task-labels';
 import { documentTemplates, encodeTemplate } from './documents/templates';
+import { Icon } from './home-icons';
+import { EmptyState, PageHeader, Panel, PillTabs } from './ui';
+import { FavouriteStar, useFavourites } from './favourites';
 
 type Project = { id: string; name: string };
 type Task = { id: string; title: string; status: string; labels: string[]; dueAt: string | null };
@@ -106,6 +109,7 @@ function expandCalendarEvent(event: CalendarEvent, rangeStart: Date, rangeEnd: D
 }
 
 export function DocumentsWorkspace() {
+  const [nowMs] = useState(() => Date.now());
   const t = useT();
   const router = useRouter();
   const { getToken } = useAuth();
@@ -116,6 +120,9 @@ export function DocumentsWorkspace() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [templateHint, setTemplateHint] = useState('');
+  const favourites = useFavourites();
+  const [view, setView] = useState<'ALL' | 'PROJECT' | 'RECENT' | 'FAVOURITES'>('ALL');
+  const [sort, setSort] = useState<'UPDATED' | 'TITLE' | 'OLDEST'>('UPDATED');
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -177,31 +184,42 @@ export function DocumentsWorkspace() {
     finally { setBusy(false); }
   }
 
+  const weekAgo = nowMs - 7 * 86_400_000;
+  const shown = documents
+    .filter((document) => view === 'RECENT' ? Date.parse(document.updatedAt) >= weekAgo : view === 'FAVOURITES' ? Boolean(favourites?.isPinned('DOCUMENT', document.id)) : true)
+    .sort((a, b) => sort === 'TITLE' ? a.title.localeCompare(b.title) : sort === 'OLDEST' ? Date.parse(a.updatedAt) - Date.parse(b.updatedAt) : Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  const sections = view === 'PROJECT' ? [...new Set(shown.map((document) => document.project?.name ?? ''))].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b))).map((name) => ({ title: name || t('doc.noProject'), items: shown.filter((document) => (document.project?.name ?? '') === name) })) : [{ title: '', items: shown }];
+
   return (
     <div className="workspace-section-page connected-page">
-      <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
-      <h1>{t('nav.documents')}</h1>
-      <p className="workspace-section-page__description">{t('doc.desc')}</p>
+      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.documents')} description={t('doc.desc')} />
       {error && <p className="productivity-error" role="alert">{error}</p>}
-      <div className="connected-layout">
-        <form className="productivity-form connected-compose" onSubmit={createDocument}>
-          <h2>{t('doc.newTitle')}</h2>
-          <label>{t('doc.startFrom')}<select name="template" defaultValue="" onChange={(event) => { const choice = documentTemplates.find((item) => item.id === event.target.value); if (choice) setTemplateHint(choice.description); else setTemplateHint(''); }}><option value="">{t('doc.blank')}</option>{documentTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>{templateHint && <small>{templateHint}</small>}</label>
-          <label>{t('doc.title')}<input name="title" maxLength={200} placeholder={t('doc.titlePh')} required={!templateHint} /></label>
-          <label>{t('doc.project')} <span>{t('doc.optional')}</span><select name="projectId" defaultValue=""><option value="">{t('doc.noProject')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-          <label>{t('doc.content')}<textarea name="content" maxLength={20000} rows={8} placeholder={t('doc.contentPh')} /></label>
-          <button type="submit" disabled={busy}>{busy ? t('set.saving') : t('doc.save')}</button>
-        </form>
-        <section className="connected-record-list" aria-labelledby="document-list-title">
-          <div className="workspace-section-heading"><div><p className="workspace-eyebrow">{t('doc.saved')}</p><h2 id="document-list-title">{t('doc.yours')}</h2></div><span>{documents.length}</span></div>
-          {loading ? <p className="productivity-message">{t('doc.loading')}</p> : documents.length === 0 ? <p className="productivity-message">{t('doc.empty')}</p> : (
-            <div className="connected-record-stack">{documents.map((document) => (
-              <article className="connected-record" key={document.id}>
-                <div className="connected-record__meta"><span>{t('doc.kind')}</span>{document.project && <span className="connected-link-pill">{document.project.name}</span>}<Link className="connected-record__edit" href={`/workspace/documents/${document.id}`}>{t('doc.open')}</Link><button className="connected-record__edit" type="button" disabled={busy} onClick={() => void deleteDocument(document)}>{t('wb.delete')}</button></div>
-                <h3>{document.title}</h3><p>{documentPreview(document.content) || t('doc.emptyDoc')}</p>
-                <small>{t('doc.updated', { date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(document.updatedAt)) })}</small>
+      <div className="rd-grid rd-grid--form">
+        <Panel icon="doc" title={t('doc.newTitle')} subtitle={t('doc.newSub')} id="doc-new" className="connected-compose">
+          <form className="rd-formstack" onSubmit={createDocument}>
+            <label className="rd-field">{t('doc.startFrom')}<select name="template" defaultValue="" onChange={(event) => { const choice = documentTemplates.find((item) => item.id === event.target.value); if (choice) setTemplateHint(choice.description); else setTemplateHint(''); }}><option value="">{t('doc.blank')}</option>{documentTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>{templateHint && <small>{templateHint}</small>}</label>
+            <label className="rd-field">{t('doc.title')}<input name="title" maxLength={200} placeholder={t('doc.titlePh')} required={!templateHint} /></label>
+            <label className="rd-field"><span>{t('doc.project')} <small>({t('doc.optional')})</small></span><select name="projectId" defaultValue=""><option value="">{t('doc.noProject')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+            <label className="rd-field">{t('doc.content')}<textarea name="content" maxLength={20000} rows={8} placeholder={t('doc.contentPh')} /></label>
+            <div><button className="rd-btn" type="submit" disabled={busy}>{busy ? t('set.saving') : t('doc.save')}</button></div>
+          </form>
+        </Panel>
+        <section className="connected-record-list rd-panel" aria-labelledby="document-list-title">
+          <header className="rd-panel__head"><span className="rd-tile" aria-hidden="true"><Icon name="doc" size={24} /></span><div className="rd-panel__titles"><p className="workspace-eyebrow">{t('doc.saved')}</p><h2 id="document-list-title">{t('doc.yours')}</h2></div><span className="rd-muted">{documents.length === 1 ? t('doc.countOne') : t('doc.countMany', { n: documents.length })}</span></header>
+          <div className="rd-listbar">
+            <PillTabs size="small" label={t('doc.filterAria')} value={view} onChange={setView} items={[{ key: 'ALL', label: t('doc.f.all'), icon: 'doc' }, { key: 'PROJECT', label: t('doc.f.project'), icon: 'folder' }, { key: 'RECENT', label: t('doc.f.recent'), icon: 'clock' }, { key: 'FAVOURITES', label: t('doc.f.favourites'), icon: 'star' }]} />
+            <select className="rd-select" value={sort} aria-label={t('doc.sortAria')} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="UPDATED">{t('doc.sort.updated')}</option><option value="TITLE">{t('doc.sort.title')}</option><option value="OLDEST">{t('doc.sort.oldest')}</option></select>
+          </div>
+          {loading ? <p className="productivity-message">{t('doc.loading')}</p> : documents.length === 0 ? <EmptyState art="stack" compact title={t('doc.empty')} /> : shown.length === 0 ? <EmptyState art="search" compact title={t('doc.noMatch')} /> : (
+            <div className="connected-record-stack">{sections.map((section) => <div key={section.title || 'all'}>{section.title && <h3 className="rd-sectiontitle">{section.title}</h3>}{section.items.map((document) => (
+              <article className="connected-record rd-docrow" key={document.id}>
+                <span className="rd-tile" aria-hidden="true"><Icon name="doc" size={22} /></span>
+                <div className="rd-docrow__main"><h3><Link href={`/workspace/documents/${document.id}`}>{document.title}</Link></h3><p>{documentPreview(document.content) || t('doc.emptyDoc')}</p><small>{t('doc.updated', { date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(document.updatedAt)) })}{document.project && <> · <span className="connected-link-pill">{document.project.name}</span></>}</small></div>
+                <Link className="rd-btn rd-btn--soft rd-btn--small" href={`/workspace/documents/${document.id}`}>{t('doc.open')} <span aria-hidden="true">→</span></Link>
+                <FavouriteStar kind="DOCUMENT" entityId={document.id} />
+                <details className="rd-menu"><summary className="rd-iconbtn" aria-label={t('doc.more', { title: document.title })}><Icon name="more" size={20} /></summary><div className="rd-menu__list"><Link href={`/workspace/documents/${document.id}`}><Icon name="edit" size={16} />{t('doc.open')}</Link><button type="button" className="is-danger" disabled={busy} onClick={() => void deleteDocument(document)}><Icon name="trash" size={16} />{t('wb.delete')}</button></div></details>
               </article>
-            ))}</div>
+            ))}</div>)}</div>
           )}
         </section>
       </div>
@@ -403,10 +421,8 @@ export function CalendarWorkspace() {
   }
 
   return (
-    <div className="workspace-section-page connected-page">
-      <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
-      <h1>{t('nav.calendar')}</h1>
-      <p className="workspace-section-page__description">{t('cal.desc')}</p>
+    <div className="workspace-section-page connected-page calendar-page">
+      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.calendar')} description={t('cal.desc')} />
       {error && <p className="productivity-error" role="alert">{error}</p>}
       {importSummary && <div className="calendar-import-summary" role="status">
         <strong>{t('cal.importDone')}</strong> {t('cal.importCounts', { created: importSummary.created, updated: importSummary.updated, unchanged: importSummary.unchanged })}{importSummary.skipped.length ? t('cal.importSkipped', { n: importSummary.skipped.length }) : ''}.
@@ -417,7 +433,7 @@ export function CalendarWorkspace() {
       </div>}
       <div className="connected-layout">
         <form className="productivity-form connected-compose" key={editingEvent?.id ?? 'new-event'} onSubmit={createEvent}>
-          <h2>{editingEvent ? t('cal.editEvent') : t('cal.schedule')}</h2>
+          <div className="rd-formhead"><span className="rd-tile" aria-hidden="true"><Icon name="calendar" size={24} /></span><h2>{editingEvent ? t('cal.editEvent') : t('cal.schedule')}</h2></div>
           <label>{t('cal.title')}<input name="title" defaultValue={editingEvent?.title ?? ''} required maxLength={200} placeholder={t('cal.titlePh')} /></label>
           <div className="productivity-form__row"><label>{t('cal.type')}<select name="type" defaultValue={editingEvent?.type ?? 'MEETING'}>{['MEETING','FOCUS','PERSONAL','REMINDER','OTHER'].map((value) => <option key={value} value={value}>{typeLabel(value)}</option>)}</select></label><label>{t('cal.location')} <span>{t('doc.optional')}</span><input name="location" defaultValue={editingEvent?.location ?? ''} maxLength={250} placeholder={t('cal.locationPh')} /></label></div>
           <label>{t('cal.notes')} <span>{t('doc.optional')}</span><textarea name="description" defaultValue={editingEvent?.description ?? ''} maxLength={2000} rows={2} placeholder={t('cal.notesPh')} /></label>

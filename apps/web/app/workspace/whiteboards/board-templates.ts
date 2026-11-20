@@ -2,11 +2,13 @@ import type { BoardElement, Color } from './board-types';
 
 const uid = () => Math.random().toString(36).slice(2, 12);
 
-export type TemplateKey = 'blank' | 'mindmap' | 'flowchart' | 'retro';
+export type TemplateKey = 'blank' | 'mindmap' | 'flowchart' | 'brainstorm' | 'journey' | 'retro';
 export const templateOptions: { key: TemplateKey; label: string; hint: string }[] = [
   { key: 'blank', label: 'Blank', hint: 'An empty canvas' },
   { key: 'mindmap', label: 'Mind map', hint: 'A central idea with branches' },
   { key: 'flowchart', label: 'Flowchart', hint: 'Start, steps, a decision and an end' },
+  { key: 'brainstorm', label: 'Brainstorm', hint: 'A question with sticky notes around it' },
+  { key: 'journey', label: 'User journey', hint: 'Five stages from discovery to loyalty' },
   { key: 'retro', label: 'Retrospective', hint: 'Went well, to improve, actions' },
 ];
 
@@ -28,6 +30,17 @@ export function buildTemplate(key: TemplateKey, attachArrows: (elements: BoardEl
     const end = shape('ellipse', 740, 200, 150, 80, 'End', 'red');
     const retry = shape('rect', 500, 360, 170, 70, 'Fix and retry', 'ivory');
     return attachArrows([start, step, decide, end, retry, link(start, step), link(step, decide), link(decide, end), link(decide, retry), link(retry, step)]);
+  }
+  if (key === 'brainstorm') {
+    const question = shape('ellipse', 330, 190, 240, 120, 'What are we solving?', 'bronze');
+    const notes = [shape('sticky', 40, 40, 170, 100, 'Idea', 'amber'), shape('sticky', 690, 40, 170, 100, 'Idea', 'green'), shape('sticky', 40, 360, 170, 100, 'Idea', 'blue'), shape('sticky', 690, 360, 170, 100, 'Idea', 'amber'), shape('sticky', 365, 380, 170, 100, 'Risk', 'red')];
+    return attachArrows([question, ...notes, ...notes.map((note) => link(question, note))]);
+  }
+  if (key === 'journey') {
+    const stages: [string, Color][] = [['Discover', 'blue'], ['Try', 'green'], ['Adopt', 'amber'], ['Share', 'bronze'], ['Stay', 'ivory']];
+    const boxes = stages.map(([title, color], index) => shape('rect', 40 + index * 210, 160, 170, 90, title, color));
+    const notes = boxes.map((box) => shape('sticky', box.x, 290, 170, 110, 'What happens here?', 'amber'));
+    return attachArrows([...boxes, ...notes, ...boxes.slice(1).map((box, index) => link(boxes[index], box))]);
   }
   if (key === 'retro') {
     const columns: [string, Color][] = [['Went well', 'green'], ['To improve', 'amber'], ['Actions', 'blue']];

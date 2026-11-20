@@ -17,9 +17,49 @@ const paths: Record<string, ReactNode> = {
   send: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
   paper: <><path d="m21 3-9 18-2.5-7.5L2 11z" /></>,
   chevron: <><path d="m8 10 4 4 4-4" /></>,
+  bolt: <><path d="m13 2-8 11h6l-1 9 8-11h-6z" /></>,
+  play: <><circle cx="12" cy="12" r="8.5" /><path d="m10.5 8.8 4.2 3.2-4.2 3.2z" /></>,
+  checkCircle: <><circle cx="12" cy="12" r="8.5" /><path d="m8.5 12.2 2.5 2.5 4.5-5" /></>,
+  clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
+  trend: <><path d="m4 16 5-5 4 4 7-8" /><path d="M15 7h5v5" /></>,
+  mail: <><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" /><path d="m4 7.5 8 6 8-6" /></>,
+  alert: <><path d="M12 4 3 19.5h18z" /><path d="M12 10v4.5M12 17h.01" /></>,
+  tag: <><path d="M3.5 12.5V5a1.5 1.5 0 0 1 1.5-1.5h7.5l8 8a1.5 1.5 0 0 1 0 2.1l-6.4 6.4a1.5 1.5 0 0 1-2.1 0z" /><circle cx="8" cy="8" r="1.3" /></>,
+  filter: <><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z" /></>,
+  users: <><circle cx="9" cy="8.5" r="3.2" /><path d="M3 19.5c.6-3.3 3-5 6-5s5.4 1.7 6 5" /><circle cx="17" cy="9.5" r="2.4" /><path d="M16.5 14.6c2.4.2 4 1.7 4.5 4.4" /></>,
+  userPlus: <><circle cx="9.5" cy="8.5" r="3.3" /><path d="M3.5 19.5c.6-3.3 3-5 6-5s5.4 1.7 6 5M18 8v6M15 11h6" /></>,
+  shield: <><path d="M12 3 5 6v5.5c0 4.4 2.9 7.6 7 9.5 4.1-1.9 7-5.1 7-9.5V6z" /><path d="m9 12 2.2 2.2L15 10" /></>,
+  list: <><path d="M9 6.5h11M9 12h11M9 17.5h11" /><circle cx="4.7" cy="6.5" r=".9" /><circle cx="4.7" cy="12" r=".9" /><circle cx="4.7" cy="17.5" r=".9" /></>,
+  columns: <><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" /><path d="M9.5 4.5v15M14.5 4.5v15" /></>,
+  pin: <><path d="m14.5 4 5.5 5.5-3 .8-3.2 3.2.4 4-1.3 1.3-4-4L5 20.5 4 19.5l4.5-4.7-4-4 1.3-1.3 4 .4 3.2-3.2z" /></>,
+  link: <><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1-1" /></>,
+  history: <><path d="M4 12a8 8 0 1 0 2.5-5.8L4 8.5" /><path d="M4 4v4.5h4.5M12 8v4.5l3 1.5" /></>,
+  edit: <><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z" /><path d="m14 7 3 3" /></>,
+  plus: <><path d="M12 5v14M5 12h14" /></>,
+  download: <><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" /></>,
+  upload: <><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 19.5h14" /></>,
+  trash: <><path d="M5 7h14M10 3.5h4M7 7l.7 12a1.5 1.5 0 0 0 1.5 1.4h5.6a1.5 1.5 0 0 0 1.5-1.4L17 7" /><path d="M10 11v6M14 11v6" /></>,
+  copy: <><rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5" /></>,
+  more: <><circle cx="5.5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18.5" cy="12" r="1.2" /></>,
+  sliders: <><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></>,
+  star: <><path d="m12 4 2.4 5 5.4.7-4 3.7 1 5.4L12 16.2 7.2 18.8l1-5.4-4-3.7 5.4-.7z" /></>,
+  table: <><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M9.5 10v9.5" /></>,
+  hash: <><path d="M9 4 7 20M17 4l-2 16M4 9h16M3.5 15h16" /></>,
+  image: <><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" /><circle cx="9" cy="10" r="1.6" /><path d="m4.5 18 5-5 3 3 3-3 4 4" /></>,
+  smile: <><circle cx="12" cy="12" r="8.5" /><path d="M8.7 14c.9 1.3 2 1.9 3.3 1.9s2.4-.6 3.3-1.9M9.2 9.7h.01M14.8 9.7h.01" /></>,
+  chat: <><path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-7l-4.5 3.5v-3.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z" /></>,
+  chart: <><path d="M5 20V10M12 20V4M19 20v-7" /></>,
+  inbox: <><path d="M3.5 13.5 6 5.5h12l2.5 8v5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z" /><path d="M3.5 13.5h5l1 2.5h5l1-2.5h5" /></>,
+  rocket: <><path d="M5 19c0-3 1-5 3-7l2.5 2.5C8.5 16.5 7 18 5 19z" /><path d="M11 13.5 8.5 11c2-4 6-7 11-7 0 5-3 9-7 11z" /><circle cx="15" cy="9" r="1.2" /></>,
+  circle: <><circle cx="12" cy="12" r="8.5" /></>,
+  close: <><path d="m6.5 6.5 11 11M17.5 6.5l-11 11" /></>,
+  back: <><path d="m14 6-6 6 6 6" /></>,
+  refresh: <><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5" /></>,
 };
 
+export type IconName = keyof typeof paths;
+
 /** Thin outline icons in the style of the AVEN design references. */
-export function Icon({ name, size = 22 }: { name: keyof typeof paths; size?: number }) {
+export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }

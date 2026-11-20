@@ -7,6 +7,7 @@ import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
 import { AssistantChat } from './assistant-chat';
+import { PageHeader } from '../ui';
 
 type Briefing = {
   generatedAt: string;
@@ -130,9 +131,7 @@ export function IntelligenceWorkspace() {
 
   return <div className="workspace-section-page intelligence-page">
     <header className="intelligence-hero">
-      <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
-      <h1>{t('in.title')}</h1>
-      <p>{t('in.heroDesc')}</p>
+      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('in.title')} description={t('in.heroDesc')} icon="sparkle" />
       <span className="intelligence-hero__date">{today}</span>
     </header>
     <AssistantChat />

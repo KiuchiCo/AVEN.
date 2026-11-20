@@ -6,6 +6,7 @@ import { ServiceWorkerRegistration } from './service-worker-registration';
 import { timeZoneScript } from './time-zone-script';
 import './globals.css';
 import './mockup.css';
+import './redesign.css';
 
 const display = Playfair_Display({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-display', display: 'swap' });
 const interfaceFont = Inter({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-interface', display: 'swap' });

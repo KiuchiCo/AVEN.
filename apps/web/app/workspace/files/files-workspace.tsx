@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { formatBytes, type FileListing, type FileRecord, type FileUsage, type FileVersionRecord } from './types';
 import { useFilesApi } from './use-files-api';
+import { PageHeader } from '../ui';
 
 /** Files AVEN can read as text for the Knowledge Hub: plain text, text-based PDFs, and Word, PowerPoint and Excel files. */
 const readableAsText = (file: { name: string; mimeType: string }) => /\.(txt|md|markdown|csv|tsv|json|html?|log|pdf|docx|pptx|xlsx)$/i.test(file.name) || file.mimeType === 'application/pdf' || file.mimeType.startsWith('text/') || file.mimeType === 'application/json';
@@ -85,9 +86,7 @@ export function FilesWorkspace() {
   }
 
   return <div className="workspace-section-page files-page">
-    <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
-    <h1>{t('nav.files')}</h1>
-    <p className="workspace-section-page__description">{t('file.desc')}</p>
+    <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.files')} description={t('file.desc')} icon="folder" />
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {notice && <p className="files-notice" role="status">{notice}</p>}
 

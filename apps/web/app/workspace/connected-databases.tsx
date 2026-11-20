@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useT } from '../i18n';
 import type { Key } from '../i18n/en';
 import { useWorkspaceSession } from './workspace-shell';
+import { PageHeader } from './ui';
 
 type Property = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string; rollupRelationId?: string; rollupPropertyId?: string; rollupFunction?: string };
 const isComputed = (property: Property) => property.type === 'formula' || property.type === 'rollup';
@@ -478,9 +479,7 @@ export function DatabasesWorkspace() {
 
   return (
     <div className="workspace-section-page connected-page database-page">
-      <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
-      <h1>{t('nav.databases')}</h1>
-      <p className="workspace-section-page__description">{t('db.desc')}</p>
+      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.databases')} description={t('db.desc')} icon="database" />
       {error && <p className="productivity-error" role="alert">{error}</p>}
       <div className="database-toolbar">
         <label>{t('db.workspaceDb')}<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); setViewLayout('TABLE'); setGroupByPropertyId('status'); setCalendarDatePropertyId(''); setChartPropertyId(''); }} disabled={!databases.length}>

@@ -41,3 +41,32 @@ export function Sparkline({ values, labels }: { values: number[]; labels: string
   const points = values.map((value, index) => `${values.length > 1 ? (index / (values.length - 1)) * width : 0},${height - 6 - (value / max) * (height - 12)}`).join(' ');
   return <svg viewBox={`0 0 ${width} ${height}`} className="analytics-spark" role="img" aria-label={t('an.sparkAria', { n: max })}><polyline points={points} fill="none" className="analytics-line" /><title>{labels[0]} to {labels[labels.length - 1]}</title></svg>;
 }
+
+/** Two smooth lines (completed and created per day) with a soft area under the completed one. */
+export function VelocityChart({ daily }: { daily: Daily[] }) {
+  const t = useT();
+  const width = 520; const height = 220; const left = 34; const bottom = 28; const top = 12; const right = 12;
+  const max = Math.max(4, ...daily.map((day) => Math.max(day.created, day.completed)));
+  const ceiling = Math.ceil(max / 4) * 4;
+  const x = (index: number) => left + (daily.length > 1 ? (index / (daily.length - 1)) * (width - left - right) : 0);
+  const y = (value: number) => height - bottom - (value / ceiling) * (height - bottom - top);
+  const smooth = (values: number[]) => values.map((value, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' ');
+  const completed = daily.map((day) => day.completed); const created = daily.map((day) => day.created);
+  const every = Math.max(1, Math.ceil(daily.length / 5));
+  return <figure className="analytics-chart analytics-velocity">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t('an.chartAria')}>
+      {[0, 1, 2, 3, 4].map((step) => <g key={step}><line x1={left} x2={width - right} y1={y((ceiling / 4) * step)} y2={y((ceiling / 4) * step)} className="analytics-grid" /><text x={left - 8} y={y((ceiling / 4) * step) + 4} textAnchor="end" className="analytics-tick">{Math.round((ceiling / 4) * step)}</text></g>)}
+      {daily.length > 1 && <path d={`${smooth(completed)} L${x(daily.length - 1)},${y(0)} L${x(0)},${y(0)} Z`} className="analytics-area" />}
+      <path d={smooth(created)} className="analytics-line analytics-line--created" fill="none" /><path d={smooth(completed)} className="analytics-line analytics-line--completed" fill="none" />
+      {daily.map((day, index) => index % every === 0 && <text key={day.date} x={x(index)} y={height - 8} textAnchor="middle" className="analytics-tick">{label(day.date)}</text>)}
+    </svg>
+    <figcaption><span className="analytics-key analytics-key--completed">{t('an.completed')}</span><span className="analytics-key analytics-key--created">{t('an.created')}</span></figcaption>
+  </figure>;
+}
+
+/** A ring split into coloured arcs, with the share of the first slice in the middle. */
+export function Donut({ slices, centre, caption }: { slices: { value: number; className: string }[]; centre: string; caption: string }) {
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  const radius = 54; const circumference = 2 * Math.PI * radius; let offset = 0;
+  return <div className="analytics-donut"><svg viewBox="0 0 140 140" role="img" aria-label={`${centre} ${caption}`}><circle cx="70" cy="70" r={radius} className="analytics-donut__base" />{total > 0 && slices.map((slice, index) => { const length = (slice.value / total) * circumference; const arc = <circle key={index} cx="70" cy="70" r={radius} className={slice.className} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} transform="rotate(-90 70 70)" />; offset += length; return arc; })}<text x="70" y="68" textAnchor="middle" className="analytics-donut__centre">{centre}</text><text x="70" y="88" textAnchor="middle" className="analytics-donut__caption">{caption}</text></svg></div>;
+}

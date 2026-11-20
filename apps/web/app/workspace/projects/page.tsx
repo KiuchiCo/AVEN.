@@ -15,6 +15,7 @@ import type { ProjectTemplate, TemplateMilestone, TemplateTask } from './templat
 import { csvCell, parseTaskCsv, type TaskImportRow } from './task-csv';
 import { baseFor } from '../task-offline';
 import { useTaskSync } from '../task-sync';
+import { PageHeader } from '../ui';
 
 type Project = { id: string; name: string; description: string | null; status: string; dueAt: string | null; taskCount: number };
 type Member = { userId: string; displayName: string; role: string };
@@ -544,9 +545,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="workspace-section-page productivity-page">
-      <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
-      <h1>{t('nav.projects')}</h1>
-      <p className="workspace-section-page__description">{t('pj.desc')}</p>
+      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.projects')} description={t('pj.desc')} icon="folder" />
 
       {error && <p className="productivity-error" role="alert">{error}</p>}
       {notice && <p className="productivity-success" role="status">{notice}</p>}

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
+import { PageHeader } from '../ui';
 
 type LinkedRecord = { id: string; name?: string; title?: string };
 type KnowledgeItem = { id: string; title: string; content: string; sourceUrl: string | null; tags: string[]; isPinned: boolean; archivedAt: string | null; updatedAt: string; createdBy: { displayName: string }; project: LinkedRecord | null; document: LinkedRecord | null; task: LinkedRecord | null; _count: { versions: number } };
@@ -156,10 +157,10 @@ export function KnowledgeHub() {
 
   const pinnedCount = items.filter((item) => item.isPinned).length;
   return <div className="workspace-section-page knowledge-page">
-    <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p><h1>{t('nav.knowledge')}</h1>
-    <p className="workspace-section-page__description">{t('kn.desc')}</p>
+    <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.knowledge')} description={t('kn.desc')} />
     {error && <p className="productivity-error" role="alert">{error}</p>}
     <div className="knowledge-toolbar"><label className="knowledge-search"><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('kn.searchPh')} />{search.trim().length === 1 && <small>{t('kn.oneMore')}</small>}</label><label className="knowledge-filter">{t('kn.project')}<select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}><option value="">{t('kn.allProjects')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label className="knowledge-filter">{t('kn.tag')}<input value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} placeholder={t('kn.anyTag')} /></label><div><span>{t(total === 1 ? 'kn.itemOne' : 'kn.itemMany', { n: total })}{!showArchived && t('kn.pinnedOnPage', { n: pinnedCount })}</span><button type="button" aria-pressed={showArchived} onClick={() => { setShowArchived((value) => !value); setEditing(null); setHistoryId(null); }}>{showArchived ? t('kn.viewActive') : t('kn.viewArchive')}</button></div></div>
+    <div className={`knowledge-columns${showArchived ? ' knowledge-columns--single' : ''}`}>
     {!showArchived && <form className="knowledge-compose" key={editing?.id ?? 'new-knowledge'} onSubmit={save}>
       <div className="knowledge-compose__heading"><div><p className="workspace-eyebrow">{editing ? t('kn.updateRef') : t('kn.buildLibrary')}</p><h2>{editing ? t('kn.editItem') : t('kn.addItem')}</h2></div>{editing && <button type="button" onClick={() => setEditing(null)}>{t('msg.cancel')}</button>}</div>
       <label>{t('kn.title')}<input name="title" defaultValue={editing?.title ?? ''} required maxLength={200} placeholder={t('kn.titlePh')} /></label>
@@ -168,6 +169,7 @@ export function KnowledgeHub() {
       <div className="knowledge-compose__row knowledge-compose__links"><label>{t('kn.project')} <span>{t('doc.optional')}</span><select name="projectId" defaultValue={editing?.project?.id ?? ''}><option value="">{t('kn.noLinkedProject')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label>{t('kn.document')} <span>{t('doc.optional')}</span><select name="documentId" defaultValue={editing?.document?.id ?? ''}><option value="">{t('kn.noLinkedDocument')}</option>{documents.map((document) => <option key={document.id} value={document.id}>{document.title}</option>)}</select></label><label>{t('kn.task')} <span>{t('doc.optional')}</span><select name="taskId" defaultValue={editing?.task?.id ?? ''}><option value="">{t('kn.noLinkedTask')}</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label></div>
       <button type="submit" disabled={busy}>{busy ? t('set.saving') : editing ? t('set.ws.save') : t('kn.saveRef')}</button>
     </form>}
+    <div className="knowledge-column">
     {tagDirectory.length > 0 && <nav className="knowledge-tag-directory" aria-label={t('kn.tagsNav')}><span>{t('kn.tagsNav')}</span>{tagFilter && <button type="button" onClick={() => setTagFilter('')}>{t('kn.clearFilter')}</button>}{tagDirectory.slice(0, 30).map(({ tag, count }) => <button type="button" key={tag} aria-pressed={tagFilter === tag} className={tagFilter === tag ? 'is-active' : ''} onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}>#{tag} <small>{count}</small></button>)}</nav>}
     <section className="knowledge-list" aria-label={showArchived ? t('kn.listArchived') : t('kn.listActive')}>
       {loading ? <p className="productivity-message">{t('kn.loading')}</p> : items.length === 0 ? <div className="knowledge-empty"><span aria-hidden="true">◇</span><h2>{search || projectFilter || tagFilter ? t('kn.noMatchTitle') : showArchived ? t('kn.archiveEmptyTitle') : t('kn.startTitle')}</h2><p>{search || projectFilter || tagFilter ? t('kn.noMatchHint') : showArchived ? t('kn.archiveEmptyHint') : t('kn.startHint')}</p></div> : <div className="knowledge-grid">{items.map((item) => <article className="knowledge-card" key={item.id}>
@@ -185,5 +187,7 @@ export function KnowledgeHub() {
       </article>)}</div>}
       {!loading && hasMore && <button type="button" className="knowledge-load-more" disabled={loadingMore} onClick={() => void reload(Math.ceil(items.length / 50) + 1, true)}>{loadingMore ? t('kn.loadingMore') : t('kn.loadMore')}</button>}
     </section>
+    </div>
+    </div>
   </div>;
 }

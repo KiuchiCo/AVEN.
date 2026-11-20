@@ -11,6 +11,7 @@ import { PermissionsCard } from './permissions-card';
 import { PushCard } from './push-card';
 import { ThemeCard } from './theme-card';
 import { TimeZoneCard } from './time-zone-card';
+import { PageHeader } from '../ui';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -104,7 +105,7 @@ export default function WorkspaceSettingsPage() {
   }
 
   return <section className="workspace-settings-page">
-    <header><p className="workspace-page-eyebrow">{t('set.eyebrow')}</p><h1>{t('set.title')}</h1><p>{t('set.sub')}</p></header>
+    <PageHeader eyebrow={t('set.eyebrow')} title={t('set.title')} description={t('set.sub')} icon="gear" />
     <AccountSettings />
     <ThemeCard />
     <LanguageCard />

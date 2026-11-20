@@ -8,6 +8,7 @@ import type { Key } from '../../i18n/en';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
 import { WorkflowsWorkspace } from './workflows-workspace';
+import { PageHeader } from '../ui';
 
 type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'COMPLETED' | 'CANCELLED';
 type Rule = { id: string; name: string; fromStatus: TaskStatus | null; toStatus: TaskStatus; action: 'SET_TASK_PRIORITY' | 'ADD_ACTIVITY_NOTE'; priority: string | null; activityMessage: string | null; enabled: boolean; createdAt: string; createdBy: { displayName: string }; _count: { runs: number } };
@@ -98,9 +99,7 @@ export function AutomationsWorkspace() {
   const actionLabel = (rule: Rule) => rule.action === 'SET_TASK_PRIORITY' ? t('au.setPriorityTo', { priority: priorityName(rule.priority) }) : t('au.addNoteQuoted', { note: rule.activityMessage ?? '' });
 
   return <div className="workspace-section-page automations-page">
-    <p className="workspace-eyebrow">{t('act.eyebrow', { name: workspace.name })}</p>
-    <h1>{t('nav.automations')}</h1>
-    <p className="workspace-section-page__description">{t('au.desc')}</p>
+    <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.automations')} description={t('au.desc')} icon="bolt" />
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {notice && <p className="automations-notice" role="status">{notice}</p>}
 
