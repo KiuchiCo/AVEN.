@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { OFFICE_EXTENSIONS, officeToText } from './office-text.js';
+import { PdfError, pdfToText } from './pdf-text.js';
 
 export const KNOWLEDGE_TEXT_LIMIT = 20_000;
 export const READABLE_EXTENSIONS = ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'html', 'htm', 'log'] as const;
@@ -28,8 +29,14 @@ export function extractText(name: string, mimeType: string, bytes: Buffer): { te
     if (raw === null) throw new BadRequestException(`That ${ext.toUpperCase()} file couldn’t be read. It may be damaged or password-protected.`);
     return finish(raw);
   }
+  if (ext === 'pdf' || mimeType === 'application/pdf') {
+    let raw: string;
+    try { raw = pdfToText(bytes); } catch (error) { throw new BadRequestException(error instanceof PdfError ? error.message : 'That PDF couldn’t be read.'); }
+    if (!raw.trim()) throw new BadRequestException('There is no readable text in that PDF. It may be a scan or made of images.');
+    return finish(raw);
+  }
   const readable = (READABLE_EXTENSIONS as readonly string[]).includes(ext) || mimeType.startsWith('text/') || mimeType === 'application/json';
-  if (!readable) throw new BadRequestException(`AVEN can read text files (${READABLE_EXTENSIONS.map((e) => `.${e}`).join(', ')}). Word (.docx), PowerPoint (.pptx) and Excel (.xlsx) files can be read too. PDFs and older .doc/.xls files can’t be read yet.`);
+  if (!readable) throw new BadRequestException(`AVEN can read text files (${READABLE_EXTENSIONS.map((e) => `.${e}`).join(', ')}). Word (.docx), PowerPoint (.pptx) and Excel (.xlsx) files can be read too. Text-based PDFs can be read too. Scanned PDFs and older .doc/.xls files can’t be read yet.`);
   if (bytes.includes(0)) throw new BadRequestException('That file looks like binary data, not text.');
   let text = bytes.toString('utf8').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
   if (ext === 'html' || ext === 'htm' || mimeType === 'text/html') text = htmlToText(text);

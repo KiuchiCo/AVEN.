@@ -113,7 +113,7 @@ As of Section 1.77, AVEN has a Next.js and NestJS application with Clerk sign-in
 
 Everything below is real, tested code. Features that need an outside service say plainly when that service is not configured.
 
-- **Files** — uploads with quotas, folders, attachments on tasks and documents, local-disk storage or S3-compatible object storage (`STORAGE_DRIVER=s3`) behind a swappable `StorageDriver`; Word, PowerPoint and Excel files can be read into Knowledge.
+- **Files** — uploads with quotas, folders, attachments on tasks and documents, local-disk storage or S3-compatible object storage (`STORAGE_DRIVER=s3`) behind a swappable `StorageDriver`; Word, PowerPoint, Excel and text-based PDF files can be read into Knowledge.
 - **AVEN Intelligence** — a model-backed assistant (Anthropic) that searches the workspace with tools, cites what it used, and proposes changes that only happen after a person confirms; built-in and custom agents; monthly AI credits; optional web search (Brave Search API, `WEB_SEARCH_API_KEY`).
 - **Workflows** — triggers, conditions, branches, delays, notifications, webhooks (SSRF-safe) and AI steps, with retries and a run history.
 - **Email** — invitation emails and batched notification summaries through Resend.
@@ -133,7 +133,7 @@ Everything below is real, tested code. Features that need an outside service say
 
 Verified only against local stand-ins, because they need your credentials: Stripe, Anthropic, Resend, Google and Microsoft calendars, S3, Brave Search and push services. Each one reports clearly when it is not configured.
 
-Not built yet: character-level co-editing, PDF and legacy .doc/.xls reading, semantic search, translating every screen, shared organisation-level administration, mobile and desktop apps, offline use.
+Not built yet: character-level co-editing, scanned-PDF (OCR) and legacy .doc/.xls reading, semantic search, translating every screen, shared organisation-level administration, mobile and desktop apps, offline use.
 
 ## Local development
 

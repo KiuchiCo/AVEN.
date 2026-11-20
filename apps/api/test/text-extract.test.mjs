@@ -18,7 +18,7 @@ test('html becomes text without scripts, styles or tags', () => {
   assert.equal(htmlToText('a&lt;b'), 'a<b');
 });
 test('binary, unsupported and empty files are refused with a clear reason', () => {
-  assert.throws(() => extractText('report.pdf', 'application/pdf', buf('%PDF')), /can read text files/);
+  assert.throws(() => extractText('legacy.doc', 'application/msword', buf('x')), /can read text files/);
   assert.throws(() => extractText('x.txt', 'text/plain', Buffer.from([65, 0, 66])), /binary/);
   assert.throws(() => extractText('x.txt', 'text/plain', buf('  \n ')), /no readable text/);
 });
@@ -30,7 +30,7 @@ test('titles come from file names', () => {
   assert.equal(titleFromFileName('Quarterly_plan.v2.md'), 'Quarterly plan.v2'); assert.equal(titleFromFileName('.env'), '.env'); assert.equal(titleFromFileName('x'.repeat(300)).length, 200);
 });
 
-import { deflateRawSync } from 'node:zlib';
+import { deflateRawSync, deflateSync } from 'node:zlib';
 /** Builds a minimal zip (CRC left as zero: the reader doesn't check it). */
 function zip(files) {
   const locals = []; const central = []; let offset = 0;
@@ -62,4 +62,52 @@ test('damaged or non-zip office files are refused with a clear reason', () => {
   assert.throws(() => extractText('x.docx', '', Buffer.from('not a zip')), /couldn’t be read/);
   assert.throws(() => extractText('x.docx', '', zip([['other.xml', '<a/>']])), /couldn’t be read/);
   assert.throws(() => extractText('x.xlsx', '', zip([['xl/worksheets/sheet1.xml', '<worksheet></worksheet>']])), /no readable text/);
+});
+
+import { readFileSync } from 'node:fs';
+import { pdfToText } from '../dist/files/pdf-text.js';
+
+/** Builds a PDF from numbered objects. The reader scans objects, so no cross-reference table is needed. */
+const pdf = (objects, trailer = '') => Buffer.concat([Buffer.from('%PDF-1.7\n'), ...Object.entries(objects).map(([id, body]) => Buffer.concat([Buffer.from(`${id} 0 obj\n`), Buffer.isBuffer(body) ? body : Buffer.from(body), Buffer.from('\nendobj\n')])), Buffer.from(`trailer\n<< /Root 1 0 R ${trailer} >>\n%%EOF`)]);
+const stream = (dict, content, compress = false) => { const data = compress ? deflateSync(Buffer.from(content)) : Buffer.from(content); return Buffer.concat([Buffer.from(`<< ${dict}${compress ? ' /Filter /FlateDecode' : ''} /Length ${data.length} >>\nstream\n`), data, Buffer.from('\nendstream')]); };
+
+test('a real macOS-made PDF is read, with accents and escaped parentheses', () => {
+  const text = pdfToText(readFileSync(new URL('./fixtures/quartz-text.pdf', import.meta.url)));
+  assert.match(text, /^Quarterly plan\n\nRevenue grew by 12 percent \(up from 9\)\. Ship the "Alpha" release/);
+  assert.match(text, /ops@example\.com\.\nSecond line with accents: café déjà vu\.$/);
+  assert.equal(extractText('plan.pdf', 'application/pdf', readFileSync(new URL('./fixtures/quartz-text.pdf', import.meta.url))).truncated, false);
+});
+
+test('pages come out in page-tree order, kerning gaps become spaces and Td moves start new lines', () => {
+  const content = (text) => stream('', `BT /F1 12 Tf 72 700 Td [(Hel) 20 (lo) -300 (world)] TJ 0 -14 Td (${text}) Tj ET`);
+  const file = pdf({
+    1: '<< /Type /Catalog /Pages 2 0 R >>',
+    2: '<< /Type /Pages /Kids [4 0 R 3 0 R] /Count 2 /Resources << /Font << /F1 7 0 R >> >> >>',
+    3: '<< /Type /Page /Parent 2 0 R /Contents 5 0 R >>',
+    4: '<< /Type /Page /Parent 2 0 R /Contents 6 0 R >>',
+    5: content('second page'), 6: content('first page'),
+    7: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+  });
+  assert.equal(pdfToText(file), 'Hello world\nfirst page\n\nHello world\nsecond page');
+});
+
+test('compressed streams, CID fonts with ToUnicode maps, and objects packed in object streams', () => {
+  const cmap = '/CIDInit /ProcSet findresource begin 12 dict begin begincmap 1 begincodespacerange <0000> <FFFF> endcodespacerange 2 beginbfchar <0001> <0048> <0002> <00E9> endbfchar 1 beginbfrange <0003> <0005> <0061> endbfrange endcmap';
+  // The page (object 5) and its font (object 6) live inside object stream 3; "object number offset" pairs come first.
+  const page = '<< /Type /Page /Parent 2 0 R /Resources << /Font << /C1 6 0 R >> >> /Contents 4 0 R >>';
+  const font = '<< /Type /Font /Subtype /Type0 /BaseFont /X /Encoding /Identity-H /ToUnicode 7 0 R >>';
+  const header = `5 0 6 ${page.length + 1} `;
+  const objStm = stream(`/Type /ObjStm /N 2 /First ${header.length}`, `${header}${page} ${font}`, true);
+  const file = pdf({
+    1: '<< /Type /Catalog /Pages 2 0 R >>', 2: '<< /Type /Pages /Kids [5 0 R] /Count 1 >>',
+    3: objStm, 4: stream('', 'BT /C1 12 Tf <0001000200030004> Tj ET', true), 7: stream('', cmap, true),
+  });
+  assert.equal(pdfToText(file), 'Héab', 'codes 1 and 2 come from bfchar, 3 and 4 from the bfrange starting at "a"');
+});
+
+test('encrypted, non-PDF and image-only files are refused with a clear reason', () => {
+  assert.throws(() => pdfToText(Buffer.from('hello')), /isn’t a PDF/);
+  assert.throws(() => pdfToText(pdf({ 1: '<< /Type /Catalog /Pages 2 0 R >>', 2: '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', 3: '<< /Type /Page /Parent 2 0 R >>' }, '/Encrypt 9 0 R')), /password-protected/);
+  const scan = pdf({ 1: '<< /Type /Catalog /Pages 2 0 R >>', 2: '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', 3: '<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>', 4: stream('', 'q 612 0 0 792 0 0 cm /Im0 Do Q') });
+  assert.throws(() => extractText('scan.pdf', 'application/pdf', scan), /no readable text in that PDF/);
 });

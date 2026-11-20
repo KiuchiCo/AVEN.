@@ -6,8 +6,8 @@ import { useWorkspaceSession } from '../workspace-shell';
 import { formatBytes, type FileListing, type FileRecord, type FileUsage, type FileVersionRecord } from './types';
 import { useFilesApi } from './use-files-api';
 
-/** Files AVEN can read as text for the Knowledge Hub. PDFs and Word documents aren't included. */
-const readableAsText = (file: { name: string; mimeType: string }) => /\.(txt|md|markdown|csv|tsv|json|html?|log)$/i.test(file.name) || file.mimeType.startsWith('text/') || file.mimeType === 'application/json';
+/** Files AVEN can read as text for the Knowledge Hub: plain text, text-based PDFs, and Word, PowerPoint and Excel files. */
+const readableAsText = (file: { name: string; mimeType: string }) => /\.(txt|md|markdown|csv|tsv|json|html?|log|pdf|docx|pptx|xlsx)$/i.test(file.name) || file.mimeType === 'application/pdf' || file.mimeType.startsWith('text/') || file.mimeType === 'application/json';
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const previewable = /^(image\/(png|jpeg|gif|webp)|application\/pdf|text\/plain)$/;
