@@ -1,3 +1,4 @@
+import { RichText } from '../../workspace/documents/[documentId]/editor-ui';
 import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
@@ -20,14 +21,14 @@ function Blocks({ blocks }: { blocks: Block[] }) {
   return <>{blocks.map((block, index) => {
     const number = numbers[index];
     switch (block.type) {
-      case 'HEADING_1': return <h2 key={index}>{block.text}</h2>;
-      case 'HEADING_2': return <h3 key={index}>{block.text}</h3>;
-      case 'BULLET': return <p key={index} className="shared-doc__item"><span aria-hidden="true">•</span>{block.text}</p>;
-      case 'NUMBERED': return <p key={index} className="shared-doc__item"><span aria-hidden="true">{number}.</span>{block.text}</p>;
-      case 'TODO': return <p key={index} className="shared-doc__item"><input type="checkbox" checked={Boolean(block.checked)} disabled aria-label={block.checked ? 'Done' : 'Not done'} />{block.text}</p>;
-      case 'QUOTE': return <blockquote key={index}>{block.text}</blockquote>;
+      case 'HEADING_1': return <h2 key={index}><RichText text={block.text} /></h2>;
+      case 'HEADING_2': return <h3 key={index}><RichText text={block.text} /></h3>;
+      case 'BULLET': return <p key={index} className="shared-doc__item"><span aria-hidden="true">•</span><RichText text={block.text} /></p>;
+      case 'NUMBERED': return <p key={index} className="shared-doc__item"><span aria-hidden="true">{number}.</span><RichText text={block.text} /></p>;
+      case 'TODO': return <p key={index} className="shared-doc__item"><input type="checkbox" checked={Boolean(block.checked)} disabled aria-label={block.checked ? 'Done' : 'Not done'} /><RichText text={block.text} /></p>;
+      case 'QUOTE': return <blockquote key={index}><RichText text={block.text} /></blockquote>;
       case 'CODE': return <pre key={index}><code>{block.text}</code></pre>;
-      case 'CALLOUT': return <aside key={index} className="shared-doc__callout">{block.text}</aside>;
+      case 'CALLOUT': return <aside key={index} className="shared-doc__callout"><RichText text={block.text} /></aside>;
       case 'DIVIDER': return <hr key={index} />;
       case 'TABLE': return <div key={index} className="shared-doc__table"><table><tbody>{(block.rows ?? []).map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c}>{cell}</td>)}</tr>)}</tbody></table></div>;
       case 'IMAGE': {
@@ -36,7 +37,7 @@ function Blocks({ blocks }: { blocks: Block[] }) {
         // eslint-disable-next-line @next/next/no-img-element -- a public share image, loaded straight from the API
         return <figure key={index}><img src={src} alt={block.text} />{block.text && <figcaption>{block.text}</figcaption>}</figure>;
       }
-      default: return <p key={index}>{block.text}</p>;
+      default: return <p key={index}><RichText text={block.text} /></p>;
     }
   })}</>;
 }

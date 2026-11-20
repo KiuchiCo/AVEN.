@@ -2076,6 +2076,18 @@ export const en = {
   'shell.collapseNav': "Collapse sidebar",
   'shell.expandNav': "Expand sidebar",
   'shell.loading': "Loading",
+  'ed.slashLabel': "Insert a block",
+  'ed.slashEmpty': "No matching blocks",
+  'ed.fmt.label': "Text formatting",
+  'ed.fmt.bold': "Bold",
+  'ed.fmt.italic': "Italic",
+  'ed.fmt.strike': "Strikethrough",
+  'ed.fmt.code': "Inline code",
+  'ed.fmt.link': "Link",
+  'ed.linkPrompt': "Link address (https://…)",
+  'ed.linkInvalid': "Only http, https and mailto links are allowed.",
+  'ed.dragHandle': "Drag to reorder",
+  'ed.duplicateBlock': "Duplicate block",
 } as const;
 
 export type Key = keyof typeof en;

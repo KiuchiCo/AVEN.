@@ -10,6 +10,8 @@ import { useWorkspaceSession } from '../../workspace-shell';
 import { AttachmentsPanel } from '../../files/attachments-panel';
 import { ImageBlock, TableBlock } from './document-blocks';
 import { SharePanel } from './share-panel';
+import { FormatBar, RichText, SlashMenu, slashCount } from './editor-ui';
+import { applySlash, duplicateBlock as duplicateIn, filterSlash, findSlash, hasInlineMarks, isTextBlock, makeLink, markdownShortcut, moveBlockBy, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, toggleMark, type EditResult, type Mark } from './editor-model';
 import { FavouriteStar } from '../../favourites';
 import { readEvents } from '../../messages/sse';
 import { transformPosition } from '@aven/collab';
@@ -18,8 +20,7 @@ import { LiveTextEngine, type CursorEvent, type RemoteCursor, type TextEvent } f
 import { caretPosition } from './caret-position';
 import { draftKey, readDraft, removeDraft, writeDraft } from './offline-draft';
 
-type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER' | 'TABLE' | 'IMAGE';
-type Block = { id: string; type: BlockType; text: string; checked?: boolean; rows?: string[][]; fileId?: string };
+import type { Block, BlockType } from './editor-model';
 type Document = { id: string; title: string; content: string; updatedAt: string; project: { id: string; name: string } | null };
 type Version = { id: string; title: string; label: string | null; createdAt: string; createdBy: { displayName: string } };
 type Comment = { id: string; body: string; createdAt: string; resolvedAt: string | null; createdBy: { id: string; displayName: string } };
@@ -102,6 +103,11 @@ export default function DocumentEditorPage() {
   const [offline, setOffline] = useState(false);
   const [liveBusy, setLiveBusy] = useState(false);
   const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor[]>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [slash, setSlash] = useState<{ blockId: string; start: number; query: string; index: number } | null>(null);
+  const [selected, setSelected] = useState<{ blockId: string; start: number; end: number } | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropBefore, setDropBefore] = useState<string | null | undefined>(undefined);
   const liveEngine = useRef<LiveTextEngine | null>(null);
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE'>('OUTLINE');
   const [viewers, setViewers] = useState<{ id: string; name: string; blockId: string | null }[]>([]);
@@ -388,6 +394,106 @@ export default function DocumentEditorPage() {
   }
   function removeBlock(id: string) { setBlocks((current) => current.length === 1 ? [createBlock()] : current.filter((block) => block.id !== id)); markChanged(); }
 
+  // ---- Writing: slash menu, Markdown shortcuts, Enter/Backspace, inline formatting, drag and drop ----------------------
+  const typeLabel = useCallback((type: BlockType) => t(`bt.${type}` as Key), [t]);
+  const fieldOf = (id: string) => globalThis.document.getElementById(`block-${id}`) as HTMLTextAreaElement | null;
+  // Focus is applied after React has drawn the blocks, so a block that was just created can already receive it.
+  const pendingFocus = useRef<{ id: string; caret: number; end?: number } | null>(null);
+  function focusAt(id: string, caret: number) {
+    const field = fieldOf(id);
+    if (field) { field.focus(); field.setSelectionRange(caret, caret); pendingFocus.current = null; } else pendingFocus.current = { id, caret };
+  }
+  useLayoutEffect(() => {
+    const wanted = pendingFocus.current; if (!wanted) return;
+    const field = globalThis.document.getElementById(`block-${wanted.id}`) as HTMLTextAreaElement | null;
+    if (field) { field.focus(); field.setSelectionRange(wanted.caret, wanted.end ?? wanted.caret); pendingFocus.current = null; }
+  }, [blocks]);
+  /** A structural edit (split, merge, convert, move). Live text sessions are dropped first so they rejoin from the new state. */
+  function commit(result: EditResult) {
+    liveEngine.current?.clear();
+    pendingFocus.current = { id: result.focus.id, caret: result.focus.caret };
+    setBlocks(result.blocks); markChanged(); setSlash(null); setSelected(null);
+  }
+  const makeId = () => crypto.randomUUID();
+
+  function onText(block: Block, index: number, value: string, caret: number) {
+    const shortcut = markdownShortcut(block, value);
+    if (shortcut) { commit({ blocks: blocks.map((item) => (item.id === block.id ? { ...item, ...shortcut } : item)), focus: { id: block.id, caret: 0 } }); return; }
+    changeBlock(block.id, { text: value });
+    const found = isTextBlock(block.type) && block.type !== 'CODE' ? findSlash(value, caret) : null;
+    setSlash(found ? { blockId: block.id, start: found.start, query: found.query, index: 0 } : null);
+    void index;
+  }
+  function chooseSlash(type: BlockType) {
+    if (!slash) return;
+    const field = fieldOf(slash.blockId);
+    const result = applySlash(blocks, slash.blockId, { start: slash.start, query: slash.query }, field?.selectionStart ?? slash.start + 1 + slash.query.length, type, makeId);
+    if (result) commit(result);
+  }
+  function applyMark(block: Block, mark: Mark) {
+    const field = fieldOf(block.id); if (!field) return;
+    const next = toggleMark(field.value, field.selectionStart, field.selectionEnd, mark);
+    pendingFocus.current = { id: block.id, caret: next.start, end: next.end };
+    changeBlock(block.id, { text: next.text });
+  }
+  function applyLink(block: Block) {
+    const field = fieldOf(block.id); if (!field) return;
+    const start = field.selectionStart, end = field.selectionEnd;
+    const url = window.prompt(t('ed.linkPrompt'));
+    if (!url) return;
+    const next = makeLink(field.value, start, end, url);
+    if (!next) { setError(t('ed.linkInvalid')); return; }
+    pendingFocus.current = { id: block.id, caret: next.start, end: next.end };
+    changeBlock(block.id, { text: next.text });
+  }
+  function onKey(block: Block, index: number, event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (readOnlyRole(workspace.role) || event.nativeEvent.isComposing) return;
+    const field = event.currentTarget;
+    const start = field.selectionStart, end = field.selectionEnd, collapsed = start === end;
+    const mod = event.metaKey || event.ctrlKey;
+    if (slash && slash.blockId === block.id) {
+      const count = slashCount(slash.query, typeLabel);
+      if (event.key === 'ArrowDown') { event.preventDefault(); setSlash({ ...slash, index: count ? (slash.index + 1) % count : 0 }); return; }
+      if (event.key === 'ArrowUp') { event.preventDefault(); setSlash({ ...slash, index: count ? (slash.index + count - 1) % count : 0 }); return; }
+      if (event.key === 'Escape') { event.preventDefault(); setSlash(null); return; }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        const choice = filterSlash(slash.query, typeLabel)[slash.index]?.type; if (choice) chooseSlash(choice); else setSlash(null);
+        return;
+      }
+    }
+    if (mod && !event.shiftKey && ['b', 'i', 'e'].includes(event.key.toLowerCase())) { event.preventDefault(); applyMark(block, event.key.toLowerCase() === 'b' ? 'bold' : event.key.toLowerCase() === 'i' ? 'italic' : 'code'); return; }
+    if (mod && event.shiftKey && event.key.toLowerCase() === 'x') { event.preventDefault(); applyMark(block, 'strike'); return; }
+    if (mod && !event.shiftKey && event.key.toLowerCase() === 'k') { event.preventDefault(); applyLink(block); return; }
+    if (mod && !event.shiftKey && event.key.toLowerCase() === 'd') { event.preventDefault(); const result = duplicateIn(blocks, block.id, makeId); if (result) commit(result); return; }
+    if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) { event.preventDefault(); const next = moveBlockBy(blocks, block.id, event.key === 'ArrowUp' ? -1 : 1); if (next !== blocks) commit({ blocks: next, focus: { id: block.id, caret: start } }); return; }
+    if (event.key === 'Enter') {
+      const result = pressEnter(blocks, block.id, start, end, makeId, { mod, shift: event.shiftKey });
+      if (result) { event.preventDefault(); commit(result); }
+      return;
+    }
+    if (event.key === 'Backspace' && collapsed && start === 0) { const result = pressBackspaceAtStart(blocks, block.id); if (result) { event.preventDefault(); commit(result); } return; }
+    if (event.key === 'Delete' && collapsed && start === field.value.length) { const result = pressDeleteAtEnd(blocks, block.id); if (result) { event.preventDefault(); commit(result); } return; }
+    if (event.key === 'ArrowUp' && collapsed && !mod && !event.shiftKey && !field.value.slice(0, start).includes('\n')) {
+      const previous = blocks.slice(0, index).reverse().find((item) => isTextBlock(item.type));
+      if (previous) { event.preventDefault(); focusAt(previous.id, previous.text.length); }
+      return;
+    }
+    if (event.key === 'ArrowDown' && collapsed && !mod && !event.shiftKey && !field.value.slice(start).includes('\n')) {
+      const following = blocks.slice(index + 1).find((item) => isTextBlock(item.type));
+      if (following) { event.preventDefault(); focusAt(following.id, 0); }
+    }
+  }
+  function onSelect(block: Block, event: React.SyntheticEvent<HTMLTextAreaElement>) {
+    const field = event.currentTarget;
+    setSelected(field.selectionStart !== field.selectionEnd && !readOnlyRole(workspace.role) ? { blockId: block.id, start: field.selectionStart, end: field.selectionEnd } : null);
+  }
+  function dropOn(beforeId: string | null) {
+    if (dragId) { const next = reorderBlock(blocks, dragId, beforeId); if (next !== blocks) commit({ blocks: next, focus: { id: dragId, caret: 0 } }); }
+    setDragId(null); setDropBefore(undefined);
+  }
+
+  const richView = (block: Block) => isTextBlock(block.type) && block.type !== 'CODE' && editingId !== block.id && hasInlineMarks(block.text);
   const others = useMemo(() => viewers.filter((viewer) => viewer.id !== user.id), [user.id, viewers]);
   const outline = useMemo(() => blocks.filter((block) => (block.type === 'HEADING_1' || block.type === 'HEADING_2') && block.text.trim()), [blocks]);
 
@@ -447,10 +553,11 @@ export default function DocumentEditorPage() {
         <main className="document-studio__paper">
           <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}</p>
           <input className="document-studio__title" value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={200} aria-label={t('ed.titleLabel')} />
-          <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}${others.some((viewer) => viewer.blockId === block.id) ? ' document-block--others' : ''}`} key={block.id} style={blockColour(others, block.id)} onFocus={() => { announceFocus(block.id); if (!readOnlyRole(workspace.role) && block.type !== 'DIVIDER' && block.type !== 'TABLE' && block.type !== 'IMAGE') void liveEngine.current?.join(block.id); }} onBlur={() => announceFocus(null)}>
+          <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}${others.some((viewer) => viewer.blockId === block.id) ? ' document-block--others' : ''}${dragId === block.id ? ' document-block--dragging' : ''}${dropBefore === block.id && dragId && dragId !== block.id ? ' document-block--drop' : ''}`} key={block.id} style={blockColour(others, block.id)} onDragOver={(event) => { if (dragId) { event.preventDefault(); setDropBefore(block.id); } }} onDrop={(event) => { event.preventDefault(); dropOn(block.id); }} onFocus={() => { announceFocus(block.id); if (!readOnlyRole(workspace.role) && block.type !== 'DIVIDER' && block.type !== 'TABLE' && block.type !== 'IMAGE') void liveEngine.current?.join(block.id); }} onBlur={() => announceFocus(null)}>
             {others.filter((viewer) => viewer.blockId === block.id).length > 0 && <span className="document-block__presence" role="status">{t('ed.editingHere', { names: others.filter((viewer) => viewer.blockId === block.id).map((viewer) => viewer.name).join(', ') })}</span>}
-            <div className="document-block__controls"><select aria-label={t('ed.blockTypeFor', { n: index + 1 })} value={block.type} onChange={(event) => changeBlock(block.id, { type: event.target.value as BlockType })}>{blockTypes.map((option) => <option value={option.type} key={option.type}>{t(option.label)}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label={t('ed.moveUp')}>↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label={t('ed.moveDown')}>↓</button><button type="button" onClick={() => removeBlock(block.id)} aria-label={t('ed.deleteBlock')}>×</button></div>
-            {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label={t('ed.markTodo')} />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span><textarea id={`block-${block.id}`} value={block.text} onChange={(event) => changeBlock(block.id, { text: event.target.value })} placeholder={block.type === 'CODE' ? t('ed.phCode') : block.type === 'CALLOUT' ? t('ed.phCallout') : t('ed.phText')} aria-label={t('ed.blockLabel', { type: (() => { const found = blockTypes.find((option) => option.type === block.type); return found ? t(found.label) : t('ed.text'); })(), n: index + 1 })} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}
+            <div className="document-block__controls">{!readOnlyRole(workspace.role) && <button type="button" className="document-block__drag" draggable aria-label={t('ed.dragHandle')} title={t('ed.dragHandle')} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', block.id); setDragId(block.id); }} onDragEnd={() => { setDragId(null); setDropBefore(undefined); }}>⋮⋮</button>}<select aria-label={t('ed.blockTypeFor', { n: index + 1 })} value={block.type} onChange={(event) => changeBlock(block.id, { type: event.target.value as BlockType })}>{blockTypes.map((option) => <option value={option.type} key={option.type}>{t(option.label)}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label={t('ed.moveUp')}>↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label={t('ed.moveDown')}>↓</button>{!readOnlyRole(workspace.role) && <button type="button" onClick={() => { const result = duplicateIn(blocks, block.id, makeId); if (result) commit(result); }} aria-label={t('ed.duplicateBlock')} title={t('ed.duplicateBlock')}>⧉</button>}<button type="button" onClick={() => removeBlock(block.id)} aria-label={t('ed.deleteBlock')}>×</button></div>{selected?.blockId === block.id && <FormatBar onMark={(mark) => applyMark(block, mark)} onLink={() => applyLink(block)} />}
+            {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label={t('ed.markTodo')} />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span>{richView(block) && <div className="document-block__rich" onMouseDown={(event) => { if ((event.target as HTMLElement).closest('a')) return; event.preventDefault(); const field = fieldOf(block.id); if (field) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } }}><RichText text={block.text} /></div>}<textarea id={`block-${block.id}`} value={block.text} className={richView(block) ? 'document-block__field--hidden' : undefined} onChange={(event) => onText(block, index, event.target.value, event.target.selectionStart)} onKeyDown={(event) => onKey(block, index, event)} onSelect={(event) => onSelect(block, event)} onFocus={() => setEditingId(block.id)} onBlur={() => { setEditingId((current) => (current === block.id ? null : current)); setSelected((current) => (current?.blockId === block.id ? null : current)); }} placeholder={block.type === 'CODE' ? t('ed.phCode') : block.type === 'CALLOUT' ? t('ed.phCallout') : t('ed.phText')} aria-label={t('ed.blockLabel', { type: (() => { const found = blockTypes.find((option) => option.type === block.type); return found ? t(found.label) : t('ed.text'); })(), n: index + 1 })} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}
+            {slash?.blockId === block.id && <SlashMenu query={slash.query} index={slash.index} onPick={chooseSlash} onHover={(position) => setSlash({ ...slash, index: position })} />}
             <CaretLayer blockId={block.id} cursors={remoteCursors[block.id] ?? []} text={block.text} />
             <div className="document-block__actions">{block.type === 'TODO' && block.text.trim() && <button type="button" disabled={creatingTask === block.id} onClick={() => void createTaskFromBlock(block)}>{creatingTask === block.id ? t('ed.creating') : t('ed.createTask')}</button>}<button className="document-block__insert" type="button" onClick={() => insertBlock(block.id)}>{t('ed.addBelow')}</button></div>
           </section>)}</div>

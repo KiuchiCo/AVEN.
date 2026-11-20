@@ -1,0 +1,111 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { applySlash, duplicateBlock, filterSlash, findSlash, hasInlineMarks, makeLink, markdownShortcut, moveBlockBy, parseInline, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, safeHref, toggleMark } from '../app/workspace/documents/[documentId]/editor-model.ts';
+
+const b = (id, text, type = 'PARAGRAPH', extra = {}) => ({ id, type, text, checked: false, ...extra });
+let counter = 0; const newId = () => `n${++counter}`;
+const label = (type) => type.toLowerCase().replace('_', ' ');
+
+test('findSlash needs a slash at the start or after a space', () => {
+  assert.deepEqual(findSlash('/head', 5), { start: 0, query: 'head' });
+  assert.deepEqual(findSlash('hello /to', 9), { start: 6, query: 'to' });
+  assert.equal(findSlash('a/b', 3), null);
+  assert.equal(findSlash('http://x', 8), null);
+});
+
+test('filterSlash ranks names first and finds by keyword', () => {
+  assert.equal(filterSlash('', label).length, 12);
+  assert.equal(filterSlash('h1', label)[0].type, 'HEADING_1');
+  assert.equal(filterSlash('task', label)[0].type, 'TODO');
+  assert.deepEqual(filterSlash('zzzz', label), []);
+});
+
+test('markdown shortcuts only fire on paragraphs and clear the marker', () => {
+  assert.deepEqual(markdownShortcut(b('a', ''), '# '), { type: 'HEADING_1', text: '' });
+  assert.deepEqual(markdownShortcut(b('a', ''), '- '), { type: 'BULLET', text: '' });
+  assert.deepEqual(markdownShortcut(b('a', ''), '1. '), { type: 'NUMBERED', text: '' });
+  assert.deepEqual(markdownShortcut(b('a', ''), '[x] '), { type: 'TODO', checked: true, text: '' });
+  assert.equal(markdownShortcut(b('a', '', 'HEADING_1'), '- '), null);
+  assert.equal(markdownShortcut(b('a', ''), '#hash'), null);
+});
+
+test('Enter splits the block and keeps lists going', () => {
+  const r = pressEnter([b('a', 'hello world', 'BULLET')], 'a', 5, 5, newId);
+  assert.deepEqual(r.blocks.map((x) => `${x.type}:${x.text}`), ['BULLET:hello', 'BULLET: world']);
+  assert.deepEqual(r.focus, { id: r.blocks[1].id, caret: 0 });
+  const h = pressEnter([b('a', 'Title', 'HEADING_1')], 'a', 5, 5, newId);
+  assert.equal(h.blocks[1].type, 'PARAGRAPH');
+});
+
+test('Enter on an empty list item ends the list; code keeps its newline', () => {
+  const r = pressEnter([b('a', '', 'TODO')], 'a', 0, 0, newId);
+  assert.equal(r.blocks.length, 1); assert.equal(r.blocks[0].type, 'PARAGRAPH');
+  assert.equal(pressEnter([b('a', 'x', 'CODE')], 'a', 1, 1, newId), null);
+  assert.equal(pressEnter([b('a', 'x', 'CODE')], 'a', 1, 1, newId, { mod: true }).blocks.length, 2);
+});
+
+test('--- then Enter makes a divider', () => {
+  const r = pressEnter([b('a', '---')], 'a', 3, 3, newId);
+  assert.deepEqual(r.blocks.map((x) => x.type), ['DIVIDER', 'PARAGRAPH']);
+});
+
+test('Backspace at the start un-styles, then merges, then removes', () => {
+  const styled = pressBackspaceAtStart([b('a', 'x', 'HEADING_1')], 'a');
+  assert.equal(styled.blocks[0].type, 'PARAGRAPH');
+  const merged = pressBackspaceAtStart([b('a', 'one'), b('b', 'two')], 'a'.replace('a', 'b'));
+  assert.deepEqual(merged.blocks.map((x) => x.text), ['onetwo']); assert.deepEqual(merged.focus, { id: 'a', caret: 3 });
+  const empty = pressBackspaceAtStart([b('a', 'one'), b('b', '')], 'b');
+  assert.deepEqual(empty.blocks.map((x) => x.id), ['a']); assert.equal(empty.focus.caret, 3);
+  const afterDivider = pressBackspaceAtStart([b('d', '', 'DIVIDER'), b('b', '')], 'b');
+  assert.deepEqual(afterDivider.blocks.map((x) => x.id), ['b']);
+  assert.equal(pressBackspaceAtStart([b('a', 'first')], 'a'), null);
+});
+
+test('Delete at the end pulls the next paragraph up', () => {
+  const r = pressDeleteAtEnd([b('a', 'one'), b('b', 'two')], 'a');
+  assert.deepEqual(r.blocks.map((x) => x.text), ['onetwo']);
+  assert.equal(pressDeleteAtEnd([b('a', 'one'), b('t', '', 'TABLE')], 'a'), null);
+});
+
+test('moving, reordering and duplicating blocks', () => {
+  const list = [b('a', '1'), b('b', '2'), b('c', '3')];
+  assert.deepEqual(moveBlockBy(list, 'a', 1).map((x) => x.id), ['b', 'a', 'c']);
+  assert.equal(moveBlockBy(list, 'a', -1), list);
+  assert.deepEqual(reorderBlock(list, 'c', 'a').map((x) => x.id), ['c', 'a', 'b']);
+  assert.deepEqual(reorderBlock(list, 'a', null).map((x) => x.id), ['b', 'c', 'a']);
+  const copy = duplicateBlock([b('t', '', 'TABLE', { rows: [['x']] })], 't', newId);
+  assert.notEqual(copy.blocks[1].id, 't'); assert.notEqual(copy.blocks[1].rows, copy.blocks[0].rows);
+});
+
+test('slash choices transform the block or insert media', () => {
+  const heading = applySlash([b('a', '/h1')], 'a', { start: 0, query: 'h1' }, 3, 'HEADING_1', newId);
+  assert.deepEqual(heading.blocks.map((x) => `${x.type}:${x.text}`), ['HEADING_1:']);
+  const divider = applySlash([b('a', '/div')], 'a', { start: 0, query: 'div' }, 4, 'DIVIDER', newId);
+  assert.deepEqual(divider.blocks.map((x) => x.type), ['DIVIDER', 'PARAGRAPH']);
+  const table = applySlash([b('a', 'Intro /table')], 'a', { start: 6, query: 'table' }, 12, 'TABLE', newId);
+  assert.deepEqual(table.blocks.map((x) => x.type), ['PARAGRAPH', 'TABLE', 'PARAGRAPH']); assert.equal(table.blocks[0].text, 'Intro'); assert.equal(table.blocks[1].rows.length, 2);
+});
+
+test('toggleMark wraps, unwraps and handles an empty selection', () => {
+  assert.deepEqual(toggleMark('say hello now', 4, 9, 'bold'), { text: 'say **hello** now', start: 6, end: 11 });
+  assert.equal(toggleMark('say **hello** now', 6, 11, 'bold').text, 'say hello now');
+  assert.equal(toggleMark('x', 1, 1, 'code').text, 'x``');
+  assert.equal(toggleMark('plain', 0, 5, 'italic').text, '*plain*');
+});
+
+test('links are validated', () => {
+  assert.equal(safeHref('javascript:alert(1)'), null);
+  assert.equal(safeHref('example.com/a'), 'https://example.com/a');
+  assert.equal(makeLink('see docs', 4, 8, 'javascript:x'), null);
+  assert.equal(makeLink('see docs', 4, 8, 'https://a.test').text, 'see [docs](https://a.test)');
+});
+
+test('parseInline understands marks and leaves everything else as text', () => {
+  assert.deepEqual(parseInline('a **b** *c* `d` ~~e~~ [f](https://g.test)').map((x) => x.kind), ['text', 'bold', 'text', 'italic', 'text', 'code', 'text', 'strike', 'text', 'link']);
+  assert.deepEqual(parseInline('2 * 3 * 4').map((x) => x.kind), ['text']);
+  assert.deepEqual(parseInline('<b>x</b> **open'), [{ kind: 'text', text: '<b>x</b> **open' }]);
+  assert.deepEqual(parseInline('[x](javascript:alert(1))').map((x) => x.kind), ['text']);
+  assert.deepEqual(parseInline('window.__pwned=1 and snake_case_name'), [{ kind: 'text', text: 'window.__pwned=1 and snake_case_name' }]);
+  assert.deepEqual(parseInline('an _emphasised_ word').map((x) => x.kind), ['text', 'italic', 'text']);
+  assert.equal(hasInlineMarks('plain'), false); assert.equal(hasInlineMarks('**b**'), true);
+});

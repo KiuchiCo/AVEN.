@@ -83,14 +83,14 @@
 /* ---- Typography ---------------------------------------------------------------------------------------- */
 .workspace-content { font-size: var(--ds-fs-body); line-height: 1.5; }
 .workspace-content h1, .rd-header h1 { font-family: var(--aven-display-font); font-size: var(--ds-fs-title); font-weight: 500; line-height: 1.1; letter-spacing: -.012em; }
-.workspace-content :is(button, input, select, textarea, table) { font-family: var(--aven-interface-font); }
+.workspace-content :where(button, input, select, textarea, table) { font-family: var(--aven-interface-font); }
 .workspace-eyebrow { font-family: var(--aven-interface-font); font-size: var(--ds-fs-meta); font-weight: 600; letter-spacing: .13em; text-transform: uppercase; color: var(--m-muted); }
 .rd-stat strong { font-size: var(--ds-fs-metric); }
 
 /* ---- Shared component sizes ---------------------------------------------------------------------------- */
-.workspace-content :is(input:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color']), select) { min-height: var(--ds-control-h); }
-.workspace-content textarea { min-height: calc(var(--ds-control-h) * 2); }
-.workspace-content :is(input:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color']), select, textarea) { border-radius: var(--ds-radius-md); font-size: var(--ds-fs-body); }
+.workspace-content :where(input:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color']), select) { min-height: var(--ds-control-h); }
+.workspace-content :where(textarea) { min-height: calc(var(--ds-control-h) * 2); }
+.workspace-content :where(input:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color']), select, textarea) { border-radius: var(--ds-radius-md); font-size: var(--ds-fs-body); }
 .rd-btn, .workspace-settings-save { min-height: var(--ds-control-h); border-radius: var(--ds-radius-md); }
 .rd-btn--small { min-height: var(--ds-control-h-sm); }
 .rd-iconbtn--boxed { width: var(--ds-control-h); height: var(--ds-control-h); }
@@ -100,7 +100,7 @@
 .rd-table td, .files-table td { font-size: var(--ds-fs-small); }
 
 /* Keyboard focus is always visible and always the same. */
-.workspace-content :is(a, button, summary, input, select, textarea, [tabindex]):focus-visible,
+.workspace-content :where(a, button, summary, input, select, textarea, [tabindex]):focus-visible,
 .workspace-sidebar :is(a, button):focus-visible, .workspace-topbar :is(a, button):focus-visible { outline: 2px solid var(--m-focus); outline-offset: 2px; }
 
 /* Loading: the page area keeps its shape instead of collapsing and jumping when content arrives. */
@@ -142,7 +142,7 @@
 .workspace-create-menu a:hover, .workspace-menu button:hover, .workspace-menu a:hover { background: var(--m-chip); }
 .workspace-switcher:hover { background: var(--m-card-solid); border-color: var(--m-focus); }
 html { scrollbar-gutter: stable; } /* a page with a scrollbar and one without must start content at the same x */
-.workspace-content :is(.productivity-form button[type='submit'], .rd-btn, .workspace-settings-save, .files-upload) { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+.workspace-content :where(.productivity-form button[type='submit'], .rd-btn, .workspace-settings-save, .files-upload) { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
 .productivity-form button[type='submit'] { width: fit-content; padding-inline: 20px; }
 /* Chat keeps a comfortable line length on very wide screens. */
 .msgs-thread, .msgs-panel > .chat-compose, .msgs-panel > .workspace-settings-note { width: min(100%, 1040px); margin-inline: auto; }
