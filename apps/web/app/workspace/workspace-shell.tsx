@@ -3,7 +3,7 @@
 import { UserButton, useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { WorkspaceSession } from './layout';
 import { timeZoneCookie, timeZoneCookieValue } from '../time-zone-script';
 import type { Key } from '../i18n/en';
@@ -24,6 +24,10 @@ export function useWorkspaceSession() {
 }
 
 const noSubscription = () => () => undefined;
+// The sidebar's collapsed/expanded choice is remembered on this device and applies to every workspace.
+const sidebarListeners = new Set<() => void>();
+const readSidebarCollapsed = () => { try { return localStorage.getItem('aven-sidebar') === 'collapsed'; } catch { return false; } };
+function subscribeSidebar(listener: () => void) { sidebarListeners.add(listener); window.addEventListener('storage', listener); return () => { sidebarListeners.delete(listener); window.removeEventListener('storage', listener); }; }
 
 export function WorkspaceShell({ session, children }: Readonly<{ session: WorkspaceSession; children: ReactNode }>) {
   // Pages show dates and times in this person's own locale and time zone, which the server can't know. Rendering page
@@ -32,6 +36,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const collapsed = useSyncExternalStore(subscribeSidebar, readSidebarCollapsed, () => false);
   const [createOpen, setCreateOpen] = useState(false);
   const { getToken } = useAuth();
   const [unread, setUnread] = useState(0);
@@ -65,6 +70,8 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
     return () => { live = false; };
   }, [getToken, pathname, session.workspace.id]);
 
+  function toggleSidebar() { try { localStorage.setItem('aven-sidebar', collapsed ? 'expanded' : 'collapsed'); } catch { /* storage unavailable: the choice just won't be remembered */ } sidebarListeners.forEach((listener) => listener()); }
+
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -81,7 +88,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
       <LanguageProvider language={session.user.language}>
       <FavouritesProvider workspaceId={session.workspace.id}>
       <TaskSyncProvider>
-      <div className="workspace-app">
+      <div className={`workspace-app${collapsed ? ' workspace-app--collapsed' : ''}`}>
         {mobileOpen && (
           <button
             className="workspace-sidebar-scrim"
@@ -90,6 +97,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
           />
         )}
         <aside id="workspace-navigation" className={`workspace-sidebar${mobileOpen ? ' workspace-sidebar--open' : ''}`}>
+          <button type="button" className="workspace-sidebar__collapse" onClick={toggleSidebar} aria-pressed={collapsed} aria-controls="workspace-navigation" aria-label={collapsed ? t('shell.expandNav') : t('shell.collapseNav')} title={collapsed ? t('shell.expandNav') : t('shell.collapseNav')}><NavIcon name="back" /></button>
           <div className="workspace-sidebar__brand">
             <Link className="auth-brand__wordmark" href="/workspace" aria-label="AVEN home">AVEN<span>.</span></Link>
             <p>{t('shell.tagline')}</p>
@@ -103,7 +111,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
               {group.hrefs.map((href) => {
                 const item = workspaceNavigation.find((entry) => entry.href === href); if (!item) return null;
                 const active = href === '/workspace' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
-                return <Link key={href} className={`workspace-nav__item${active ? ' workspace-nav__item--active' : ''}`} href={href} aria-current={active ? 'page' : undefined} onClick={() => setMobileOpen(false)}>
+                return <Link key={href} className={`workspace-nav__item${active ? ' workspace-nav__item--active' : ''}`} href={href} aria-current={active ? 'page' : undefined} title={collapsed ? t(item.key) : undefined} onClick={() => setMobileOpen(false)}>
                   <NavIcon name={item.icon} /><span>{t(item.key)}</span>
                   {href === '/workspace/inbox' && unread > 0 && <b className="workspace-nav__badge" aria-label={t('shell.unread', { n: unread })}>{unread > 99 ? '99+' : unread}</b>}
                 </Link>;
@@ -168,7 +176,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
             <OfflineBanner />
             <TaskSyncBanner />
             {session.workspace.role === 'GUEST' && <p className="workspace-readonly-banner" role="status">Guest access is read-only. You can browse workspace information, but editing is disabled.</p>}
-            {ready ? children : null}
+            {ready ? <Fragment key={session.workspace.id}>{children}</Fragment> : <div className="ds-skeleton" aria-busy="true" aria-label={t('shell.loading')}><i /><i /><i /></div>}
           </main>
         </div>
       </div>

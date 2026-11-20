@@ -2074,4 +2074,7 @@ export const es: Dictionary = {
   'in.tabsAria': "Secciones de Intelligence",
   'in.snapshot': "Resumen del espacio",
   'in.snapshotSub': "Un vistazo rápido a lo que pasa.",
+  'shell.collapseNav': "Contraer la barra lateral",
+  'shell.expandNav': "Expandir la barra lateral",
+  'shell.loading': "Cargando",
 };

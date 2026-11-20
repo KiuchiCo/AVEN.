@@ -2073,6 +2073,9 @@ export const en = {
   'in.tabsAria': "Intelligence sections",
   'in.snapshot': "Workspace snapshot",
   'in.snapshotSub': "A quick look at what’s happening.",
+  'shell.collapseNav': "Collapse sidebar",
+  'shell.expandNav': "Expand sidebar",
+  'shell.loading': "Loading",
 } as const;
 
 export type Key = keyof typeof en;

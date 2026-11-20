@@ -98,7 +98,7 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 
 /* ---- the shared card, field and button look --------------------------------------------------------------- */
 .home-card, .workspace-settings-card, .productivity-form, .productivity-projects, .productivity-board, .project-hub__panel, .project-hub__full-panel, .members-panel, .intelligence-ask, .intelligence-panel, .inbox-panel, .inbox-notifications, .task-detail__panel, .document-studio__panel, .files-card, .assistant, .whiteboard-list li, .audit-table, .workspace-search-results, .connected-panel {
-  border: 1px solid var(--m-border); border-radius: 20px; background: var(--m-card); box-shadow: var(--m-shadow); backdrop-filter: blur(10px);
+  border: 1px solid var(--m-border); border-radius: var(--ds-radius-xl); background: var(--m-card); box-shadow: var(--m-shadow); backdrop-filter: blur(10px);
 }
 .workspace-settings-save, .primary-action, .home-button--dark { border-radius: 12px; background: var(--m-primary); color: var(--m-primary-ink); font-weight: 600; }
 .workspace-eyebrow, .workspace-page-eyebrow { color: var(--m-muted); font-size: 12px; font-weight: 600; letter-spacing: .12em; }
@@ -108,7 +108,7 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 .home__main { display: grid; min-width: 0; gap: 22px; }
 .home-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 14px 0 6px; }
 .home-hero__date { margin: 0 0 10px; color: var(--m-muted); font-size: 12.5px; font-weight: 600; letter-spacing: .13em; }
-.home-hero h1 { margin: 0; font-size: clamp(34px, 4vw, 50px); line-height: 1.08; }
+.home-hero h1 { margin: 0; font-size: var(--ds-fs-title); line-height: 1.1; }
 .home-hero__sub { margin: 12px 0 0; color: var(--m-muted); font-size: 17px; }
 .home-customise { display: inline-flex; align-items: center; gap: 9px; height: 44px; padding: 0 18px; border: 1px solid var(--m-border); border-radius: 13px; background: var(--m-field); color: var(--m-ink); font: 500 14.5px var(--aven-interface-font); box-shadow: 0 4px 14px rgb(107 87 70 / 6%); cursor: pointer; }
 .home-customise:disabled { opacity: .5; cursor: default; }
@@ -118,7 +118,7 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 .home-customise-panel input { accent-color: var(--aven-bronze); }
 
 .home-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-.home-tile { position: relative; display: grid; gap: 14px; padding: 20px 22px 22px; overflow: hidden; border: 1px solid var(--m-border); border-radius: 20px; background: var(--m-card); box-shadow: var(--m-shadow); color: var(--m-ink); text-decoration: none; transition: transform .15s ease, box-shadow .15s ease; }
+.home-tile { position: relative; display: grid; gap: 14px; padding: 20px 22px 22px; overflow: hidden; border: 1px solid var(--m-border); border-radius: var(--ds-radius-xl); background: var(--m-card); box-shadow: var(--m-shadow); color: var(--m-ink); text-decoration: none; transition: transform .15s ease, box-shadow .15s ease; }
 .home-tile:hover { transform: translateY(-2px); }
 .home-tile__label { display: flex; align-items: center; gap: 12px; color: var(--m-ink); font-size: 15.5px; font-weight: 600; }
 .home-tile__label svg { color: #5f5a52; }
@@ -188,7 +188,7 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 .home-activity a { color: var(--m-ink); text-decoration: none; }
 .home-activity small { color: var(--m-muted); white-space: nowrap; }
 
-.home-ai { position: sticky; top: 90px; display: grid; gap: 14px; padding: 24px 22px 22px; border: 1px solid var(--m-border); border-radius: 22px; background: var(--m-card); box-shadow: var(--m-shadow); backdrop-filter: blur(10px); }
+.home-ai { position: sticky; top: 90px; display: grid; gap: 14px; padding: 24px 22px 22px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-xl); background: var(--m-card); box-shadow: var(--m-shadow); backdrop-filter: blur(10px); }
 .home-ai__head { display: flex; align-items: center; gap: 12px; color: var(--aven-bronze); }
 .home-ai__head h2 { margin: 0; color: var(--m-ink); font: 500 22px var(--aven-display-font); }
 .home-ai h3 { margin: 14px 0 0; font: 500 29px/1.15 var(--aven-display-font); }
