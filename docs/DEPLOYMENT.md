@@ -102,6 +102,8 @@ How it behaves, so nothing surprises you:
 - Outgoing webhooks from workflows refuse private and internal addresses (checked after DNS resolution, no redirects). `WORKFLOW_ALLOW_PRIVATE_WEBHOOKS` is refused in production.
 - Stripe webhooks are verified by signature with a five-minute replay window; each event is applied once.
 - Keep `.env` out of version control and rotate any key that has been pasted anywhere public.
+- Dependencies: `npm audit --omit=dev` reports nothing. Prisma's tooling pulled in a vulnerable `effect` (a regular-expression slowdown); the root `package.json` `overrides` pins the fixed 3.22.5, and `npm update effect` is how to refresh it after changing it. The only open advisories are in `electron-builder`'s `minimatch` (dev-only packaging tools that read this repository's own files, no fix upstream yet); re-run `npm audit` when upgrading `electron-builder`.
+- Live typing: edits are size-capped, writes need a non-guest member, requests have their own rate-limit allowance, and the server refuses edits from a source the client has retired.
 
 ## 10. Desktop app
 
