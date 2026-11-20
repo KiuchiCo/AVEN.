@@ -4,7 +4,7 @@ import { applySlash, duplicateBlock, filterSlash, findSlash, hasInlineMarks, mak
 
 const b = (id, text, type = 'PARAGRAPH', extra = {}) => ({ id, type, text, checked: false, ...extra });
 let counter = 0; const newId = () => `n${++counter}`;
-const label = (type) => type.toLowerCase().replace('_', ' ');
+const label = (item) => item.id.replace(/-/g, ' ');
 
 test('findSlash needs a slash at the start or after a space', () => {
   assert.deepEqual(findSlash('/head', 5), { start: 0, query: 'head' });
@@ -14,8 +14,10 @@ test('findSlash needs a slash at the start or after a space', () => {
 });
 
 test('filterSlash ranks names first and finds by keyword', () => {
-  assert.equal(filterSlash('', label).length, 12);
+  assert.equal(filterSlash('', label).length, 38);
   assert.equal(filterSlash('h1', label)[0].type, 'HEADING_1');
+  assert.equal(filterSlash('toggle heading 2', label)[0].id, 'toggle-heading-2');
+  assert.equal(filterSlash('donut', label)[0].id, 'chart-donut');
   assert.equal(filterSlash('task', label)[0].type, 'TODO');
   assert.deepEqual(filterSlash('zzzz', label), []);
 });
@@ -78,12 +80,25 @@ test('moving, reordering and duplicating blocks', () => {
 });
 
 test('slash choices transform the block or insert media', () => {
-  const heading = applySlash([b('a', '/h1')], 'a', { start: 0, query: 'h1' }, 3, 'HEADING_1', newId);
+  const heading = applySlash([b('a', '/h1')], 'a', { start: 0, query: 'h1' }, 3, { type: 'HEADING_1' }, newId);
   assert.deepEqual(heading.blocks.map((x) => `${x.type}:${x.text}`), ['HEADING_1:']);
-  const divider = applySlash([b('a', '/div')], 'a', { start: 0, query: 'div' }, 4, 'DIVIDER', newId);
+  const divider = applySlash([b('a', '/div')], 'a', { start: 0, query: 'div' }, 4, { type: 'DIVIDER' }, newId);
   assert.deepEqual(divider.blocks.map((x) => x.type), ['DIVIDER', 'PARAGRAPH']);
-  const table = applySlash([b('a', 'Intro /table')], 'a', { start: 6, query: 'table' }, 12, 'TABLE', newId);
+  const table = applySlash([b('a', 'Intro /table')], 'a', { start: 6, query: 'table' }, 12, { type: 'TABLE' }, newId);
   assert.deepEqual(table.blocks.map((x) => x.type), ['PARAGRAPH', 'TABLE', 'PARAGRAPH']); assert.equal(table.blocks[0].text, 'Intro'); assert.equal(table.blocks[1].rows.length, 2);
+});
+
+test('new block types: toggle headings, database views and media get the right fields', () => {
+  const toggle = applySlash([b('a', '/tog')], 'a', { start: 0, query: 'tog' }, 4, { type: 'TOGGLE', patch: { level: 2 } }, newId);
+  assert.equal(toggle.blocks[0].type, 'TOGGLE'); assert.equal(toggle.blocks[0].level, 2); assert.equal(toggle.blocks[0].body, '');
+  const chart = applySlash([b('a', '/donut')], 'a', { start: 0, query: 'donut' }, 6, { type: 'DATABASE', patch: { view: 'DONUT' } }, newId);
+  assert.deepEqual(chart.blocks.map((x) => x.type), ['DATABASE', 'PARAGRAPH']); assert.equal(chart.blocks[0].view, 'DONUT');
+  const video = applySlash([b('a', '/video')], 'a', { start: 0, query: 'video' }, 6, { type: 'VIDEO' }, newId);
+  assert.deepEqual(video.blocks.map((x) => x.type), ['VIDEO', 'PARAGRAPH']);
+  assert.deepEqual(markdownShortcut(b('a', ''), '### '), { type: 'HEADING_3', text: '' });
+  assert.deepEqual(markdownShortcut(b('a', ''), '#### '), { type: 'HEADING_4', text: '' });
+  const enter = pressEnter([b('a', 'Details', 'TOGGLE', { level: 0, body: 'x' })], 'a', 7, 7, newId);
+  assert.equal(enter.blocks[1].type, 'PARAGRAPH');
 });
 
 test('toggleMark wraps, unwraps and handles an empty selection', () => {

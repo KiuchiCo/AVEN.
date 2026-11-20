@@ -2,6 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { FavouriteStar } from './favourites';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useT } from '../i18n';
 import type { Key } from '../i18n/en';
@@ -75,7 +76,8 @@ export function DatabasesWorkspace() {
   const { getToken } = useAuth();
   const { workspace } = useWorkspaceSession();
   const [databases, setDatabases] = useState<WorkspaceDatabase[]>([]);
-  const [selectedId, setSelectedId] = useState('');
+  const wantedDatabase = useSearchParams().get('db') ?? '';
+  const [selectedId, setSelectedId] = useState(wantedDatabase);
   const [editingId, setEditingId] = useState('');
   const [draft, setDraft] = useState<RecordValues>({});
   const [filterQuery, setFilterQuery] = useState('');

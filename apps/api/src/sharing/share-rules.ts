@@ -1,11 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 
 export const shareLimits = { activePerDocument: 10, expiryDays: [7, 30, 90] as const } as const;
-export type PublicBlock = { type: string; text: string; checked?: boolean; rows?: string[][]; image?: string | null };
+export type PublicBlock = { type: string; text: string; checked?: boolean; rows?: string[][]; image?: string | null; body?: string; level?: number };
 
-const blockTypes = new Set(['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'DIVIDER', 'TABLE', 'IMAGE']);
+const blockTypes = new Set(['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'TOGGLE', 'DIVIDER', 'TABLE', 'IMAGE']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type Raw = { type?: unknown; text?: unknown; checked?: unknown; rows?: unknown; fileId?: unknown };
+type Raw = { type?: unknown; text?: unknown; checked?: unknown; rows?: unknown; fileId?: unknown; body?: unknown; level?: unknown };
 
 function blocksOf(content: string): Raw[] | null {
   try {
@@ -31,6 +31,7 @@ export function publicBlocks(content: string, imageUrl: (fileId: string) => stri
     const type = block.type as string; const text = typeof block.text === 'string' ? block.text.slice(0, 20_000) : '';
     if (type === 'TABLE') return { type, text: '', rows: (Array.isArray(block.rows) ? block.rows : []).slice(0, 30).map((row) => (Array.isArray(row) ? row.slice(0, 8).map((cell) => (typeof cell === 'string' ? cell.slice(0, 500) : '')) : [])) };
     if (type === 'IMAGE') return { type, text: text.slice(0, 300), image: typeof block.fileId === 'string' && uuid.test(block.fileId) ? imageUrl(block.fileId.toLowerCase()) : null };
+    if (type === 'TOGGLE') return { type, text, body: typeof block.body === 'string' ? block.body.slice(0, 20_000) : '', level: typeof block.level === 'number' && block.level >= 0 && block.level <= 3 ? Math.floor(block.level) : 0 };
     return { type, text, ...(type === 'TODO' ? { checked: block.checked === true } : {}) };
   });
 }

@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Shared document · AVEN.', robots: { index: false, follow: false }, referrer: 'no-referrer' };
 
 const api = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
-type Block = { type: string; text: string; checked?: boolean; rows?: string[][]; image?: string | null };
+type Block = { type: string; text: string; checked?: boolean; rows?: string[][]; image?: string | null; body?: string };
 type Shared = { title: string; updatedAt: string; blocks: Block[] };
 
 async function load(token: string): Promise<Shared | null> {
@@ -23,6 +23,9 @@ function Blocks({ blocks }: { blocks: Block[] }) {
     switch (block.type) {
       case 'HEADING_1': return <h2 key={index}><RichText text={block.text} /></h2>;
       case 'HEADING_2': return <h3 key={index}><RichText text={block.text} /></h3>;
+      case 'HEADING_3': return <h4 key={index}><RichText text={block.text} /></h4>;
+      case 'HEADING_4': return <h5 key={index}><RichText text={block.text} /></h5>;
+      case 'TOGGLE': return <details key={index}><summary><RichText text={block.text} /></summary><p>{block.body}</p></details>;
       case 'BULLET': return <p key={index} className="shared-doc__item"><span aria-hidden="true">•</span><RichText text={block.text} /></p>;
       case 'NUMBERED': return <p key={index} className="shared-doc__item"><span aria-hidden="true">{number}.</span><RichText text={block.text} /></p>;
       case 'TODO': return <p key={index} className="shared-doc__item"><input type="checkbox" checked={Boolean(block.checked)} disabled aria-label={block.checked ? 'Done' : 'Not done'} /><RichText text={block.text} /></p>;

@@ -3,34 +3,34 @@
 // Inline formatting is stored inside a block's text as Markdown-style marks (**bold**, *italic*, `code`, ~~strike~~, [label](url)),
 // which keeps the live text engine, version history, search and exports working on plain strings.
 
-export type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER' | 'TABLE' | 'IMAGE';
-export type Block = { id: string; type: BlockType; text: string; checked?: boolean; rows?: string[][]; fileId?: string };
+import { blockCatalog, type CatalogEntry } from './block-catalog.ts';
+
+export type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'HEADING_3' | 'HEADING_4' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'TOGGLE'
+  | 'DIVIDER' | 'TABLE' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'BOOKMARK' | 'PAGE_LINK' | 'DATABASE' | 'DATABASE_LINK' | 'TOC' | 'BREADCRUMB' | 'BUTTON';
+export type DatabaseView = 'TABLE' | 'BOARD' | 'GALLERY' | 'LIST' | 'BAR_V' | 'BAR_H' | 'DONUT' | 'NUMBER';
+/** `text` is the block's main text (a caption for media, the title of a toggle, the label of a button). Other fields belong to specific block types. */
+export type Block = {
+  id: string; type: BlockType; text: string; checked?: boolean;
+  rows?: string[][]; fileId?: string;           // table, image / video / audio / file
+  level?: number; body?: string;                // toggle: 0 = plain toggle, 1-3 = toggle heading; body is the folded content
+  url?: string;                                 // bookmark
+  docId?: string;                               // link to another document
+  databaseId?: string; view?: DatabaseView;     // database views and charts
+  create?: boolean; linked?: boolean;           // set on a fresh block that still needs its target created or chosen
+};
 export type Focus = { id: string; caret: number };
 export type EditResult = { blocks: Block[]; focus: Focus };
 
-export const blockTypeList: BlockType[] = ['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'DIVIDER', 'TABLE', 'IMAGE'];
-const textual = new Set<BlockType>(['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT']);
+export const blockTypeList: BlockType[] = [...new Set(blockCatalog.map((entry) => entry.type))];
+const textual = new Set<BlockType>(['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'TOGGLE']);
 const listLike = new Set<BlockType>(['BULLET', 'NUMBERED', 'TODO']);
 export const isTextBlock = (type: BlockType) => textual.has(type);
-export const blankBlock = (id: string, type: BlockType = 'PARAGRAPH'): Block => ({ id, type, text: '', checked: false, ...(type === 'TABLE' ? { rows: [['', ''], ['', '']] } : {}) });
+export const blankBlock = (id: string, type: BlockType = 'PARAGRAPH', patch: Partial<Block> = {}): Block => ({ id, type, text: type === 'BUTTON' ? 'Create task' : '', checked: false, ...(type === 'TABLE' ? { rows: [['', ''], ['', '']] } : {}), ...(type === 'TOGGLE' ? { level: 0, body: '' } : {}), ...(type === 'DATABASE' ? { view: 'TABLE' as DatabaseView } : {}), ...patch });
 
 // ---- Slash menu ------------------------------------------------------------------------------------------------------
 
-export type SlashItem = { type: BlockType; keywords: string[] };
-export const slashItems: SlashItem[] = [
-  { type: 'PARAGRAPH', keywords: ['text', 'paragraph', 'plain', 'p'] },
-  { type: 'HEADING_1', keywords: ['heading', 'heading 1', 'h1', 'title', 'big'] },
-  { type: 'HEADING_2', keywords: ['heading 2', 'h2', 'subheading', 'subtitle'] },
-  { type: 'BULLET', keywords: ['bullet', 'bulleted list', 'list', 'ul', 'unordered'] },
-  { type: 'NUMBERED', keywords: ['numbered', 'numbered list', 'ordered', 'ol', 'list'] },
-  { type: 'TODO', keywords: ['todo', 'to-do', 'task', 'checkbox', 'check'] },
-  { type: 'QUOTE', keywords: ['quote', 'blockquote', 'cite'] },
-  { type: 'CODE', keywords: ['code', 'snippet', 'pre', 'monospace'] },
-  { type: 'CALLOUT', keywords: ['callout', 'note', 'tip', 'info', 'highlight'] },
-  { type: 'DIVIDER', keywords: ['divider', 'line', 'rule', 'separator', 'hr'] },
-  { type: 'TABLE', keywords: ['table', 'grid', 'rows', 'columns'] },
-  { type: 'IMAGE', keywords: ['image', 'picture', 'photo', 'media', 'upload'] },
-];
+export type SlashItem = CatalogEntry;
+export const slashItems: SlashItem[] = blockCatalog;
 
 /** The slash command being typed at the caret: a "/" at the start of a block or after a space, followed by the query. */
 export function findSlash(text: string, caret: number): { start: number; query: string } | null {
@@ -41,11 +41,11 @@ export function findSlash(text: string, caret: number): { start: number; query: 
 }
 
 /** Block types matching what was typed, best matches first. `label` is the visible (translated) name of each type. */
-export function filterSlash(query: string, label: (type: BlockType) => string): SlashItem[] {
+export function filterSlash(query: string, label: (item: SlashItem) => string): SlashItem[] {
   const q = query.trim().toLocaleLowerCase();
   if (!q) return slashItems;
   const score = (item: SlashItem) => {
-    const name = label(item.type).toLocaleLowerCase();
+    const name = label(item).toLocaleLowerCase();
     if (name.startsWith(q)) return 0;
     if (item.keywords.some((word) => word.startsWith(q))) return 1;
     if (name.includes(q) || item.keywords.some((word) => word.includes(q))) return 2;
@@ -60,7 +60,7 @@ export function filterSlash(query: string, label: (type: BlockType) => string): 
 export function markdownShortcut(block: Block, text: string): Partial<Block> | null {
   if (block.type !== 'PARAGRAPH') return null;
   const rules: [RegExp, Partial<Block>][] = [
-    [/^# $/, { type: 'HEADING_1' }], [/^## $/, { type: 'HEADING_2' }],
+    [/^# $/, { type: 'HEADING_1' }], [/^## $/, { type: 'HEADING_2' }], [/^### $/, { type: 'HEADING_3' }], [/^#### $/, { type: 'HEADING_4' }],
     [/^[-*+] $/, { type: 'BULLET' }], [/^\d+[.)] $/, { type: 'NUMBERED' }],
     [/^\[ ?\] $/, { type: 'TODO', checked: false }], [/^\[[xX]\] $/, { type: 'TODO', checked: true }],
     [/^> $/, { type: 'QUOTE' }], [/^```\w* ?$/, { type: 'CODE' }], [/^!> $/, { type: 'CALLOUT' }],
@@ -71,6 +71,19 @@ export function markdownShortcut(block: Block, text: string): Partial<Block> | n
 
 /** "---" or "***" on its own followed by Enter becomes a divider. */
 export const isDividerShortcut = (text: string) => /^(-{3,}|\*{3,}|_{3,})$/.test(text);
+
+/** Turns a block into another kind from the catalogue, keeping its text. Fields that belong to the new kind start empty. */
+export function convertBlock(block: Block, entry: Pick<CatalogEntry, 'type' | 'patch'>): Block {
+  const base = blankBlock(block.id, entry.type, entry.patch);
+  const keepsText = block.text.length > 0 && entry.type !== 'DIVIDER' && entry.type !== 'TABLE' && entry.type !== 'TOC' && entry.type !== 'BREADCRUMB';
+  return { ...base, text: keepsText ? block.text : base.text, checked: entry.type === 'TODO' ? Boolean(block.checked) : false };
+}
+
+/** 1-4 for headings and toggle headings, 0 for everything else. Used by the outline and the table of contents. */
+export function headingLevel(block: Pick<Block, 'type' | 'level'>): number {
+  if (block.type === 'HEADING_1') return 1; if (block.type === 'HEADING_2') return 2; if (block.type === 'HEADING_3') return 3; if (block.type === 'HEADING_4') return 4;
+  return block.type === 'TOGGLE' && block.level ? block.level : 0;
+}
 
 // ---- Splitting, merging, moving --------------------------------------------------------------------------------------
 
@@ -155,25 +168,26 @@ export function duplicateBlock(blocks: Block[], id: string, newId: () => string)
   return { blocks: [...blocks.slice(0, at + 1), copy, ...blocks.slice(at + 1)], focus: { id: copy.id, caret: copy.text.length } };
 }
 
-/** Applies a slash choice: removes "/query" from the text and turns the block into the chosen type (media and tables get what they need). */
-export function applySlash(blocks: Block[], id: string, slash: { start: number; query: string }, caret: number, type: BlockType, newId: () => string): EditResult | null {
+/** Applies a slash choice: removes "/query" from the text. Text blocks are turned into the chosen type; other blocks are inserted after it. */
+export function applySlash(blocks: Block[], id: string, slash: { start: number; query: string }, caret: number, entry: Pick<CatalogEntry, 'type' | 'patch'>, newId: () => string): EditResult | null {
   const at = indexOf(blocks, id); if (at < 0) return null;
   const block = blocks[at];
   const text = block.text.slice(0, slash.start) + block.text.slice(caret);
   const rest = text.replace(/\s+$/, '');
-  if (type === 'DIVIDER') {
-    const created = blankBlock(newId());
-    const kept: Block[] = rest ? [{ ...block, text: rest }, blankBlock(newId(), 'DIVIDER')] : [blankBlock(block.id, 'DIVIDER')];
-    return { blocks: [...blocks.slice(0, at), ...kept, created, ...blocks.slice(at + 1)], focus: { id: created.id, caret: 0 } };
+  const { type, patch = {} } = entry;
+  if (isTextBlock(type) && type !== 'TOGGLE') {
+    const changed: Block = { ...block, ...patch, type, text, checked: type === 'TODO' ? Boolean(block.checked) : false };
+    return { blocks: [...blocks.slice(0, at), changed, ...blocks.slice(at + 1)], focus: { id, caret: slash.start } };
   }
-  if (type === 'TABLE' || type === 'IMAGE') {
-    const created = blankBlock(newId(), type);
-    const kept: Block[] = rest ? [{ ...block, text: rest }] : [];
-    const after = blankBlock(newId());
-    return { blocks: [...blocks.slice(0, at), ...kept, created, after, ...blocks.slice(at + 1)], focus: { id: after.id, caret: 0 } };
+  if (type === 'TOGGLE') {
+    // a toggle keeps the text typed so far as its title
+    const changed: Block = { ...blankBlock(block.id, 'TOGGLE', patch), text };
+    return { blocks: [...blocks.slice(0, at), changed, ...blocks.slice(at + 1)], focus: { id, caret: slash.start } };
   }
-  const changed: Block = { ...block, type, text, checked: type === 'TODO' ? Boolean(block.checked) : false };
-  return { blocks: [...blocks.slice(0, at), changed, ...blocks.slice(at + 1)], focus: { id, caret: slash.start } };
+  const created = blankBlock(newId(), type, patch);
+  const after = blankBlock(newId());
+  const head = rest || block.type !== 'PARAGRAPH' ? [...blocks.slice(0, at), ...(rest ? [{ ...block, text: rest }] : [block])] : blocks.slice(0, at);
+  return { blocks: [...head, created, after, ...blocks.slice(at + 1)], focus: { id: after.id, caret: 0 } };
 }
 
 // ---- Inline formatting -----------------------------------------------------------------------------------------------

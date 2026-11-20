@@ -69,5 +69,5 @@ export function useFilesApi() {
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }, [fetchBlob]);
 
-  return { call, upload, download, preview, workspaceId: workspace.id, role: workspace.role };
+  return { call, upload, download, preview, fetchBlob, workspaceId: workspace.id, role: workspace.role };
 }

@@ -10,8 +10,11 @@ import { useWorkspaceSession } from '../../workspace-shell';
 import { AttachmentsPanel } from '../../files/attachments-panel';
 import { ImageBlock, TableBlock } from './document-blocks';
 import { SharePanel } from './share-panel';
-import { FormatBar, RichText, SlashMenu, slashCount } from './editor-ui';
-import { applySlash, duplicateBlock as duplicateIn, filterSlash, findSlash, hasInlineMarks, isTextBlock, makeLink, markdownShortcut, moveBlockBy, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, toggleMark, type EditResult, type Mark } from './editor-model';
+import { BlockBrowser, FormatBar, RichText, SlashMenu, slashCount } from './editor-ui';
+import { BookmarkBlock, BreadcrumbBlock, ButtonBlock, DatabaseBlock, DatabaseLinkBlock, MediaBlock, PageLinkBlock, TocBlock } from './block-views';
+import { blockCatalog, iconForBlock, type CatalogEntry } from './block-catalog';
+import { BlockIcon } from '../../block-icons';
+import { applySlash, blankBlock, blockTypeList, convertBlock, duplicateBlock as duplicateIn, headingLevel, filterSlash, findSlash, hasInlineMarks, isTextBlock, makeLink, markdownShortcut, moveBlockBy, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, toggleMark, type EditResult, type Mark } from './editor-model';
 import { FavouriteStar } from '../../favourites';
 import { readEvents } from '../../messages/sse';
 import { transformPosition } from '@aven/collab';
@@ -30,14 +33,15 @@ class ConflictError extends Error { constructor(message: string, readonly curren
 class OfflineError extends Error {}
 /** The server answered with an error; `status` is its HTTP status. */
 class HttpError extends Error { constructor(message: string, readonly status: number) { super(message); } }
-const blockTypes: { type: BlockType; label: Key }[] = (['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CODE', 'CALLOUT', 'DIVIDER', 'TABLE', 'IMAGE'] as const).map((type) => ({ type, label: `bt.${type}` as Key }));
+/** Blocks a person can switch an existing block to (the "create new …" variants are only for inserting). */
+const selectEntries = blockCatalog.filter((entry) => entry.id !== 'database-inline' && entry.id !== 'database-linked');
 
 function createBlock(type: BlockType = 'PARAGRAPH'): Block { return { id: crypto.randomUUID(), type, text: '', checked: false }; }
 const readOnlyRole = (role: string | null) => role === 'GUEST';
 function parseBlocks(content: string): Block[] {
   try {
     const value = JSON.parse(content) as { format?: string; blocks?: Block[] };
-    if (value.format === 'aven-doc-v1' && Array.isArray(value.blocks) && value.blocks.every((block) => typeof block.id === 'string' && blockTypes.some((option) => option.type === block.type) && typeof block.text === 'string')) return value.blocks.length ? value.blocks : [createBlock()];
+    if (value.format === 'aven-doc-v1' && Array.isArray(value.blocks) && value.blocks.every((block) => typeof block.id === 'string' && blockTypeList.includes(block.type) && typeof block.text === 'string')) return value.blocks.length ? value.blocks : [createBlock()];
   } catch { /* Existing plain-text documents are opened as a first paragraph. */ }
   return [content ? { ...createBlock(), text: content } : createBlock()];
 }
@@ -91,7 +95,9 @@ export default function DocumentEditorPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [versionLabel, setVersionLabel] = useState('');
   const [commentDraft, setCommentDraft] = useState('');
-  const [blockType, setBlockType] = useState<BlockType>('PARAGRAPH');
+  const [entryId, setEntryId] = useState<string>('document-text');
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [closedToggles, setClosedToggles] = useState<string[]>([]);
   const [creatingTask, setCreatingTask] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -384,7 +390,8 @@ export default function DocumentEditorPage() {
     if (Object.keys(update).length === 1 && typeof update.text === 'string' && liveEngine.current?.edit(id, update.text)) { const text = update.text; setBlocks((current) => current.map((block) => (block.id === id ? { ...block, text } : block))); return; }
     setBlocks((current) => current.map((block) => block.id === id ? { ...block, ...update } : block)); markChanged(); }
   function insertBlock(afterId?: string) {
-    const block = createBlock(blockType);
+    const entry = blockCatalog.find((item) => item.id === entryId) ?? blockCatalog[0];
+    const block = blankBlock(crypto.randomUUID(), entry.type, entry.patch);
     setBlocks((current) => { if (!afterId) return [...current, block]; const index = current.findIndex((item) => item.id === afterId); return [...current.slice(0, index + 1), block, ...current.slice(index + 1)]; });
     markChanged();
     window.setTimeout(() => globalThis.document.getElementById(`block-${block.id}`)?.focus(), 0);
@@ -395,7 +402,7 @@ export default function DocumentEditorPage() {
   function removeBlock(id: string) { setBlocks((current) => current.length === 1 ? [createBlock()] : current.filter((block) => block.id !== id)); markChanged(); }
 
   // ---- Writing: slash menu, Markdown shortcuts, Enter/Backspace, inline formatting, drag and drop ----------------------
-  const typeLabel = useCallback((type: BlockType) => t(`bt.${type}` as Key), [t]);
+  const typeLabel = useCallback((item: CatalogEntry) => t(`blk.${item.id}` as Key), [t]);
   const fieldOf = (id: string) => globalThis.document.getElementById(`block-${id}`) as HTMLTextAreaElement | null;
   // Focus is applied after React has drawn the blocks, so a block that was just created can already receive it.
   const pendingFocus = useRef<{ id: string; caret: number; end?: number } | null>(null);
@@ -424,10 +431,10 @@ export default function DocumentEditorPage() {
     setSlash(found ? { blockId: block.id, start: found.start, query: found.query, index: 0 } : null);
     void index;
   }
-  function chooseSlash(type: BlockType) {
+  function chooseSlash(entry: CatalogEntry) {
     if (!slash) return;
     const field = fieldOf(slash.blockId);
-    const result = applySlash(blocks, slash.blockId, { start: slash.start, query: slash.query }, field?.selectionStart ?? slash.start + 1 + slash.query.length, type, makeId);
+    const result = applySlash(blocks, slash.blockId, { start: slash.start, query: slash.query }, field?.selectionStart ?? slash.start + 1 + slash.query.length, entry, makeId);
     if (result) commit(result);
   }
   function applyMark(block: Block, mark: Mark) {
@@ -458,7 +465,7 @@ export default function DocumentEditorPage() {
       if (event.key === 'Escape') { event.preventDefault(); setSlash(null); return; }
       if (event.key === 'Enter' || event.key === 'Tab') {
         event.preventDefault();
-        const choice = filterSlash(slash.query, typeLabel)[slash.index]?.type; if (choice) chooseSlash(choice); else setSlash(null);
+        const choice = filterSlash(slash.query, typeLabel)[slash.index]; if (choice) chooseSlash(choice); else setSlash(null);
         return;
       }
     }
@@ -493,9 +500,33 @@ export default function DocumentEditorPage() {
     setDragId(null); setDropBefore(undefined);
   }
 
+  const crumbs = [t('ed.crumbDocuments'), document?.project?.name ?? workspace.name, document?.title ?? title];
+  const headingsForToc = blocks.filter((block) => headingLevel(block) > 0 && block.text.trim()).map((block) => ({ id: block.id, text: block.text, level: headingLevel(block) }));
+  async function runButton(block: Block) {
+    const taskTitle = (block.body ?? '').trim(); if (!taskTitle) return;
+    setCreatingTask(block.id); setError(''); setSuccess('');
+    try { await request(`/workspaces/${workspace.id}/tasks`, { method: 'POST', body: JSON.stringify({ title: taskTitle, projectId: document?.project?.id }) }); setSuccess(document?.project ? t('ed.taskAddedProject', { name: document.project.name }) : t('ed.taskAdded')); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create the task.'); }
+    finally { setCreatingTask(''); }
+  }
+  /** The blocks that are not plain text boxes (media, links, databases, charts, contents, buttons). */
+  const special = (block: Block): React.ReactNode | null => {
+    const readOnly = readOnlyRole(workspace.role);
+    switch (block.type) {
+      case 'VIDEO': case 'AUDIO': case 'FILE': return <MediaBlock kind={block.type} fileId={block.fileId} caption={block.text} readOnly={readOnly} onPick={(file) => changeBlock(block.id, { fileId: file.id, ...(block.type === 'FILE' ? { text: file.name } : {}) })} onCaption={(text) => changeBlock(block.id, { text })} />;
+      case 'BOOKMARK': return <BookmarkBlock url={block.url ?? ''} title={block.text} readOnly={readOnly} onChange={(change) => changeBlock(block.id, change)} />;
+      case 'PAGE_LINK': return <PageLinkBlock docId={block.docId} create={Boolean(block.create)} currentId={documentId} projectId={document?.project?.id} readOnly={readOnly} onPick={(docId) => changeBlock(block.id, { docId, create: false })} />;
+      case 'DATABASE': return <DatabaseBlock databaseId={block.databaseId} view={block.view ?? 'TABLE'} linked={Boolean(block.linked)} create={Boolean(block.create)} readOnly={readOnly} onChange={(change) => changeBlock(block.id, change)} />;
+      case 'DATABASE_LINK': return <DatabaseLinkBlock databaseId={block.databaseId} readOnly={readOnly} onPick={(id) => changeBlock(block.id, { databaseId: id, create: false })} />;
+      case 'TOC': return <TocBlock headings={headingsForToc} />;
+      case 'BREADCRUMB': return <BreadcrumbBlock crumbs={crumbs} />;
+      case 'BUTTON': return <ButtonBlock label={block.text} taskTitle={block.body ?? ''} readOnly={readOnly} running={creatingTask === block.id} onLabel={(text) => changeBlock(block.id, { text })} onTaskTitle={(body) => changeBlock(block.id, { body })} onRun={() => void runButton(block)} />;
+      default: return null;
+    }
+  };
   const richView = (block: Block) => isTextBlock(block.type) && block.type !== 'CODE' && editingId !== block.id && hasInlineMarks(block.text);
   const others = useMemo(() => viewers.filter((viewer) => viewer.id !== user.id), [user.id, viewers]);
-  const outline = useMemo(() => blocks.filter((block) => (block.type === 'HEADING_1' || block.type === 'HEADING_2') && block.text.trim()), [blocks]);
+  const outline = useMemo(() => blocks.filter((block) => headingLevel(block) > 0 && block.text.trim()), [blocks]);
 
   async function saveVersion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -548,15 +579,16 @@ export default function DocumentEditorPage() {
     {offline && dirty && <p className="productivity-error" role="status">{t('ed.offlineKept')}</p>}
     {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>{t('ed.retry')}</button></p>}
     {loading ? <p className="productivity-message">{t('ed.opening')}</p> : !document ? <div className="workspace-section-empty"><h2>{t('ed.unavailable')}</h2><p>{t('ed.unavailableBody')}</p><Link href="/workspace/documents">{t('ed.back')}</Link></div> : <>
-      <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={blockType} onChange={(event) => setBlockType(event.target.value as BlockType)}>{blockTypes.map((item) => <option key={item.type} value={item.type}>{t(item.label)}</option>)}</select></label><button type="button" onClick={() => insertBlock()}>{t('ed.addBlock')}</button><span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
+      <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={entryId} onChange={(event) => setEntryId(event.target.value)}>{(['basic', 'media', 'database', 'advanced'] as const).map((category) => <optgroup key={category} label={t(`blk.cat.${category}` as Key)}>{blockCatalog.filter((entry) => entry.category === category).map((entry) => <option key={entry.id} value={entry.id}>{t(`blk.${entry.id}` as Key)}</option>)}</optgroup>)}</select></label><button type="button" onClick={() => insertBlock()}>{t('ed.addBlock')}</button><button type="button" onClick={() => setBrowserOpen(true)}><BlockIcon id="database-gallery" size={16} />{t('blk.browse')}</button><span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
+      {browserOpen && !readOnlyRole(workspace.role) && <BlockBrowser onClose={() => setBrowserOpen(false)} onPick={(entry) => { const created = blankBlock(crypto.randomUUID(), entry.type, entry.patch); setBlocks((current) => [...current, created]); markChanged(); setBrowserOpen(false); setSuccess(t('ed.addBlockFromBrowser', { name: t(`blk.${entry.id}` as Key) })); if (isTextBlock(entry.type)) focusAt(created.id, 0); }} />}
       <div className="document-studio__layout">
         <main className="document-studio__paper">
           <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}</p>
           <input className="document-studio__title" value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={200} aria-label={t('ed.titleLabel')} />
-          <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}${others.some((viewer) => viewer.blockId === block.id) ? ' document-block--others' : ''}${dragId === block.id ? ' document-block--dragging' : ''}${dropBefore === block.id && dragId && dragId !== block.id ? ' document-block--drop' : ''}`} key={block.id} style={blockColour(others, block.id)} onDragOver={(event) => { if (dragId) { event.preventDefault(); setDropBefore(block.id); } }} onDrop={(event) => { event.preventDefault(); dropOn(block.id); }} onFocus={() => { announceFocus(block.id); if (!readOnlyRole(workspace.role) && block.type !== 'DIVIDER' && block.type !== 'TABLE' && block.type !== 'IMAGE') void liveEngine.current?.join(block.id); }} onBlur={() => announceFocus(null)}>
+          <div className="document-studio__blocks">{blocks.map((block, index) => <section className={`document-block document-block--${block.type.toLowerCase()}${block.type === 'TOGGLE' ? ` document-block--toggle-l${block.level ?? 0}` : ''}${others.some((viewer) => viewer.blockId === block.id) ? ' document-block--others' : ''}${dragId === block.id ? ' document-block--dragging' : ''}${dropBefore === block.id && dragId && dragId !== block.id ? ' document-block--drop' : ''}`} key={block.id} style={blockColour(others, block.id)} onDragOver={(event) => { if (dragId) { event.preventDefault(); setDropBefore(block.id); } }} onDrop={(event) => { event.preventDefault(); dropOn(block.id); }} onFocus={() => { announceFocus(block.id); if (!readOnlyRole(workspace.role) && block.type !== 'DIVIDER' && block.type !== 'TABLE' && block.type !== 'IMAGE') void liveEngine.current?.join(block.id); }} onBlur={() => announceFocus(null)}>
             {others.filter((viewer) => viewer.blockId === block.id).length > 0 && <span className="document-block__presence" role="status">{t('ed.editingHere', { names: others.filter((viewer) => viewer.blockId === block.id).map((viewer) => viewer.name).join(', ') })}</span>}
-            <div className="document-block__controls">{!readOnlyRole(workspace.role) && <button type="button" className="document-block__drag" draggable aria-label={t('ed.dragHandle')} title={t('ed.dragHandle')} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', block.id); setDragId(block.id); }} onDragEnd={() => { setDragId(null); setDropBefore(undefined); }}>⋮⋮</button>}<select aria-label={t('ed.blockTypeFor', { n: index + 1 })} value={block.type} onChange={(event) => changeBlock(block.id, { type: event.target.value as BlockType })}>{blockTypes.map((option) => <option value={option.type} key={option.type}>{t(option.label)}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label={t('ed.moveUp')}>↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label={t('ed.moveDown')}>↓</button>{!readOnlyRole(workspace.role) && <button type="button" onClick={() => { const result = duplicateIn(blocks, block.id, makeId); if (result) commit(result); }} aria-label={t('ed.duplicateBlock')} title={t('ed.duplicateBlock')}>⧉</button>}<button type="button" onClick={() => removeBlock(block.id)} aria-label={t('ed.deleteBlock')}>×</button></div>{selected?.blockId === block.id && <FormatBar onMark={(mark) => applyMark(block, mark)} onLink={() => applyLink(block)} />}
-            {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : <div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label={t('ed.markTodo')} />}<span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span>{richView(block) && <div className="document-block__rich" onMouseDown={(event) => { if ((event.target as HTMLElement).closest('a')) return; event.preventDefault(); const field = fieldOf(block.id); if (field) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } }}><RichText text={block.text} /></div>}<textarea id={`block-${block.id}`} value={block.text} className={richView(block) ? 'document-block__field--hidden' : undefined} onChange={(event) => onText(block, index, event.target.value, event.target.selectionStart)} onKeyDown={(event) => onKey(block, index, event)} onSelect={(event) => onSelect(block, event)} onFocus={() => setEditingId(block.id)} onBlur={() => { setEditingId((current) => (current === block.id ? null : current)); setSelected((current) => (current?.blockId === block.id ? null : current)); }} placeholder={block.type === 'CODE' ? t('ed.phCode') : block.type === 'CALLOUT' ? t('ed.phCallout') : t('ed.phText')} aria-label={t('ed.blockLabel', { type: (() => { const found = blockTypes.find((option) => option.type === block.type); return found ? t(found.label) : t('ed.text'); })(), n: index + 1 })} rows={block.type === 'HEADING_1' || block.type === 'HEADING_2' ? 1 : 2} /></div>}
+            <div className="document-block__controls">{!readOnlyRole(workspace.role) && <button type="button" className="document-block__drag" draggable aria-label={t('ed.dragHandle')} title={t('ed.dragHandle')} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', block.id); setDragId(block.id); }} onDragEnd={() => { setDragId(null); setDropBefore(undefined); }}>⋮⋮</button>}<select aria-label={t('ed.blockTypeFor', { n: index + 1 })} value={iconForBlock(block)} onChange={(event) => { const entry = selectEntries.find((item) => item.id === event.target.value); if (entry) { liveEngine.current?.clear(); setBlocks((current) => current.map((item) => (item.id === block.id ? convertBlock(item, entry) : item))); markChanged(); } }}>{selectEntries.map((entry) => <option value={entry.id} key={entry.id}>{t(`blk.${entry.id}` as Key)}</option>)}</select><button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} aria-label={t('ed.moveUp')}>↑</button><button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} aria-label={t('ed.moveDown')}>↓</button>{!readOnlyRole(workspace.role) && <button type="button" onClick={() => { const result = duplicateIn(blocks, block.id, makeId); if (result) commit(result); }} aria-label={t('ed.duplicateBlock')} title={t('ed.duplicateBlock')}>⧉</button>}<button type="button" onClick={() => removeBlock(block.id)} aria-label={t('ed.deleteBlock')}>×</button></div>{selected?.blockId === block.id && <FormatBar onMark={(mark) => applyMark(block, mark)} onLink={() => applyLink(block)} />}
+            {block.type === 'DIVIDER' ? <hr /> : block.type === 'TABLE' ? <TableBlock rows={block.rows} readOnly={readOnlyRole(workspace.role)} onChange={(rows) => changeBlock(block.id, { rows })} /> : block.type === 'IMAGE' ? <ImageBlock fileId={block.fileId} caption={block.text} readOnly={readOnlyRole(workspace.role)} onPick={(fileId) => changeBlock(block.id, { fileId })} onCaption={(text) => changeBlock(block.id, { text })} /> : special(block) ?? <><div className="document-block__body">{block.type === 'TODO' && <input type="checkbox" checked={Boolean(block.checked)} onChange={(event) => changeBlock(block.id, { checked: event.target.checked })} aria-label={t('ed.markTodo')} />}{block.type === 'TOGGLE' ? <button type="button" className="document-toggle__chevron" aria-expanded={!closedToggles.includes(block.id)} aria-label={t('ed.toggleOpen')} onClick={() => setClosedToggles((current) => (current.includes(block.id) ? current.filter((id) => id !== block.id) : [...current, block.id]))}><span aria-hidden="true">▸</span></button> : <span className="document-block__prefix" aria-hidden="true">{block.type === 'BULLET' ? '•' : block.type === 'NUMBERED' ? `${index + 1}.` : ''}</span>}{richView(block) && <div className="document-block__rich" onMouseDown={(event) => { if ((event.target as HTMLElement).closest('a')) return; event.preventDefault(); const field = fieldOf(block.id); if (field) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } }}><RichText text={block.text} /></div>}<textarea id={`block-${block.id}`} value={block.text} className={richView(block) ? 'document-block__field--hidden' : undefined} onChange={(event) => onText(block, index, event.target.value, event.target.selectionStart)} onKeyDown={(event) => onKey(block, index, event)} onSelect={(event) => onSelect(block, event)} onFocus={() => setEditingId(block.id)} onBlur={() => { setEditingId((current) => (current === block.id ? null : current)); setSelected((current) => (current?.blockId === block.id ? null : current)); }} placeholder={block.type === 'TOGGLE' ? t('ed.togglePh') : block.type === 'CODE' ? t('ed.phCode') : block.type === 'CALLOUT' ? t('ed.phCallout') : t('ed.phText')} aria-label={t('ed.blockLabel', { type: t(`blk.${iconForBlock(block)}` as Key), n: index + 1 })} rows={headingLevel(block) > 0 || block.type === 'TOGGLE' ? 1 : 2} /></div>{block.type === 'TOGGLE' && !closedToggles.includes(block.id) && <textarea className="document-toggle__body" value={block.body ?? ''} readOnly={readOnlyRole(workspace.role)} rows={2} maxLength={20000} placeholder={t('ed.toggleBody')} aria-label={t('ed.toggleBody')} onChange={(event) => changeBlock(block.id, { body: event.target.value })} />}</>}
             {slash?.blockId === block.id && <SlashMenu query={slash.query} index={slash.index} onPick={chooseSlash} onHover={(position) => setSlash({ ...slash, index: position })} />}
             <CaretLayer blockId={block.id} cursors={remoteCursors[block.id] ?? []} text={block.text} />
             <div className="document-block__actions">{block.type === 'TODO' && block.text.trim() && <button type="button" disabled={creatingTask === block.id} onClick={() => void createTaskFromBlock(block)}>{creatingTask === block.id ? t('ed.creating') : t('ed.createTask')}</button>}<button className="document-block__insert" type="button" onClick={() => insertBlock(block.id)}>{t('ed.addBelow')}</button></div>
@@ -565,7 +597,7 @@ export default function DocumentEditorPage() {
         <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(['OUTLINE', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
           {activePanel === 'SHARE' && <SharePanel documentId={document.id} />}
           {activePanel === 'FILES' && <section className="document-studio__panel"><AttachmentsPanel target={{ documentId: document.id }} /></section>}
-          {activePanel === 'OUTLINE' && <section className="document-studio__panel"><h2>{t('ed.onThisPage')}</h2>{outline.length === 0 ? <p>{t('ed.outlineEmpty')}</p> : <nav>{outline.map((block) => <a className={block.type === 'HEADING_2' ? 'is-nested' : ''} key={block.id} href={`#block-${block.id}`}>{block.text}</a>)}</nav>}</section>}
+          {activePanel === 'OUTLINE' && <section className="document-studio__panel"><h2>{t('ed.onThisPage')}</h2>{outline.length === 0 ? <p>{t('ed.outlineEmpty')}</p> : <nav>{outline.map((block) => <a className={headingLevel(block) > 1 ? 'is-nested' : ''} key={block.id} href={`#block-${block.id}`}>{block.text}</a>)}</nav>}</section>}
           {activePanel === 'COMMENTS' && <section className="document-studio__panel"><h2>{t('ed.tab.comments')}</h2><form className="document-studio__comment-form" onSubmit={addComment}><textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={2000} required placeholder={t('ed.commentPh')} /><button type="submit">{t('ed.post')}</button></form><div className="document-studio__comments">{comments.length === 0 ? <p>{t('ed.commentsEmpty')}</p> : comments.map((comment) => <article className={comment.resolvedAt ? 'is-resolved' : ''} key={comment.id}><div><strong>{comment.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</time></div><p>{comment.body}</p><button type="button" onClick={() => void toggleComment(comment)}>{comment.resolvedAt ? t('ed.reopen') : t('ed.resolve')}</button></article>)}</div></section>}
           {activePanel === 'HISTORY' && <section className="document-studio__panel"><h2>{t('ed.versionHistory')}</h2><form className="document-studio__version-form" onSubmit={saveVersion}><input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} maxLength={120} placeholder={t('ed.versionNotePh')} /><button type="submit">{t('ed.saveVersion')}</button></form><div className="document-studio__versions">{versions.length === 0 ? <p>{t('ed.versionsEmpty')}</p> : versions.map((version) => <article key={version.id}><strong>{version.label || version.title}</strong><small>{version.createdBy.displayName} · {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(version.createdAt))}</small><button type="button" onClick={() => void restoreVersion(version)}>{t('ed.restore')}</button></article>)}</div></section>}
         </aside>

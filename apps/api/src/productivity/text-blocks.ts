@@ -2,7 +2,7 @@ type DocBlock = { id: string; type?: string; text?: string; [key: string]: unkno
 type Parsed = { format: string; blocks: DocBlock[]; [key: string]: unknown };
 
 /** Blocks with no text of their own: they are never edited as a live text session. */
-const textless = new Set(['DIVIDER', 'TABLE', 'IMAGE']);
+const textless = new Set(['DIVIDER', 'TABLE', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'BOOKMARK', 'PAGE_LINK', 'DATABASE', 'DATABASE_LINK', 'TOC', 'BREADCRUMB', 'BUTTON']);
 export const isTextBlock = (block: DocBlock) => typeof block.id === 'string' && typeof block.type === 'string' && !textless.has(block.type) && typeof block.text === 'string';
 
 function parse(content: string): Parsed | null {
