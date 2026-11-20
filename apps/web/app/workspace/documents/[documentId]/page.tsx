@@ -8,6 +8,7 @@ import { useWorkspaceSession } from '../../workspace-shell';
 import { AttachmentsPanel } from '../../files/attachments-panel';
 import { ImageBlock, TableBlock } from './document-blocks';
 import { SharePanel } from './share-panel';
+import { FavouriteStar } from '../../favourites';
 
 type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'DIVIDER' | 'TABLE' | 'IMAGE';
 type Block = { id: string; type: BlockType; text: string; checked?: boolean; rows?: string[][]; fileId?: string };
@@ -200,7 +201,7 @@ export default function DocumentEditorPage() {
     </div>}
     {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>Retry save</button></p>}
     {loading ? <p className="productivity-message">Opening document…</p> : !document ? <div className="workspace-section-empty"><h2>Document unavailable</h2><p>This document could not be found in the current workspace.</p><Link href="/workspace/documents">Back to documents</Link></div> : <>
-      <div className="document-studio__toolbar"><label>New block<select id="document-block-type" value={blockType} onChange={(event) => setBlockType(event.target.value as BlockType)}>{blockTypes.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}</select></label><button type="button" onClick={() => insertBlock()}>＋ Add block</button><span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>Save now</button><Link href="/workspace/documents">All documents</Link></div>
+      <div className="document-studio__toolbar"><label>New block<select id="document-block-type" value={blockType} onChange={(event) => setBlockType(event.target.value as BlockType)}>{blockTypes.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}</select></label><button type="button" onClick={() => insertBlock()}>＋ Add block</button><span className="document-studio__toolbar-spacer" /><button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>Save now</button><Link href="/workspace/documents">All documents</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
       <div className="document-studio__layout">
         <main className="document-studio__paper">
           <p className="workspace-eyebrow">AVEN DOCUMENT · {document.project?.name ?? 'PERSONAL'}</p>

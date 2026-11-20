@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
+import { FavouriteStar } from '../favourites';
 import { attachArrows, clampSize, normalizeBox, toWorld, zoomAt, type View } from './board-geometry';
 import { colorNames, defaults, palette, uid, type BoardDetail, type BoardElement, type Color, type EntityType, type Tool } from './board-types';
 
@@ -194,6 +195,7 @@ export function BoardEditor({ boardId }: { boardId: string }) {
       <Link href="/workspace/whiteboards">← Whiteboards</Link>
       <h1>{name}</h1>
       {!readOnly && <button onClick={renameBoard}>Rename</button>}
+      <FavouriteStar kind="WHITEBOARD" entityId={boardId} />
       <span className="board-status" role="status">{readOnly ? 'View only' : status}</span>
     </header>
     {!readOnly && <div className="board-tools" role="toolbar" aria-label="Whiteboard tools">

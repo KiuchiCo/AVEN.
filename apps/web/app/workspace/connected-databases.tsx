@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
+import { FavouriteStar } from './favourites';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from './workspace-shell';
 
@@ -499,7 +500,7 @@ export function DatabasesWorkspace() {
           {loading ? <p className="productivity-message">Loading databases…</p> : !selected ? (
             <div className="database-empty"><span aria-hidden="true">▤</span><h2>Your first table starts here</h2><p>Create a workspace database, then add records as your work takes shape.</p></div>
           ) : <>
-            <div className="database-table-heading"><div><p className="workspace-eyebrow">{viewLayout} VIEW</p><h2>{selected.name}</h2><p>{selected.description || 'A structured view of your workspace information.'}</p></div><span>{selected.records.length} records</span></div>
+            <div className="database-table-heading"><div><p className="workspace-eyebrow">{viewLayout} VIEW</p><h2>{selected.name} <FavouriteStar kind="DATABASE" entityId={selected.id} /></h2><p>{selected.description || 'A structured view of your workspace information.'}</p></div><span>{selected.records.length} records</span></div>
             <form className="database-add-property" key={`${selected.id}:${selected.name}:${selected.description ?? ''}`} onSubmit={updateDatabase} aria-label="Edit database details">
               <label>Database name<input name="databaseName" required maxLength={160} defaultValue={selected.name} /></label>
               <label>Description<input name="databaseDescription" maxLength={500} defaultValue={selected.description ?? ''} /></label>

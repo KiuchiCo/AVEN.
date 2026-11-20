@@ -132,6 +132,7 @@ model User {
   channelMessages       ChannelMessage[]     @relation("ChannelMessageAuthor")
   channelReads          ChannelRead[]        @relation("ChannelReader")
   calendarConnections   CalendarConnection[] @relation("CalendarConnector")
+  favourites            Favourite[]          @relation("FavouriteOwner")
   documentSharesCreated DocumentShare[]      @relation("DocumentShareCreator")
   channelMemberships    ChannelMember[]      @relation("ChannelParticipant")
 
@@ -184,6 +185,7 @@ model Workspace {
   subscription        Subscription?
   whiteboards         Whiteboard[]
   channels            Channel[]
+  favourites          Favourite[]
   documentShares      DocumentShare[]
   calendarConnections CalendarConnection[]
   billingInvoices     BillingInvoice[]
@@ -1152,4 +1154,27 @@ model DocumentShare {
 
   @@index([documentId])
   @@map("document_shares")
+}
+
+enum FavouriteKind {
+  PROJECT
+  DOCUMENT
+  DATABASE
+  WHITEBOARD
+}
+
+/// Something a person has pinned to the Favourites section of their sidebar. Private to that person, per workspace.
+model Favourite {
+  id          String        @id @default(uuid()) @db.Uuid
+  userId      String        @db.Uuid
+  workspaceId String        @db.Uuid
+  kind        FavouriteKind
+  entityId    String        @db.Uuid
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  user        User          @relation("FavouriteOwner", fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, entityId])
+  @@index([userId, workspaceId, createdAt])
+  @@map("favourites")
 }

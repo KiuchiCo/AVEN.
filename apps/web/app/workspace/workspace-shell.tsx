@@ -1,15 +1,17 @@
 'use client';
 
-import { UserButton } from '@clerk/nextjs';
+import { UserButton, useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { WorkspaceSession } from './layout';
 import { timeZoneCookie, timeZoneCookieValue } from '../time-zone-script';
-import { workspaceNavigation } from './workspace-navigation';
+import { FavouritesProvider, useFavourites } from './favourites';
+import { navigationGroups, workspaceNavigation } from './workspace-navigation';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
 const WorkspaceContext = createContext<WorkspaceSession | null>(null);
+const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
 export function useWorkspaceSession() {
   const session = useContext(WorkspaceContext);
@@ -22,6 +24,9 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const { getToken } = useAuth();
+  const [unread, setUnread] = useState(0);
+  const [planName, setPlanName] = useState('');
   const activeItem = workspaceNavigation.find((item) => item.href === pathname);
   const pageTitle = pathname === '/workspace/search' ? 'Search' : activeItem?.label ?? 'Workspace';
 
@@ -36,6 +41,20 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
     window.location.reload();
   }, [session.user.timeZone]);
 
+  // The sidebar shows real numbers: unread notifications and the workspace's plan.
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const token = await getToken(); if (!token || !apiBase) return;
+      const headers = { Authorization: `Bearer ${token}` };
+      const [dashboard, billing] = await Promise.all([fetch(`${apiBase}/workspaces/${session.workspace.id}/dashboard`, { headers, cache: 'no-store' }), fetch(`${apiBase}/workspaces/${session.workspace.id}/billing`, { headers, cache: 'no-store' })]);
+      if (!live) return;
+      if (dashboard.ok) setUnread(Number((await dashboard.json() as { unreadInbox?: number }).unreadInbox ?? 0));
+      if (billing.ok) setPlanName(String((await billing.json() as { plan?: { name?: string } }).plan?.name ?? ''));
+    })().catch(() => undefined);
+    return () => { live = false; };
+  }, [getToken, pathname, session.workspace.id]);
+
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -49,6 +68,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
 
   return (
     <WorkspaceContext.Provider value={session}>
+      <FavouritesProvider workspaceId={session.workspace.id}>
       <div className="workspace-app">
         {mobileOpen && (
           <button
@@ -66,37 +86,29 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
           <WorkspaceSwitcher session={session} />
 
           <nav className="workspace-nav" aria-label="Workspace navigation">
-            <p className="workspace-nav__label">Workspace</p>
-            {workspaceNavigation.map((item) => {
-              const active = item.href === '/workspace'
-                ? pathname === item.href
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  className={`workspace-nav__item${active ? ' workspace-nav__item--active' : ''}`}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  onClick={() => setMobileOpen(false)}
-                >
-                  <NavIcon name={item.icon} />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
+            {navigationGroups.map((group, index) => <div className="workspace-nav__group" key={group.label ?? 'main'}>
+              {group.label && <p className="workspace-nav__label">{group.label}</p>}
+              {group.hrefs.map((href) => {
+                const item = workspaceNavigation.find((entry) => entry.href === href); if (!item) return null;
+                const active = href === '/workspace' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+                return <Link key={href} className={`workspace-nav__item${active ? ' workspace-nav__item--active' : ''}`} href={href} aria-current={active ? 'page' : undefined} onClick={() => setMobileOpen(false)}>
+                  <NavIcon name={item.icon} /><span>{item.label}</span>
+                  {href === '/workspace/inbox' && unread > 0 && <b className="workspace-nav__badge" aria-label={`${unread} unread`}>{unread > 99 ? '99+' : unread}</b>}
+                </Link>;
+              })}
+              {index === 0 && <span className="workspace-nav__rule" aria-hidden="true" />}
+            </div>)}
+            <FavouritesNav onNavigate={() => setMobileOpen(false)} />
           </nav>
 
           <div className="workspace-sidebar__bottom">
-            <div className="workspace-sidebar__preview">
-              <p>Design reference</p>
-              <Link href="/prototype.html">Open the original preview <span aria-hidden="true">↗</span></Link>
-            </div>
             <div className="workspace-profile">
               <UserButton />
               <div className="workspace-profile__text">
                 <strong>{session.user.displayName}</strong>
-                <span>{session.workspace.role?.toLowerCase() ?? 'member'}</span>
+                <span>{planName ? `${planName} Plan` : session.workspace.role?.toLowerCase() ?? 'member'}</span>
               </div>
+              <Link className="workspace-profile__settings" href="/workspace/settings" aria-label="Settings"><NavIcon name="settings" /></Link>
             </div>
           </div>
         </aside>
@@ -104,22 +116,19 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
         <div className="workspace-main">
           <header className="workspace-topbar">
             <div className="workspace-topbar__leading">
-              <button
-                className="workspace-menu-toggle"
-                onClick={() => setMobileOpen((open) => !open)}
-                aria-expanded={mobileOpen}
-                aria-controls="workspace-navigation"
-                aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
-              >
-                <NavIcon name="menu" />
-              </button>
-              <p className="workspace-breadcrumb"><span>My Workspace</span><span aria-hidden="true">/</span><strong>{pageTitle}</strong></p>
+              <button className="workspace-menu-toggle" onClick={() => setMobileOpen((open) => !open)} aria-expanded={mobileOpen} aria-controls="workspace-navigation" aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}><NavIcon name="menu" /></button>
+              <div className="workspace-history" role="group" aria-label="History">
+                <button type="button" onClick={() => router.back()} aria-label="Back"><NavIcon name="back" /></button>
+                <button type="button" onClick={() => window.history.forward()} aria-label="Forward"><NavIcon name="forward" /></button>
+              </div>
+              {pathname !== '/workspace' && <p className="workspace-breadcrumb"><strong>{pageTitle}</strong></p>}
             </div>
             <div className="workspace-topbar__actions">
               <Link className="workspace-topbar__search" href="/workspace/search" aria-label="Search your workspace">
                 <NavIcon name="search" />
-                <span>Search your workspace</span><kbd>⌘ K</kbd>
+                <span>Search or ask AVEN…</span><kbd>⌘K</kbd>
               </Link>
+              <Link className="workspace-bell" href="/workspace/inbox" aria-label={unread > 0 ? `Inbox, ${unread} unread` : 'Inbox'}><NavIcon name="bell" />{unread > 0 && <i aria-hidden="true" />}</Link>
               {session.workspace.role !== 'GUEST' && <>
               <button
                 className="workspace-create-button"
@@ -149,11 +158,20 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
           </main>
         </div>
       </div>
+      </FavouritesProvider>
     </WorkspaceContext.Provider>
   );
 }
 
-type IconName = 'home' | 'inbox' | 'tasks' | 'labels' | 'projects' | 'documents' | 'files' | 'whiteboards' | 'messages' | 'analytics' | 'knowledge' | 'calendar' | 'databases' | 'intelligence' | 'automations' | 'activity' | 'people' | 'menu' | 'search';
+/** Pinned pages, newest last. Hidden until something is pinned, so there is never an empty, do-nothing section. */
+function FavouritesNav({ onNavigate }: { onNavigate: () => void }) {
+  const favourites = useFavourites();
+  const pathname = usePathname();
+  if (!favourites || favourites.items.length === 0) return null;
+  return <div className="workspace-nav__group workspace-nav__favourites"><p className="workspace-nav__label">Favourites</p>{favourites.items.map((item) => <Link key={item.id} className={`workspace-nav__item${pathname === item.href ? ' workspace-nav__item--active' : ''}`} href={item.href} onClick={onNavigate}><NavIcon name="folder" /><span>{item.title}</span></Link>)}</div>;
+}
+
+type IconName = 'folder' | 'settings' | 'bell' | 'back' | 'forward' | 'home' | 'inbox' | 'tasks' | 'labels' | 'projects' | 'documents' | 'files' | 'whiteboards' | 'messages' | 'analytics' | 'knowledge' | 'calendar' | 'databases' | 'intelligence' | 'automations' | 'activity' | 'people' | 'menu' | 'search';
 
 function NavIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -174,6 +192,11 @@ function NavIcon({ name }: { name: IconName }) {
     automations: <><path d="m13 2-3 8h7L10 22l2-9H5l8-11z" /></>,
     activity: <><path d="M3 12h4l3-8 4 16 3-8h4" /></>,
     people: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
+    folder: <><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></>,
+    bell: <><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10.3 20a1.9 1.9 0 0 0 3.4 0" /></>,
+    back: <><path d="m15 6-6 6 6 6" /></>,
+    forward: <><path d="m9 6 6 6-6 6" /></>,
     menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
     search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
   };

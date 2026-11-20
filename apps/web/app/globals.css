@@ -1131,7 +1131,7 @@
   --aven-information: #5b7ca5;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']):not([data-theme='dark']) {
+  :root[data-theme='system'] {
     color-scheme: dark;
   --h-000000: #ededed;
   --h-181715: #eae9e7;
@@ -3998,7 +3998,7 @@ body {
   --c-91-77-63: 191 178 165;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']):not([data-theme='dark']) {
+  :root[data-theme='system'] {
   --c-0-0-0: 237 237 237;
   --c-100-74-49: 203 180 158;
   --c-164-135-102: 150 124 94;

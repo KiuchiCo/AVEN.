@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
@@ -19,6 +20,7 @@ type Status = { configured: boolean; model: string; creditsUsed: number; credits
 type StreamEvent = { type: 'delta'; text: string } | { type: 'status'; text: string } | { type: 'citations'; sources: Source[] } | { type: 'action'; action: Action } | { type: 'done'; messageId: string } | { type: 'error'; message: string };
 
 export function AssistantChat() {
+  const startingText = useSearchParams().get('q') ?? '';
   const { getToken } = useAuth();
   const { workspace } = useWorkspaceSession();
   const base = `${apiBase}/workspaces/${workspace.id}/ai`;
@@ -29,7 +31,7 @@ export function AssistantChat() {
   const [saved, setSaved] = useState<Record<string, { id: string; title: string }>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(startingText.slice(0, 8000));
   const [busy, setBusy] = useState(false);
   const [working, setWorking] = useState('');
   const [error, setError] = useState('');

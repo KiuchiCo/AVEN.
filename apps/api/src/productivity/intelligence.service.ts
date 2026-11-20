@@ -39,7 +39,7 @@ export class IntelligenceService {
     const upcomingEvents = events.flatMap((event) => expandRecurringEvent(event, start, end));
     const insights = [];
     if (overdue.length) insights.push({ id: 'overdue', tone: 'urgent', title: `${overdue.length} overdue ${overdue.length === 1 ? 'task' : 'tasks'}`, detail: `The earliest is “${overdue[0].title}”. Review its date or move it forward.`, href: '/workspace/tasks', action: 'Review tasks' });
-    if (dueThisWeek.length || dueProjects.length) insights.push({ id: 'deadlines', tone: 'warm', title: `${dueThisWeek.length + dueProjects.length} deadlines in the next 7 days`, detail: `${dueThisWeek.length} task${dueThisWeek.length === 1 ? '' : 's'} and ${dueProjects.length} project${dueProjects.length === 1 ? '' : 's'} have dates coming up.`, href: '/workspace/tasks', action: 'See deadlines' });
+    if (dueThisWeek.length || dueProjects.length) insights.push({ id: 'deadlines', tone: 'warm', title: `${dueThisWeek.length + dueProjects.length} ${dueThisWeek.length + dueProjects.length === 1 ? 'deadline' : 'deadlines'} in the next 7 days`, detail: `${dueThisWeek.length} task${dueThisWeek.length === 1 ? '' : 's'} and ${dueProjects.length} project${dueProjects.length === 1 ? '' : 's'} have dates coming up.`, href: '/workspace/tasks', action: 'See deadlines' });
     if (!overdue.length && !dueThisWeek.length && !dueProjects.length) insights.push({ id: 'clear', tone: 'calm', title: 'Your next 7 days look clear', detail: 'No overdue tasks or upcoming project and task deadlines are on record.', href: '/workspace/calendar', action: 'Open calendar' });
     if (activeProjects.some((project) => project.status === 'ON_HOLD')) {
       const paused = activeProjects.filter((project) => project.status === 'ON_HOLD');

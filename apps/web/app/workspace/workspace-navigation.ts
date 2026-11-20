@@ -17,3 +17,9 @@ export const workspaceNavigation = [
   { label: 'Activity', href: '/workspace/activity', icon: 'activity' },
   { label: 'People', href: '/workspace/members', icon: 'people' },
 ] as const;
+
+/** The sidebar's two groups, in the order they appear. Everything in workspaceNavigation is in exactly one of them. */
+export const navigationGroups = [
+  { label: null, hrefs: ['/workspace', '/workspace/inbox', '/workspace/calendar', '/workspace/tasks', '/workspace/activity'] },
+  { label: 'Workspace', hrefs: ['/workspace/projects', '/workspace/documents', '/workspace/databases', '/workspace/knowledge', '/workspace/whiteboards', '/workspace/messages', '/workspace/files', '/workspace/automations', '/workspace/intelligence', '/workspace/analytics', '/workspace/labels', '/workspace/members'] },
+] as const;

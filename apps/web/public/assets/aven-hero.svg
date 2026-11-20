@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 420" preserveAspectRatio="xMaxYMin slice" role="presentation">
+  <defs>
+    <linearGradient id="far" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e4d9ca" stop-opacity=".85"/><stop offset="1" stop-color="#efe7db" stop-opacity="0"/></linearGradient>
+    <linearGradient id="mid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6c6b2" stop-opacity=".9"/><stop offset="1" stop-color="#ebe2d4" stop-opacity="0"/></linearGradient>
+    <linearGradient id="near" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9b59c" stop-opacity=".85"/><stop offset="1" stop-color="#e6dccd" stop-opacity="0"/></linearGradient>
+    <radialGradient id="glow" cx=".78" cy=".18" r=".55"><stop offset="0" stop-color="#fffaf0" stop-opacity=".95"/><stop offset="1" stop-color="#fffaf0" stop-opacity="0"/></radialGradient>
+    <filter id="soft" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="2.2"/></filter>
+    <filter id="haze" x="-5%" y="-20%" width="110%" height="140%"><feGaussianBlur stdDeviation="14"/></filter>
+  </defs>
+  <rect width="1600" height="420" fill="url(#glow)"/>
+  <path filter="url(#soft)" fill="url(#far)" d="M560 190 C640 150 700 120 770 140 C830 100 900 70 960 110 C1030 70 1100 40 1170 80 C1240 50 1330 60 1400 100 C1470 80 1540 100 1600 120 L1600 420 L560 420 Z"/>
+  <path filter="url(#soft)" fill="url(#mid)" d="M700 250 C780 200 850 170 920 200 C990 150 1070 130 1140 170 C1220 130 1310 140 1380 180 C1460 160 1530 170 1600 190 L1600 420 L700 420 Z"/>
+  <path filter="url(#haze)" fill="#f8f4ec" fill-opacity=".85" d="M600 270 C800 235 1000 250 1200 225 C1350 210 1480 225 1600 215 L1600 330 L600 330 Z"/>
+  <path filter="url(#soft)" fill="url(#near)" d="M900 320 C980 270 1060 250 1140 280 C1220 240 1320 230 1400 270 C1470 250 1540 262 1600 275 L1600 420 L900 420 Z"/>
+  <path filter="url(#haze)" fill="#f8f6f1" fill-opacity=".9" d="M0 360 C300 330 700 350 1000 335 C1250 322 1450 335 1600 330 L1600 420 L0 420 Z"/>
+</svg>
