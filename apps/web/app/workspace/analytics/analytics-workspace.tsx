@@ -2,6 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
+import { csvCell } from '../projects/task-csv';
 import { useCallback, useEffect, useState } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { useT } from '../../i18n';
@@ -87,7 +88,7 @@ export function AnalyticsWorkspace() {
   const statusCounts = { COMPLETED: tasks.filter((task) => task.status === 'COMPLETED').length, IN_PROGRESS: tasks.filter((task) => task.status === 'IN_PROGRESS').length, TODO: tasks.filter((task) => task.status === 'TODO').length, IN_REVIEW: tasks.filter((task) => task.status === 'IN_REVIEW').length, OVERDUE: tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && task.dueAt && task.dueAt.slice(0, 10) < todayKey).length };
   const statusMax = Math.max(1, ...Object.values(statusCounts));
   function exportProjects() {
-    const quote = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const quote = (value: string | number) => csvCell(String(value)); // a project name starting with = + - @ must not run as a formula in a spreadsheet
     const lines = [[t('an.col.project'), t('an.col.progress'), t('an.col.tasks'), t('an.col.overdue'), t('an.col.last')].map(quote).join(','), ...shownProjects.map((row) => [row.name, `${row.progress}%`, row.total, row.overdue, new Date(row.latest).toISOString()].map(quote).join(','))];
     const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = 'aven-projects.csv'; link.click(); URL.revokeObjectURL(url);
   }

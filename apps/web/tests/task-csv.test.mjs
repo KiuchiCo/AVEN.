@@ -65,3 +65,8 @@ test('an optional startAt column is read, validated, and not required for round 
   const old = parse(`${headers.join(',')}\n${exportRow()}`)[0];
   assert.equal('startAt' in old, false, 'a file without the column leaves start dates alone');
 });
+
+test('security: a cell that starts like a formula is defused, so a shared name cannot run in a spreadsheet', () => {
+  for (const name of ['=HYPERLINK("http://x","y")', '+SUM(1)', '-2+3', '@cmd', '\tTAB']) assert.ok(csvCell(name).startsWith('"\''), name);
+  assert.equal(csvCell('Plain'), '"Plain"');
+});

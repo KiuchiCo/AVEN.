@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { hiddenIdsFor, viewerOf, visibleProjectWhere, visibleTaskWhere } from './project-rules.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -15,16 +16,18 @@ export class DashboardService {
       where: { id: userId },
       select: { notifyTeamActivity: true, notifyTaskUpdates: true, dashboardHiddenWidgets: true },
     });
+    const viewer = await viewerOf(this.prisma, workspaceId, userId);
+    const hidden = await hiddenIdsFor(this.prisma as never, workspaceId, viewer);
     const inbox = workspaceNotificationWhere(workspaceId, userId, preferences);
 
     const [myTasks, projects, documents, activity, unreadInbox] = await Promise.all([
       this.prisma.task.findMany({
-        where: { workspaceId, assigneeId: userId, status: { notIn: ['COMPLETED', 'CANCELLED'] } },
+        where: { workspaceId, assigneeId: userId, status: { notIn: ['COMPLETED', 'CANCELLED'] }, ...visibleTaskWhere(viewer) },
         orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { updatedAt: 'desc' }], take: 6,
         select: { id: true, title: true, status: true, priority: true, dueAt: true, project: { select: { id: true, name: true } } },
       }),
       this.prisma.project.findMany({
-        where: { workspaceId, status: { in: ['PLANNING', 'IN_PROGRESS', 'ON_HOLD'] } },
+        where: { workspaceId, status: { in: ['PLANNING', 'IN_PROGRESS', 'ON_HOLD'] }, ...visibleProjectWhere(viewer) },
         orderBy: { updatedAt: 'desc' }, take: 5,
         select: { id: true, name: true, status: true, dueAt: true, _count: { select: { tasks: true } }, tasks: { where: { status: 'COMPLETED' }, select: { id: true } } },
       }),
@@ -33,7 +36,7 @@ export class DashboardService {
         select: { id: true, title: true, updatedAt: true, project: { select: { name: true } } },
       }),
       this.prisma.workspaceActivity.findMany({
-        where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 6,
+        where: { workspaceId, ...(hidden.length ? { entityId: { notIn: hidden } } : {}) }, orderBy: { createdAt: 'desc' }, take: 6,
         select: { id: true, entityType: true, entityId: true, message: true, createdAt: true, actor: { select: { displayName: true } } },
       }),
       this.prisma.workspaceActivity.count({

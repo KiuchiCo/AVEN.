@@ -15,7 +15,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { AutomationsService } from './automations.service.js';
 import { documentTypes } from './document-library-rules.js';
-import { canAdminister, startBeforeDue, visibleProjectWhere, type ProjectAccessor } from './project-rules.js';
+import { canAdminister, hiddenIdsFor, startBeforeDue, viewerOf, visibleProjectWhere, visibleTaskWhere, type ProjectAccessor } from './project-rules.js';
 
 const projectStatuses = ['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'] as const;
 const projectVisibilities = ['WORKSPACE', 'TEAM'] as const;
@@ -278,8 +278,9 @@ export class ProductivityService {
 
   async listWorkspaceActivity(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
+    const hidden = await hiddenIdsFor(this.prisma as never, workspaceId, await viewerOf(this.prisma, workspaceId, userId));
     const entries = await this.prisma.workspaceActivity.findMany({
-      where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 100,
+      where: { workspaceId, ...(hidden.length ? { entityId: { notIn: hidden } } : {}) }, orderBy: { createdAt: 'desc' }, take: 100,
       include: { actor: { select: { displayName: true } }, receipts: { where: { userId }, select: { readAt: true } } },
     });
     return entries.map(({ receipts, ...entry }) => ({ ...entry, isRead: Boolean(receipts[0]?.readAt) }));
@@ -287,8 +288,9 @@ export class ProductivityService {
 
   async listWorkspaceNotifications(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
+    const hidden = await hiddenIdsFor(this.prisma as never, workspaceId, await viewerOf(this.prisma, workspaceId, userId));
     const rows = await this.prisma.workspaceActivity.findMany({
-      where: workspaceNotificationWhere(workspaceId, userId, await this.notificationPreferences(userId)),
+      where: { AND: [workspaceNotificationWhere(workspaceId, userId, await this.notificationPreferences(userId)), ...(hidden.length ? [{ entityId: { notIn: hidden } }] : [])] },
       orderBy: { createdAt: 'desc' }, take: 50,
       include: { actor: { select: { displayName: true } }, receipts: { where: { userId }, select: { readAt: true, dismissedAt: true } } },
     });
@@ -797,9 +799,9 @@ export class ProductivityService {
   }
 
   async duplicateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string) {
-    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const viewer = await this.projectActor(identity, workspaceId, true); const actorId = viewer.userId;
     const source = await this.prisma.task.findFirst({
-      where: { id: taskId, workspaceId },
+      where: { id: taskId, workspaceId, ...visibleTaskWhere(viewer) },
       select: {
         id: true, projectId: true, title: true, description: true, priority: true, labels: true, startAt: true, dueAt: true,
         checklistItems: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }], select: { title: true, position: true } },
@@ -831,9 +833,9 @@ export class ProductivityService {
   }
 
   async updateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const viewer = await this.projectActor(identity, workspaceId, true); const actorId = viewer.userId;
     const body = objectInput(input);
-    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true, assigneeId: true, startAt: true, dueAt: true, recurrence: true, parentId: true, projectId: true } });
+    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId, ...visibleTaskWhere(viewer) }, select: { status: true, assigneeId: true, startAt: true, dueAt: true, recurrence: true, parentId: true, projectId: true } });
     if (!previousTask) throw new NotFoundException('Task not found in this workspace.');
     const data: {
       title?: string;
@@ -933,8 +935,8 @@ export class ProductivityService {
   }
 
   async deleteTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string) {
-    const actorId = await this.requireMembership(identity, workspaceId, true);
-    const task = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { id: true, title: true, projectId: true } });
+    const viewer = await this.projectActor(identity, workspaceId, true); const actorId = viewer.userId;
+    const task = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId, ...visibleTaskWhere(viewer) }, select: { id: true, title: true, projectId: true } });
     if (!task) throw new NotFoundException('Task not found in this workspace.');
     await this.prisma.task.delete({ where: { id: task.id } });
     await this.recordActivity(workspaceId, actorId, task.projectId ? 'PROJECT' : 'TASK', task.projectId ?? task.id, `deleted task “${task.title}”`);
@@ -942,7 +944,7 @@ export class ProductivityService {
   }
 
   async setTaskDependencies(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const viewer = await this.projectActor(identity, workspaceId, true); const actorId = viewer.userId;
     const body = objectInput(input);
     if (!Array.isArray(body.dependsOnTaskIds) || body.dependsOnTaskIds.length > 100) {
       throw new BadRequestException('dependsOnTaskIds must be an array of up to 100 task IDs.');
@@ -953,7 +955,7 @@ export class ProductivityService {
       return id;
     });
     if (new Set(ids).size !== ids.length) throw new BadRequestException('A prerequisite task can only be selected once.');
-    const target = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { id: true, projectId: true, status: true } });
+    const target = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId, ...visibleTaskWhere(viewer) }, select: { id: true, projectId: true, status: true } });
     if (!target) throw new NotFoundException('Task not found in this workspace.');
     if (ids.includes(taskId)) throw new BadRequestException('A task cannot depend on itself.');
     const candidates = await this.prisma.task.findMany({
@@ -1188,7 +1190,7 @@ export class ProductivityService {
   }
 
   async searchWorkspace(identity: AuthenticatedIdentity, workspaceId: string, rawQuery: unknown) {
-    await this.requireMembership(identity, workspaceId);
+    const seer = await this.projectActor(identity, workspaceId);
     if (typeof rawQuery !== 'string' || rawQuery.trim().length < 2 || rawQuery.trim().length > 100) {
       throw new BadRequestException('Search must be between 2 and 100 characters.');
     }
@@ -1196,8 +1198,8 @@ export class ProductivityService {
     const needle = query.toLocaleLowerCase();
     const contains = { contains: query, mode: 'insensitive' as const };
     const [projects, tasks, documents, databases, records, knowledge, events] = await Promise.all([
-      this.prisma.project.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, name: true, description: true, updatedAt: true } }),
-      this.prisma.task.findMany({ where: { workspaceId, OR: [{ title: contains }, { description: contains }, { labels: { has: query.toLocaleLowerCase() } }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, labels: true, updatedAt: true, project: { select: { name: true } } } }),
+      this.prisma.project.findMany({ where: { workspaceId, AND: [visibleProjectWhere(seer)], OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, name: true, description: true, updatedAt: true } }),
+      this.prisma.task.findMany({ where: { workspaceId, AND: [visibleTaskWhere(seer)], OR: [{ title: contains }, { description: contains }, { labels: { has: query.toLocaleLowerCase() } }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, description: true, labels: true, updatedAt: true, project: { select: { name: true } } } }),
       this.prisma.document.findMany({ where: { workspaceId, OR: [{ title: contains }, { content: contains }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, title: true, content: true, updatedAt: true } }),
       this.prisma.workspaceDatabase.findMany({ where: { workspaceId, OR: [{ name: contains }, { description: contains }] }, orderBy: { updatedAt: 'desc' }, take: 8, select: { id: true, name: true, description: true, updatedAt: true } }),
       this.searchDatabaseRecords(workspaceId, needle),

@@ -159,3 +159,10 @@ test('retries back off and then give up', () => {
   assert.deepEqual([1, 2, 3, 4].map(retryDelay), [30_000, 120_000, null, null]);
   assert.equal(MAX_ATTEMPTS, 3);
 });
+
+test('security: IPv6 spellings of internal IPv4 addresses are refused (mapped, compatible, NAT64, 6to4, site-local)', () => {
+  for (const ip of ['::ffff:7f00:1', '::ffff:a9fe:a9fe', '::ffff:c0a8:101', '::127.0.0.1', '::7f00:1', '64:ff9b::7f00:1', '64:ff9b::a9fe:a9fe', '2002:7f00:1::', '2002:a9fe:a9fe::', '2002:0a00:0001::1', 'fec0::1', '2001:0:4136:e378:8000:63bf:3fff:fdd2', '64:ff9b:1::1']) assert.equal(isPublicAddress(ip), false, ip);
+  for (const ip of ['::ffff:808:808', '64:ff9b::808:808', '2002:808:808::1', '2606:4700::1111']) assert.equal(isPublicAddress(ip), true, ip);
+  assert.ok(typeof checkWebhookUrl === 'function');
+  assert.throws(() => checkWebhookUrl(new URL('https://[::ffff:127.0.0.1]/x').href, false), /internal/);
+});

@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { RateLimitGuard } from '../common/rate-limit.guard.js';
 import type { Response } from 'express';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
@@ -10,7 +11,7 @@ const workspace = () => Param('workspaceId', new ParseUUIDPipe());
 const connection = () => Param('connectionId', new ParseUUIDPipe());
 
 @Controller('workspaces/:workspaceId/integrations/calendar')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, new RateLimitGuard(60))
 export class CalendarSyncController {
   constructor(private readonly sync: CalendarSyncService) {}
   @Get() overview(@CurrentIdentity() who: Who, @workspace() ws: string) { return this.sync.overview(who, ws); }

@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Res, UseGuards } from '@nestjs/common';
+import { RateLimitGuard } from '../common/rate-limit.guard.js';
 import type { Response } from 'express';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
@@ -11,7 +12,7 @@ const workspace = () => Param('workspaceId', new ParseUUIDPipe());
 const conversation = () => Param('conversationId', new ParseUUIDPipe());
 
 @Controller('workspaces/:workspaceId/ai')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, new RateLimitGuard(90))
 export class AiController {
   constructor(private readonly ai: AiService, private readonly agents: AiAgentsService) {}
 

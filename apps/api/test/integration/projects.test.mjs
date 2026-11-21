@@ -103,4 +103,27 @@ describe('project workspace: owner, team, visibility, milestones and deletion', 
     assert.equal(made.body.description, 'Mine'); assert.equal(made.body.ownerId, adm.id); assert.equal(made.body.startAt.slice(0, 10), '2026-02-01');
     assert.equal((await t.call('own', 'POST', `${ws}/projects/project-templates/${tpl.id}/apply`, { name: 'x', startAt: '2026-06-01', dueAt: '2026-05-01' })).status, 400);
   });
+
+  test('security: the tasks of a team-only project are as hidden as the project (detail, change, delete, comments, search, dashboard)', async () => {
+    const p = (await t.call('mem', 'POST', `${ws}/projects`, { name: 'Secret roadmap' })).body;
+    const task = (await t.call('mem', 'POST', `${ws}/tasks`, { title: 'Quietly acquire Acme', projectId: p.id })).body;
+    assert.equal((await t.call('mem', 'PATCH', `${ws}/projects/${p.id}`, { visibility: 'TEAM' })).status, 200);
+    const seen = (route) => t.call('mem2', 'GET', `${ws}${route}`);
+    assert.equal((await seen(`/tasks/${task.id}/collaboration/task`)).status, 404, 'detail');
+    assert.equal((await seen(`/tasks/${task.id}/collaboration/comments`)).status, 404, 'comments');
+    assert.equal((await t.call('mem2', 'POST', `${ws}/tasks/${task.id}/collaboration/comments`, { body: 'hi' })).status, 404, 'commenting');
+    assert.equal((await t.call('mem2', 'PATCH', `${ws}/tasks/${task.id}`, { status: 'COMPLETED' })).status, 404, 'changing');
+    assert.equal((await t.call('mem2', 'DELETE', `${ws}/tasks/${task.id}`)).status, 404, 'deleting');
+    assert.equal((await t.call('mem2', 'POST', `${ws}/tasks/${task.id}/duplicate`)).status, 404, 'duplicating');
+    const listed = (await seen('/tasks')).body; assert.ok(!listed.some((row) => row.id === task.id), 'task list');
+    const found = JSON.stringify((await seen('/search?q=Acme')).body.results); assert.ok(!found.includes('Acme') && !found.includes('Secret roadmap'), 'search');
+    assert.ok(JSON.stringify((await t.call('mem', 'GET', `${ws}/search?q=Acme`)).body.results).includes('Acme'), 'the owner still finds it');
+    const dash = JSON.stringify((await seen('/dashboard')).body); assert.ok(!dash.includes('Secret roadmap'), 'dashboard');
+    const feed = JSON.stringify((await seen('/activity')).body); assert.ok(!feed.includes('Secret roadmap') && !feed.includes('Acme'), 'activity feed');
+    const inbox = JSON.stringify((await seen('/activity/inbox')).body); assert.ok(!inbox.includes('Secret roadmap') && !inbox.includes('Acme'), 'notifications');
+    // the creator and an administrator still can
+    assert.equal((await t.call('mem', 'GET', `${ws}/tasks/${task.id}/collaboration/task`)).status, 200);
+    assert.equal((await t.call('adm', 'GET', `${ws}/tasks/${task.id}/collaboration/task`)).status, 200);
+    assert.equal((await t.call('mem', 'PATCH', `${ws}/tasks/${task.id}`, { status: 'IN_PROGRESS' })).status, 200);
+  });
 });

@@ -9,7 +9,7 @@ function setup({ member = { role: 'MEMBER' }, task = { id: 'task-1', title: 'Wor
   const calls = { user: [], membership: [], task: [] };
   const prisma = {
     user: { findUnique: async (args) => { calls.user.push(args); return { id: 'user-1' }; } },
-    workspaceMember: { findUnique: async (args) => { calls.membership.push(args); return member; } },
+    workspaceMember: { findUnique: async (args) => { calls.membership.push(args); return member; }, findUniqueOrThrow: async () => member ?? { role: 'MEMBER' } },
     task: { findFirst: async (args) => { calls.task.push(args); return task; } },
   };
   return { access: new TaskCollaborationAccess(prisma), calls };
@@ -21,7 +21,8 @@ test('task access scopes both membership and task lookup to the requested worksp
 
   assert.equal(result.userId, 'user-1');
   assert.deepEqual(calls.membership[0].where.workspaceId_userId, { workspaceId: 'workspace-1', userId: 'user-1' });
-  assert.deepEqual(calls.task[0].where, { id: 'task-1', workspaceId: 'workspace-1' });
+  assert.equal(calls.task[0].where.id, 'task-1'); assert.equal(calls.task[0].where.workspaceId, 'workspace-1');
+  assert.ok(calls.task[0].where.OR, 'a member only finds tasks outside projects or in projects they may see');
 });
 
 test('non-members cannot probe whether a task exists in another workspace', async () => {

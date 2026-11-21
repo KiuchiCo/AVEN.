@@ -1,11 +1,12 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import { RateLimitGuard } from '../common/rate-limit.guard.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { SemanticService } from './semantic.service.js';
 
 @Controller('workspaces/:workspaceId/search/semantic')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, new RateLimitGuard(60))
 export class SemanticController {
   constructor(private readonly semantic: SemanticService) {}
 

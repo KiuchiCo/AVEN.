@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { viewerOf, visibleProjectWhere, visibleTaskWhere } from './project-rules.js';
 import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
@@ -11,16 +12,17 @@ export class IntelligenceService {
   async briefing(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId);
 
+    const viewer = await viewerOf(this.prisma, workspaceId, userId);
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
     const [tasks, projects, events, documentCount, databaseCount, knowledgeCount] = await Promise.all([
       this.prisma.task.findMany({
-        where: { workspaceId }, orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }], take: 500,
+        where: { workspaceId, ...visibleTaskWhere(viewer) }, orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }], take: 500,
         select: { id: true, title: true, status: true, priority: true, labels: true, dueAt: true, project: { select: { name: true } } },
       }),
       this.prisma.project.findMany({
-        where: { workspaceId }, orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }], take: 200,
+        where: { workspaceId, ...visibleProjectWhere(viewer) }, orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }], take: 200,
         select: { id: true, name: true, status: true, dueAt: true, updatedAt: true, _count: { select: { tasks: true } } },
       }),
       this.prisma.calendarEvent.findMany({

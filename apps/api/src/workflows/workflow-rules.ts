@@ -275,6 +275,20 @@ export function retryDelay(failedAttempts: number): number | null {
 
 // ---- webhook address safety -----------------------------------------------------------------------------------
 
+/** The eight 16-bit groups of an IPv6 address, with `::` and a trailing dotted IPv4 part expanded; null if it is not one. */
+function ipv6Groups(address: string): number[] | null {
+  let text = address.toLocaleLowerCase().replace(/%.*$/, '');
+  const v4 = /(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(text);
+  if (v4) { const [a, b, c, d] = v4.slice(1).map(Number); if ([a, b, c, d].some((part) => part > 255)) return null; text = `${text.slice(0, v4.index)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`; }
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(':') : []; const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  if (fill < 0 || (halves.length === 1 && head.length !== 8)) return null;
+  const groups = [...head, ...Array<string>(fill).fill('0'), ...tail].map((group) => parseInt(group, 16));
+  return groups.length === 8 && groups.every((group) => Number.isInteger(group) && group >= 0 && group <= 0xffff) ? groups : null;
+}
+
 /** True only for addresses on the public internet. Private, loopback, link-local, metadata and reserved ranges are refused. */
 export function isPublicAddress(address: string): boolean {
   const family = isIP(address);
@@ -291,14 +305,20 @@ export function isPublicAddress(address: string): boolean {
     return true;
   }
   if (family === 6) {
-    const lower = address.toLocaleLowerCase();
-    const mapped = /^(?:::ffff:|64:ff9b::)(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-    if (mapped) return isPublicAddress(mapped[1]);
-    const groups = lower.split('::')[0].split(':');
-    const first = parseInt(groups[0] || '0', 16);
-    if (lower === '::' || lower === '::1') return false;
-    if ((first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80 || (first & 0xff00) === 0xff00) return false;
-    if (lower.startsWith('2001:db8') || lower.startsWith('2001:0db8')) return false;
+    const groups = ipv6Groups(address);
+    if (!groups) return false;
+    const [g0, g1, g2, g3, g4, g5, g6, g7] = groups;
+    const embedded = (hi: number, lo: number) => isPublicAddress(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
+    if (groups.every((group) => group === 0) || (groups.slice(0, 7).every((group) => group === 0) && g7 === 1)) return false; // :: and ::1
+    if ([g0, g1, g2, g3, g4].every((group) => group === 0) && g5 === 0xffff) return embedded(g6, g7); // ::ffff:a.b.c.d, however it is written
+    if ([g0, g1, g2, g3, g4, g5].every((group) => group === 0)) return embedded(g6, g7); // ::a.b.c.d (IPv4-compatible)
+    if (g0 === 0x64 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) return embedded(g6, g7); // NAT64: the address after the prefix is what is reached
+    if (g0 === 0x64 && g1 === 0xff9b) return false; // the local-use NAT64 range
+    if (g0 === 0x2002) return embedded(g1, g2); // 6to4 carries an IPv4 address in the next 32 bits
+    if (g0 === 0x2001 && g1 === 0) return false; // Teredo
+    if (g0 === 0x2001 && g1 === 0xdb8) return false; // documentation
+    if (g0 === 0x100 && g1 === 0 && g2 === 0 && g3 === 0) return false; // discard-only
+    if ((g0 & 0xfe00) === 0xfc00 || (g0 & 0xffc0) === 0xfe80 || (g0 & 0xffc0) === 0xfec0 || (g0 & 0xff00) === 0xff00) return false; // unique-local, link-local, site-local, multicast
     return true;
   }
   return false;

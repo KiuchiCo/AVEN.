@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { viewerOf, visibleProjectWhere, visibleTaskWhere } from '../productivity/project-rules.js';
 import { EntitlementsService } from '../billing/entitlements.service.js';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -241,7 +242,7 @@ export class AiService {
         if (!context.canWrite) return answer('This member has read-only access, so nothing can be changed.', true);
         let taskTitle: string | undefined;
         if (call.name === 'update_task') {
-          const task = await this.prisma.task.findFirst({ where: { id: input.taskId as string, workspaceId: context.workspaceId }, select: { title: true } });
+          const task = await this.prisma.task.findFirst({ where: { id: input.taskId as string, workspaceId: context.workspaceId, ...visibleTaskWhere(await viewerOf(this.prisma, context.workspaceId, context.userId)) }, select: { title: true } });
           if (!task) return answer('That task was not found in this workspace. Look it up with list_tasks first.', true);
           taskTitle = task.title;
         }
@@ -271,14 +272,16 @@ export class AiService {
         return { text: JSON.stringify(found.map((item) => ({ type: item.type, id: item.id, title: item.title, detail: String(item.detail).slice(0, 240) }))), sources: found.map((item) => ({ type: sourceType(item.type), id: item.id, title: item.title, href: sourceHref(item.type, item.id) })) };
       }
       case 'list_tasks': {
-        const where: Prisma.TaskWhereInput = { workspaceId, ...(input.status === 'open' ? { status: { notIn: ['COMPLETED', 'CANCELLED'] } } : input.status === 'completed' ? { status: 'COMPLETED' } : {}), ...(input.assignedToMe ? { assigneeId: userId } : {}), ...(input.projectId ? { projectId: input.projectId as string } : {}) };
+        const seer = await viewerOf(this.prisma, workspaceId, userId);
+        const where: Prisma.TaskWhereInput = { workspaceId, AND: [visibleTaskWhere(seer)], ...(input.status === 'open' ? { status: { notIn: ['COMPLETED', 'CANCELLED'] } } : input.status === 'completed' ? { status: 'COMPLETED' } : {}), ...(input.assignedToMe ? { assigneeId: userId } : {}), ...(input.projectId ? { projectId: input.projectId as string } : {}) };
         if (typeof input.dueWithinDays === 'number') { const end = new Date(); end.setUTCHours(23, 59, 59, 999); end.setUTCDate(end.getUTCDate() + input.dueWithinDays); where.dueAt = { not: null, lte: end }; }
         const tasks = await this.prisma.task.findMany({ where, orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }], take: input.limit as number, include: { project: { select: { name: true } }, assignee: { select: { displayName: true } } } });
         const now = new Date();
         return { text: JSON.stringify(tasks.map((task) => ({ id: task.id, title: task.title, status: task.status, priority: task.priority, due: isoDay(task.dueAt), overdue: Boolean(task.dueAt && task.dueAt < now && !['COMPLETED', 'CANCELLED'].includes(task.status)), project: task.project?.name ?? null, assignee: task.assignee?.displayName ?? null, labels: task.labels }))), sources: tasks.map((task) => ({ type: 'task' as const, id: task.id, title: task.title, href: `/workspace/tasks/${task.id}` })) };
       }
       case 'list_projects': {
-        const projects = await this.prisma.project.findMany({ where: { workspaceId, ...(input.status === 'active' ? { status: { in: ['PLANNING', 'IN_PROGRESS', 'ON_HOLD'] } } : {}) }, orderBy: { updatedAt: 'desc' }, take: 25, include: { _count: { select: { tasks: true } }, tasks: { where: { status: 'COMPLETED' }, select: { id: true } } } });
+        const seer = await viewerOf(this.prisma, workspaceId, userId);
+        const projects = await this.prisma.project.findMany({ where: { workspaceId, ...visibleProjectWhere(seer), ...(input.status === 'active' ? { status: { in: ['PLANNING', 'IN_PROGRESS', 'ON_HOLD'] } } : {}) }, orderBy: { updatedAt: 'desc' }, take: 25, include: { _count: { select: { tasks: true } }, tasks: { where: { status: 'COMPLETED' }, select: { id: true } } } });
         return { text: JSON.stringify(projects.map((project) => ({ id: project.id, name: project.name, status: project.status, due: isoDay(project.dueAt), tasksTotal: project._count.tasks, tasksCompleted: project.tasks.length }))), sources: projects.map((project) => ({ type: 'project' as const, id: project.id, title: project.name, href: `/workspace/projects/${project.id}` })) };
       }
       case 'get_document': {
