@@ -29,6 +29,11 @@ enum ProjectStatus {
   ARCHIVED
 }
 
+enum ProjectVisibility {
+  WORKSPACE
+  TEAM
+}
+
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -105,6 +110,8 @@ model User {
   memberships                 WorkspaceMember[]
   personalWorkspace           Workspace?          @relation("PersonalWorkspaceOwner")
   createdProjects             Project[]           @relation("ProjectCreator")
+  ownedProjects               Project[]           @relation("ProjectOwner")
+  projectMemberships          ProjectMember[]
   createdProjectTemplates     ProjectTemplate[]   @relation("ProjectTemplateCreator")
   createdTaskViews            WorkspaceTaskView[] @relation("TaskViewCreator")
   assignedTasks               Task[]              @relation("TaskAssignee")
@@ -246,10 +253,15 @@ model Project {
   dueAt             DateTime?          @db.Timestamptz(3)
   budgetTotalCents  Int?
   budgetSpentCents  Int                @default(0)
+  startAt           DateTime?          @db.Timestamptz(3)
+  visibility        ProjectVisibility  @default(WORKSPACE)
+  ownerId           String?            @db.Uuid
   createdAt         DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
   workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy         User               @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  owner             User?              @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  members           ProjectMember[]
   tasks             Task[]
   documents         Document[]
   knowledgeItems    KnowledgeItem[]    @relation("KnowledgeProject")
@@ -268,6 +280,7 @@ model Task {
   id                  String              @id @default(uuid()) @db.Uuid
   workspaceId         String              @db.Uuid
   projectId           String?             @db.Uuid
+  milestoneId         String?             @db.Uuid
   createdById         String              @db.Uuid
   assigneeId          String?             @db.Uuid
   parentId            String?             @db.Uuid
@@ -287,6 +300,7 @@ model Task {
   updatedAt           DateTime            @updatedAt @db.Timestamptz(3)
   workspace           Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project             Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  milestone           ProjectMilestone?   @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
   parent              Task?               @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks            Task[]              @relation("TaskSubtasks")
   createdBy           User                @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
@@ -305,6 +319,7 @@ model Task {
 
   @@index([workspaceId, status, dueAt])
   @@index([projectId, status])
+  @@index([milestoneId])
   @@index([assigneeId, status])
   @@index([parentId])
   @@map("tasks")
@@ -362,17 +377,33 @@ model TaskFollower {
   @@map("task_followers")
 }
 
+/// Who is on a project's team. Always a member of the same workspace; the owner is implied and not stored here.
+model ProjectMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
 model ProjectMilestone {
   id          String    @id @default(uuid()) @db.Uuid
   workspaceId String    @db.Uuid
   projectId   String    @db.Uuid
   title       String    @db.VarChar(160)
+  description String?   @db.Text
   dueAt       DateTime? @db.Timestamptz(3)
   completedAt DateTime? @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks       Task[]
 
   @@index([workspaceId, projectId, dueAt])
   @@map("project_milestones")

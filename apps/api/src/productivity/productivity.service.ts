@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DocumentEvents } from './document-events.js';
 import { TextSessions } from './text-sessions.js';
 import { PermissionsService } from '../billing/permissions.service.js';
@@ -14,8 +14,11 @@ import { workspaceNotificationWhere } from './notification-filter.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { AutomationsService } from './automations.service.js';
+import { canAdminister, startBeforeDue, visibleProjectWhere, type ProjectAccessor } from './project-rules.js';
 
 const projectStatuses = ['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'] as const;
+const projectVisibilities = ['WORKSPACE', 'TEAM'] as const;
+const projectInclude = { _count: { select: { tasks: true } }, owner: { select: { id: true, displayName: true } }, createdBy: { select: { id: true, displayName: true } } } as const;
 const taskStatuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED', 'CANCELLED'] as const;
 const taskPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
 const calendarRecurrences = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
@@ -38,12 +41,106 @@ export class ProductivityService {
   constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService, private readonly documentEvents: DocumentEvents, private readonly textSessions: TextSessions) {}
 
   async listProjects(identity: AuthenticatedIdentity, workspaceId: string) {
-    const userId = await this.requireMembership(identity, workspaceId);
-    return this.prisma.project.findMany({
-      where: { workspaceId },
+    const actor = await this.projectActor(identity, workspaceId);
+    const projects = await this.prisma.project.findMany({
+      where: { workspaceId, ...visibleProjectWhere(actor) },
       orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
-      include: { _count: { select: { tasks: true } } },
-    }).then((projects) => projects.map(({ _count, ...project }) => ({ ...project, taskCount: _count.tasks })));
+      include: projectInclude,
+    });
+    const done = await this.prisma.task.groupBy({ by: ['projectId'], where: { workspaceId, status: 'COMPLETED', projectId: { in: projects.map((project) => project.id) } }, _count: { _all: true } });
+    const completed = new Map(done.map((row) => [row.projectId, row._count._all]));
+    return projects.map((project) => this.shapeProject(project, completed.get(project.id) ?? 0));
+  }
+
+  async getProject(identity: AuthenticatedIdentity, workspaceId: string, projectId: string) {
+    const actor = await this.projectActor(identity, workspaceId);
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, ...visibleProjectWhere(actor) }, include: projectInclude });
+    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    const completed = await this.prisma.task.count({ where: { workspaceId, projectId, status: 'COMPLETED' } });
+    return { ...this.shapeProject(project, completed), canAdminister: canAdminister(actor, project) };
+  }
+
+  async listProjectTeam(identity: AuthenticatedIdentity, workspaceId: string, projectId: string) {
+    const actor = await this.projectActor(identity, workspaceId);
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, ...visibleProjectWhere(actor) }, select: { ownerId: true, createdById: true, members: { select: { userId: true } } } });
+    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    const ownerId = project.ownerId ?? project.createdById;
+    const ids = [...new Set([ownerId, ...project.members.map((member) => member.userId)])];
+    const rows = await this.prisma.workspaceMember.findMany({ where: { workspaceId, userId: { in: ids } }, select: { userId: true, role: true, user: { select: { displayName: true } } } });
+    return rows.map((row) => ({ userId: row.userId, displayName: row.user.displayName, role: row.role, isOwner: row.userId === ownerId })).sort((a, b) => Number(b.isOwner) - Number(a.isOwner) || a.displayName.localeCompare(b.displayName));
+  }
+
+  async addProjectMember(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
+    const actor = await this.projectActor(identity, workspaceId, true);
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, ...visibleProjectWhere(actor) }, select: { id: true, name: true, ownerId: true, createdById: true } });
+    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    if (!canAdminister(actor, project)) throw new ForbiddenException('Only the project owner or a workspace administrator can change the team.');
+    const userId = optionalUuid(objectInput(input).userId, 'Member');
+    if (!userId) throw new BadRequestException('Choose a workspace member to add.');
+    const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId } }, select: { user: { select: { displayName: true } } } });
+    if (!member) throw new BadRequestException('Only members of this workspace can join a project.');
+    await this.prisma.projectMember.upsert({ where: { projectId_userId: { projectId, userId } }, create: { projectId, userId }, update: {} });
+    await this.recordActivity(workspaceId, actor.userId, 'PROJECT', projectId, `added ${member.user.displayName} to project “${project.name}”`);
+    return this.listProjectTeam(identity, workspaceId, projectId);
+  }
+
+  async removeProjectMember(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, userId: string) {
+    const actor = await this.projectActor(identity, workspaceId, true);
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, ...visibleProjectWhere(actor) }, select: { id: true, name: true, ownerId: true, createdById: true } });
+    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    if (!canAdminister(actor, project)) throw new ForbiddenException('Only the project owner or a workspace administrator can change the team.');
+    if (userId === (project.ownerId ?? project.createdById)) throw new ConflictException('The project owner cannot be removed. Choose a different owner first.');
+    const removed = await this.prisma.projectMember.deleteMany({ where: { projectId, userId } });
+    if (!removed.count) throw new NotFoundException('That person is not on this project’s team.');
+    await this.recordActivity(workspaceId, actor.userId, 'PROJECT', projectId, `removed a team member from project “${project.name}”`);
+    return this.listProjectTeam(identity, workspaceId, projectId);
+  }
+
+  async deleteProject(identity: AuthenticatedIdentity, workspaceId: string, projectId: string) {
+    const actor = await this.projectActor(identity, workspaceId, true);
+    await this.permissions.assert(workspaceId, actor.userId, 'projects');
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, ...visibleProjectWhere(actor) }, select: { id: true, name: true, ownerId: true, createdById: true } });
+    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    if (!canAdminister(actor, project)) throw new ForbiddenException('Only the project owner or a workspace administrator can delete this project.');
+    await this.prisma.project.delete({ where: { id: project.id } });
+    await this.recordActivity(workspaceId, actor.userId, 'PROJECT', project.id, `deleted project “${project.name}”`);
+    return { id: project.id, deleted: true };
+  }
+
+  private shapeProject<T extends { _count: { tasks: number }; owner: { id: string; displayName: string } | null; createdBy: { id: string; displayName: string } }>(project: T, completedCount: number) {
+    const { _count, owner, createdBy, ...rest } = project;
+    return { ...rest, taskCount: _count.tasks, completedCount, owner: owner ?? createdBy };
+  }
+
+  private async projectActor(identity: AuthenticatedIdentity, workspaceId: string, write = false): Promise<ProjectAccessor> {
+    const userId = await this.requireMembership(identity, workspaceId, write);
+    const membership = await this.prisma.workspaceMember.findUniqueOrThrow({ where: { workspaceId_userId: { workspaceId, userId } }, select: { role: true } });
+    return { userId, role: membership.role };
+  }
+
+  /** The project row if this member may see it; otherwise a 404 so team-only projects are not revealed. */
+  private async visibleProject(actor: ProjectAccessor, workspaceId: string, projectId: string) {
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, ...visibleProjectWhere(actor) }, select: { id: true } });
+    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    return project;
+  }
+
+  /** A task may belong to a milestone only of its own project. */
+  private async milestoneField(value: unknown, workspaceId: string, projectId: string | null) {
+    const milestoneId = optionalUuid(value, 'Milestone');
+    if (!milestoneId) return null;
+    const found = projectId ? await this.prisma.projectMilestone.findFirst({ where: { id: milestoneId, projectId, workspaceId }, select: { id: true } }) : null;
+    if (!found) throw new BadRequestException('Choose a milestone from this task’s project.');
+    return milestoneId;
+  }
+
+  /** Accepts a workspace member (not a guest) as project owner. */
+  private async ownerField(value: unknown, workspaceId: string) {
+    const ownerId = optionalUuid(value, 'Project owner');
+    if (!ownerId) throw new BadRequestException('Choose a project owner.');
+    const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: ownerId } }, select: { role: true } });
+    if (!member || member.role === 'GUEST') throw new BadRequestException('The project owner must be a non-guest member of this workspace.');
+    return ownerId;
   }
 
   async listProjectTemplates(identity: AuthenticatedIdentity, workspaceId: string) {
@@ -95,11 +192,16 @@ export class ProductivityService {
     const name = textField(body.name, 'Project name', 160);
     const template = await this.prisma.projectTemplate.findFirst({ where: { id: templateId, workspaceId } });
     if (!template) throw new NotFoundException('Project template not found in this workspace.');
+    const description = 'description' in body ? optionalText(body.description, 'Project description', 5000) : template.description;
+    const startAt = dateField(body.startAt, 'Start date');
+    const dueAt = dateField(body.dueAt, 'Due date');
+    if (!startBeforeDue(startAt, dueAt)) throw new BadRequestException('The start date cannot be after the due date.');
+    const ownerId = body.ownerId ? await this.ownerField(body.ownerId, workspaceId) : actorId;
     const tasks = parseTemplateTasks(template.taskTemplates);
     const milestones = parseTemplateMilestones(template.milestoneTemplates);
     await this.entitlements.assertCanAdd(workspaceId, 'projects');
     return this.prisma.$transaction(async (transaction) => {
-      const project = await transaction.project.create({ data: { workspaceId, createdById: actorId, name, description: template.description, status: 'PLANNING' } });
+      const project = await transaction.project.create({ data: { workspaceId, createdById: actorId, ownerId, name, description, startAt, dueAt, status: 'PLANNING' } });
       const createdTasks: { id: string }[] = [];
       const today = new Date();
       const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
@@ -240,22 +342,36 @@ export class ProductivityService {
     const status = enumField(body.status, projectStatuses, 'Project status', 'PLANNING');
     const dueAt = dateField(body.dueAt, 'Due date');
     const budgetTotalCents = moneyCentsField(body.budgetTotal, 'Project budget', true);
+    const startAt = dateField(body.startAt, 'Start date');
+    if (!startBeforeDue(startAt, dueAt)) throw new BadRequestException('The start date cannot be after the due date.');
+    const visibility = enumField(body.visibility, projectVisibilities, 'Project visibility', 'WORKSPACE');
+    const ownerId = body.ownerId ? await this.ownerField(body.ownerId, workspaceId) : userId;
     await this.entitlements.assertCanAdd(workspaceId, 'projects');
     const project = await this.prisma.project.create({
-      data: { workspaceId, createdById: userId, name, description, status, dueAt, budgetTotalCents },
+      data: { workspaceId, createdById: userId, ownerId, name, description, status, dueAt, startAt, visibility, budgetTotalCents },
     });
     await this.recordActivity(workspaceId, userId, 'PROJECT', project.id, `created project “${project.name}”`);
     return project;
   }
 
   async updateProject(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const actor = await this.projectActor(identity, workspaceId, true);
+    const actorId = actor.userId;
     const body = objectInput(input);
-    const data: { name?: string; description?: string | null; status?: ProjectStatus; dueAt?: Date | null; budgetTotalCents?: number | null; budgetSpentCents?: number } = {};
+    const existing = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, ...visibleProjectWhere(actor) }, select: { ownerId: true, createdById: true, startAt: true, dueAt: true } });
+    if (!existing) throw new NotFoundException('Project not found in this workspace.');
+    const data: { name?: string; description?: string | null; status?: ProjectStatus; dueAt?: Date | null; startAt?: Date | null; visibility?: (typeof projectVisibilities)[number]; ownerId?: string; budgetTotalCents?: number | null; budgetSpentCents?: number } = {};
     if ('name' in body) data.name = textField(body.name, 'Project name', 160);
     if ('description' in body) data.description = optionalText(body.description, 'Project description', 5000);
     if ('status' in body) data.status = enumField(body.status, projectStatuses, 'Project status');
     if ('dueAt' in body) data.dueAt = dateField(body.dueAt, 'Due date');
+    if ('startAt' in body) data.startAt = dateField(body.startAt, 'Start date');
+    if (!startBeforeDue('startAt' in data ? data.startAt ?? null : existing.startAt, 'dueAt' in data ? data.dueAt ?? null : existing.dueAt)) throw new BadRequestException('The start date cannot be after the due date.');
+    if ('visibility' in body || 'ownerId' in body) {
+      if (!canAdminister(actor, existing)) throw new ForbiddenException('Only the project owner or a workspace administrator can change the owner or who can see this project.');
+      if ('visibility' in body) data.visibility = enumField(body.visibility, projectVisibilities, 'Project visibility');
+      if ('ownerId' in body) data.ownerId = await this.ownerField(body.ownerId, workspaceId);
+    }
     if ('budgetTotal' in body) data.budgetTotalCents = moneyCentsField(body.budgetTotal, 'Project budget', true);
     if ('budgetSpent' in body) {
       const value = moneyCentsField(body.budgetSpent, 'Spent amount', false);
@@ -271,32 +387,35 @@ export class ProductivityService {
   }
 
   async listProjectMilestones(identity: AuthenticatedIdentity, workspaceId: string, projectId: string) {
-    await this.requireMembership(identity, workspaceId);
-    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
-    if (!project) throw new NotFoundException('Project not found in this workspace.');
-    return this.prisma.projectMilestone.findMany({
+    await this.visibleProject(await this.projectActor(identity, workspaceId), workspaceId, projectId);
+    const milestones = await this.prisma.projectMilestone.findMany({
       where: { workspaceId, projectId },
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+      include: { tasks: { select: { id: true, title: true, status: true, dueAt: true } } },
     });
+    return milestones.map(({ tasks, ...milestone }) => ({ ...milestone, tasks, taskCount: tasks.filter((task) => task.status !== 'CANCELLED').length, completedCount: tasks.filter((task) => task.status === 'COMPLETED').length }));
   }
 
   async createProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId, true);
-    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
-    if (!project) throw new NotFoundException('Project not found in this workspace.');
+    const actor = await this.projectActor(identity, workspaceId, true);
+    const actorId = actor.userId;
+    await this.visibleProject(actor, workspaceId, projectId);
     const body = objectInput(input);
     const milestone = await this.prisma.projectMilestone.create({
-      data: { workspaceId, projectId, title: textField(body.title, 'Milestone title', 160), dueAt: dateField(body.dueAt, 'Due date') },
+      data: { workspaceId, projectId, title: textField(body.title, 'Milestone title', 160), description: optionalText(body.description, 'Milestone description', 5000), dueAt: dateField(body.dueAt, 'Due date') },
     });
     await this.recordActivity(workspaceId, actorId, 'MILESTONE', milestone.id, `added milestone “${milestone.title}”`);
     return milestone;
   }
 
   async updateProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, milestoneId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const actor = await this.projectActor(identity, workspaceId, true);
+    const actorId = actor.userId;
+    await this.visibleProject(actor, workspaceId, projectId);
     const body = objectInput(input);
-    const data: { title?: string; dueAt?: Date | null; completedAt?: Date | null } = {};
+    const data: { title?: string; description?: string | null; dueAt?: Date | null; completedAt?: Date | null } = {};
     if ('title' in body) data.title = textField(body.title, 'Milestone title', 160);
+    if ('description' in body) data.description = optionalText(body.description, 'Milestone description', 5000);
     if ('dueAt' in body) data.dueAt = dateField(body.dueAt, 'Due date');
     if ('completed' in body) {
       if (typeof body.completed !== 'boolean') throw new BadRequestException('Milestone completion must be true or false.');
@@ -312,7 +431,9 @@ export class ProductivityService {
   }
 
   async deleteProjectMilestone(identity: AuthenticatedIdentity, workspaceId: string, projectId: string, milestoneId: string) {
-    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const actor = await this.projectActor(identity, workspaceId, true);
+    const actorId = actor.userId;
+    await this.visibleProject(actor, workspaceId, projectId);
     const milestone = await this.prisma.projectMilestone.findFirst({ where: { id: milestoneId, projectId, workspaceId }, select: { id: true, title: true } });
     if (!milestone) throw new NotFoundException('Milestone not found in this project.');
     await this.prisma.projectMilestone.delete({ where: { id: milestone.id } });
@@ -321,14 +442,15 @@ export class ProductivityService {
   }
 
   async listTasks(identity: AuthenticatedIdentity, workspaceId: string, label?: string) {
-    await this.requireMembership(identity, workspaceId);
+    const actor = await this.projectActor(identity, workspaceId);
     const normalizedLabel = label?.trim().toLocaleLowerCase();
     if (normalizedLabel && (normalizedLabel.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(normalizedLabel))) throw new BadRequestException('Task label must be 1–32 letters, numbers, underscores, or hyphens.');
     return this.prisma.task.findMany({
-      where: { workspaceId, ...(normalizedLabel ? { labels: { has: normalizedLabel } } : {}) },
+      where: { workspaceId, ...(normalizedLabel ? { labels: { has: normalizedLabel } } : {}), ...(Object.keys(visibleProjectWhere(actor)).length ? { OR: [{ projectId: null }, { project: visibleProjectWhere(actor) }] } : {}) },
       orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
       include: {
         project: { select: { id: true, name: true } },
+        milestone: { select: { id: true, title: true } },
         assignee: { select: { id: true, displayName: true } },
         events: { select: { id: true, title: true, startsAt: true } },
         dependsOn: { select: { id: true, title: true, status: true } },
@@ -647,11 +769,13 @@ export class ProductivityService {
     }
     const status = enumField(body.status, taskStatuses, 'Task status', 'TODO');
     const priority = enumField(body.priority, taskPriorities, 'Task priority', 'MEDIUM');
+    const milestoneId = await this.milestoneField(body.milestoneId, workspaceId, projectId);
     const task = await this.prisma.task.create({
       data: {
         workspaceId,
         createdById: userId,
         projectId,
+        milestoneId,
         assigneeId,
         parentId,
         title: textField(body.title, 'Task title', 200),
@@ -708,7 +832,7 @@ export class ProductivityService {
   async updateTask(identity: AuthenticatedIdentity, workspaceId: string, taskId: string, input: unknown) {
     const actorId = await this.requireMembership(identity, workspaceId, true);
     const body = objectInput(input);
-    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true, assigneeId: true, startAt: true, dueAt: true, recurrence: true, parentId: true } });
+    const previousTask = await this.prisma.task.findFirst({ where: { id: taskId, workspaceId }, select: { status: true, assigneeId: true, startAt: true, dueAt: true, recurrence: true, parentId: true, projectId: true } });
     if (!previousTask) throw new NotFoundException('Task not found in this workspace.');
     const data: {
       title?: string;
@@ -719,6 +843,7 @@ export class ProductivityService {
       dueAt?: Date | null;
       completedAt?: Date | null;
       assigneeId?: string | null;
+      milestoneId?: string | null;
       labels?: string[];
       recurrence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null;
       recurrenceInterval?: number;
@@ -753,6 +878,7 @@ export class ProductivityService {
       }
       data.assigneeId = assigneeId;
     }
+    if ('milestoneId' in body) data.milestoneId = await this.milestoneField(body.milestoneId, workspaceId, previousTask.projectId);
     Object.assign(data, parseRecurrence(body));
     if (!Object.keys(data).length) throw new BadRequestException('Provide at least one task field to update.');
     const effectiveRecurrence = 'recurrence' in data ? data.recurrence : previousTask.recurrence;
