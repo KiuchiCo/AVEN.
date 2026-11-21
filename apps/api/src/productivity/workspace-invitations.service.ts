@@ -38,12 +38,13 @@ export class WorkspaceInvitationsService {
     }
     const existing = await this.prisma.workspaceInvite.findFirst({ where: { workspaceId, email, status: 'PENDING', expiresAt: { gt: new Date() } }, select: { id: true } });
     if (existing) throw new ConflictException('There is already an active invitation for this email.');
-    if (role !== 'GUEST') await this.entitlements.assertCanAddMember(workspaceId, { includePending: true });
     const token = createInvitationToken();
-    const invite = await this.prisma.workspaceInvite.create({ data: {
-      workspaceId, createdById: actor.userId, email, role, tokenHash: hashInvitationToken(token),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    }, select: { id: true, email: true, role: true, expiresAt: true, createdAt: true } });
+    const created = {
+      data: { workspaceId, createdById: actor.userId, email, role, tokenHash: hashInvitationToken(token), expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+      select: { id: true, email: true, role: true, expiresAt: true, createdAt: true },
+    };
+    // The seat check and the save are one step, so parallel invitations cannot all pass the check and go over the plan's limit.
+    const invite = role === 'GUEST' ? await this.prisma.workspaceInvite.create(created) : await this.entitlements.addMemberWithinLimit(workspaceId, { includePending: true }, (transaction) => transaction.workspaceInvite.create(created));
     // Best effort: the admin still gets the link to share if the email can't be sent.
     const [inviter, workspace] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: actor.userId }, select: { displayName: true } }),
@@ -165,14 +166,15 @@ export class WorkspaceInvitationsService {
     const invite = await this.prisma.workspaceInvite.findUnique({ where: { tokenHash }, select: { id: true, workspaceId: true, email: true, role: true, status: true, expiresAt: true } });
     if (!invite || invite.status !== 'PENDING' || invite.expiresAt <= new Date()) throw new NotFoundException('This invitation is invalid, expired, or has already been used.');
     if (user.email.toLowerCase() !== invite.email.toLowerCase()) throw new ForbiddenException(`This invitation was sent to ${invite.email}. Sign in with that verified email address.`);
-    if (invite.role !== 'GUEST') await this.entitlements.assertCanAddMember(invite.workspaceId, { includePending: false });
     try {
-      await this.prisma.$transaction(async (transaction) => {
+      const join = async (transaction: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0]) => {
         await transaction.workspaceMember.create({ data: { workspaceId: invite.workspaceId, userId: user.id, role: invite.role } });
         const updated = await transaction.workspaceInvite.updateMany({ where: { id: invite.id, status: 'PENDING', expiresAt: { gt: new Date() } }, data: { status: 'ACCEPTED', acceptedAt: new Date() } });
         if (updated.count !== 1) throw new ConflictException('This invitation has already been accepted or revoked.');
         await transaction.workspaceActivity.create({ data: { workspaceId: invite.workspaceId, actorId: user.id, entityType: 'MEMBER', entityId: user.id, message: 'joined the workspace' } });
-      });
+      };
+      if (invite.role === 'GUEST') await this.prisma.$transaction(join);
+      else await this.entitlements.addMemberWithinLimit(invite.workspaceId, { includePending: false }, join);
     } catch (error) {
       if (error instanceof ConflictException) throw error;
       if ((error as { code?: string }).code === 'P2002') throw new ConflictException('You are already a member of this workspace or the invitation was just used.');

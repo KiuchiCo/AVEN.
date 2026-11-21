@@ -114,6 +114,23 @@ test.describe('the signed-out app', () => {
   });
 });
 
+test.describe('the script policy', () => {
+  test('every page carries a fresh nonce, allows no inline script, and a script injected into the page does not run', async ({ page, request }) => {
+    const first = (await request.get('/shared/not-a-link')).headers()['content-security-policy'] ?? '';
+    const second = (await request.get('/shared/not-a-link')).headers()['content-security-policy'] ?? '';
+    const nonce = (policy: string) => /'nonce-([^']+)'/.exec(policy)?.[1];
+    expect(nonce(first)).toBeTruthy(); expect(nonce(first)).not.toBe(nonce(second));
+    expect(first).not.toMatch(/unsafe-inline/); expect(first).toMatch(/object-src 'none'/); expect(first).toMatch(/frame-ancestors 'self'/);
+    const violations: string[] = []; page.on('console', (message) => { if (/Content Security Policy/i.test(message.text())) violations.push(message.text()); });
+    await page.goto('/shared/not-a-link');
+    await page.evaluate(() => { const box = document.createElement('div'); box.innerHTML = '<img src="x" onerror="window.__pwned=1">'; document.body.appendChild(box); });
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
+    expect(violations.some((line) => /script-src/.test(line))).toBe(true);
+    expect(violations.filter((line) => !/inline event handler|script-src/i.test(line)), 'the app itself breaks no rule of its own policy').toEqual([]);
+  });
+});
+
 test.describe('installable and offline-aware', () => {
   test('publishes a web app manifest whose icons exist', async ({ page, request }) => {
     await page.goto('/');

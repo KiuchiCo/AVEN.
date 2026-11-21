@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
 import { Inter, Playfair_Display } from 'next/font/google';
+import { headers } from 'next/headers';
 import Script from 'next/script';
 import { ServiceWorkerRegistration } from './service-worker-registration';
 import { timeZoneScript } from './time-zone-script';
@@ -22,16 +23,17 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: '#F8F6F1' };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined; // reading the request makes every page render per request, which a script nonce needs
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
   return (
     <html lang="en" className={`${display.variable} ${interfaceFont.variable}`} suppressHydrationWarning>
       <body>
-        <Script id="aven-time-zone" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: timeZoneScript }} />
-        <Script id="aven-theme" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('aven-theme');if(t==='light'||t==='dark'||t==='system')document.documentElement.dataset.theme=t}catch(e){}" }} />
+        <Script id="aven-time-zone" nonce={nonce} strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: timeZoneScript }} />
+        <Script id="aven-theme" nonce={nonce} strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('aven-theme');if(t==='light'||t==='dark'||t==='system')document.documentElement.dataset.theme=t}catch(e){}" }} />
         <ServiceWorkerRegistration />
-        {publishableKey ? <ClerkProvider publishableKey={publishableKey}>{children}</ClerkProvider> : children}
+        {publishableKey ? <ClerkProvider publishableKey={publishableKey} nonce={nonce}>{children}</ClerkProvider> : children}
       </body>
     </html>
   );

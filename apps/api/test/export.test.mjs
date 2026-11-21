@@ -136,3 +136,15 @@ test('Word and PDF keep inline fonts, sizes and combined marks from the same tex
   assert.ok(xml.includes('w:ascii="Consolas"') && xml.includes('<w:sz w:val="15"/>'));
   assert.ok((await renderPdf(doc)).subarray(0, 5).toString() === '%PDF-');
 });
+
+test('security: hostile formatting text cannot make an export cost seconds or overflow the stack', () => {
+  const N = 100_000;
+  const cases = { 'thousands of unclosed spans': '{red,bg-blue:'.repeat(N / 13), 'thousands of unclosed links': '[a](b'.repeat(N / 5), 'five thousand nested spans': '{red:'.repeat(5000) + 'x' + '}'.repeat(5000), 'one long unclosed span': `{red:${'a'.repeat(N)}` };
+  for (const [name, text] of Object.entries(cases)) {
+    const started = Date.now(); const runs = parseRuns(text);
+    assert.ok(Date.now() - started < 1200, `${name} took ${Date.now() - started} ms`);
+    assert.equal(runs.map((run) => run.text).join('').length > 0, true, name);
+  }
+  assert.equal(parseRuns('{red:ok}')[0].colour, 'C0392B', 'ordinary spans still work');
+  assert.equal(parseRuns('[a link](https://x.io)')[0].href, 'https://x.io', 'and ordinary links');
+});

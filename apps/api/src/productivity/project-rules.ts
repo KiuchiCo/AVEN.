@@ -38,3 +38,19 @@ export async function hiddenIdsFor(prisma: { project: { findMany: (args: unknown
   const hidden = await prisma.project.findMany({ where: { workspaceId, NOT: visible }, select: { id: true, tasks: { select: { id: true }, take: 5000 } } });
   return hidden.flatMap((project) => [project.id, ...project.tasks.map((task) => task.id)]);
 }
+
+/** The ids of team-only projects and tasks this member is outside, as a set. */
+export async function hiddenLinksFor(prisma: unknown, workspaceId: string, userId: string): Promise<ReadonlySet<string>> {
+  return new Set(await hiddenIdsFor(prisma as never, workspaceId, await viewerOf(prisma as never, workspaceId, userId)));
+}
+
+/** Takes the name (and id) of a project or task the viewer may not see out of an item that merely links to it, such as a document, a Knowledge item or an event. */
+export function unlinkHidden<T>(item: T, hidden: ReadonlySet<string>): T {
+  if (!hidden.size || !item || typeof item !== 'object') return item;
+  const row = { ...(item as Record<string, unknown>) };
+  for (const key of ['project', 'task'] as const) {
+    const link = row[key] as { id?: string } | null | undefined;
+    if (link?.id && hidden.has(link.id)) { row[key] = null; row[`${key}Id`] = null; }
+  }
+  return row as T;
+}

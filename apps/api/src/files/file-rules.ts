@@ -28,6 +28,29 @@ export function normalizeMimeType(header: unknown): string {
   return value.length <= 127 && /^[a-z0-9][\w.+-]*\/[a-z0-9][\w.+-]*$/.test(value) ? value : 'application/octet-stream';
 }
 
+/** What the first bytes of a file say it is, for the types that may be shown inline. Null when they match none of them. */
+export function sniffMime(head: Buffer): string | null {
+  const starts = (...bytes: number[]) => bytes.every((byte, i) => head[i] === byte);
+  if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'image/png';
+  if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg';
+  if (starts(0x47, 0x49, 0x46, 0x38) && (head[4] === 0x37 || head[4] === 0x39) && head[5] === 0x61) return 'image/gif';
+  if (starts(0x52, 0x49, 0x46, 0x46) && head.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  if (head.subarray(0, 1024).includes('%PDF-')) return 'application/pdf';
+  return null;
+}
+
+/**
+ * The type to store for an upload. The browser's word for what a file is can be wrong or hostile, so the bytes decide for the types shown inline:
+ * a file that says it is an image but is not one, or text that is really binary, is kept as a plain download.
+ */
+export function reconcileMime(declared: string, head: Buffer): string {
+  const sniffed = sniffMime(head);
+  if (sniffed) return sniffed;
+  if (inlineTypes.has(declared) && declared !== 'text/plain') return 'application/octet-stream';
+  if (declared === 'text/plain' && head.includes(0)) return 'application/octet-stream';
+  return declared;
+}
+
 /** Only these are ever served inline. Everything else (including SVG and HTML) is forced to download. */
 const inlineTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf', 'text/plain']);
 

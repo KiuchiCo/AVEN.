@@ -2,6 +2,9 @@ import { inflateRawSync } from 'node:zlib';
 
 /** Most a single unpacked part may be, so a zip bomb can't exhaust memory. */
 const MAX_PART_BYTES = 20 * 1024 * 1024;
+/** Most a whole file may unpack to, and most parts read from it: many small parts that each unpack to the cap would otherwise add up to gigabytes. */
+const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+const MAX_PARTS = 400;
 
 type ZipEntry = { name: string; method: number; compressedSize: number; offset: number };
 
@@ -22,13 +25,13 @@ function zipEntries(bytes: Buffer): ZipEntry[] | null {
   return entries;
 }
 
-function readEntry(bytes: Buffer, entry: ZipEntry): string {
+function readEntry(bytes: Buffer, entry: ZipEntry, left: number): string {
   const o = entry.offset;
   if (o + 30 > bytes.length || bytes.readUInt32LE(o) !== 0x04034b50) throw new Error('Corrupt zip entry.');
   const start = o + 30 + bytes.readUInt16LE(o + 26) + bytes.readUInt16LE(o + 28);
   const data = bytes.subarray(start, start + entry.compressedSize);
-  if (entry.method === 0) return data.toString('utf8');
-  if (entry.method === 8) return inflateRawSync(data, { maxOutputLength: MAX_PART_BYTES }).toString('utf8');
+  if (entry.method === 0) { if (data.length > left) throw new Error('Too large.'); return data.toString('utf8'); }
+  if (entry.method === 8) return inflateRawSync(data, { maxOutputLength: Math.min(MAX_PART_BYTES, left) }).toString('utf8');
   throw new Error('Unsupported zip compression.');
 }
 
@@ -68,7 +71,12 @@ export function officeToText(extension: string, bytes: Buffer): string | null {
   try {
     const entries = zipEntries(bytes);
     if (!entries) return null;
-    const read = (name: string) => { const entry = entries.find((item) => item.name === name); return entry ? readEntry(bytes, entry) : null; };
+    let left = MAX_TOTAL_BYTES; let parts = 0;
+    const read = (name: string) => {
+      const entry = entries.find((item) => item.name === name); if (!entry) return null;
+      if (++parts > MAX_PARTS) throw new Error('Too many parts.');
+      const text = readEntry(bytes, entry, left); left -= Buffer.byteLength(text); return text;
+    };
     if (extension === 'docx') { const xml = read('word/document.xml'); return xml === null ? null : wordText(xml); }
     if (extension === 'pptx') {
       const slides = entries.map((entry) => entry.name).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)).sort(byNumber);

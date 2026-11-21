@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { redactPath } from './request-logging.js';
 
 /** One error shape for every failure: { statusCode, message, error, requestId }. Unexpected errors never leak details. */
 @Catch()
@@ -20,7 +21,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return;
     }
 
-    this.logger.error(JSON.stringify({ requestId, method: request.method, path: request.path }), exception instanceof Error ? exception.stack : String(exception));
+    this.logger.error(JSON.stringify({ requestId, method: request.method, path: redactPath(request.path) }), exception instanceof Error ? exception.stack : String(exception));
     response.status(500).json({ statusCode: 500, error: 'Internal Server Error', message: 'Something went wrong. Please try again.', requestId });
   }
 }

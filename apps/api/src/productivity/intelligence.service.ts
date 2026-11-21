@@ -73,10 +73,9 @@ export class IntelligenceService {
     const dueAt = optionalDate(body.dueAt, 'Project due date');
     const tasks = titleList(body.tasks, 'Tasks', 30, 200);
     const milestones = titleList(body.milestones, 'Milestones', 20, 160);
-    await this.entitlements.assertCanAdd(workspaceId, 'projects');
     if (!tasks.length && !milestones.length) throw new BadRequestException('Add at least one task or milestone to the plan.');
 
-    return this.prisma.$transaction(async (transaction) => {
+    return this.entitlements.addWithinLimit(workspaceId, 'projects', async (transaction) => {
       const project = await transaction.project.create({
         data: { workspaceId, createdById: userId, name, description, dueAt, status: 'PLANNING' },
       });

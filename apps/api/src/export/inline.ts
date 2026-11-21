@@ -19,6 +19,9 @@ export function safeHref(url: string): string | null {
 }
 
 type Style = Omit<Run, 'text'>;
+/** Longest a style span may be, and deepest spans may nest: limits that keep a hostile block from costing seconds or overflowing the stack. Ordinary text is nowhere near them. */
+const MAX_SPAN = 5000;
+const MAX_NESTING = 40;
 function spanTokens(tokens: string): Style | null {
   const out: Style = {};
   for (const token of tokens.split(',')) {
@@ -38,7 +41,7 @@ function spanAt(text: string, i: number, end: number): { open: number; close: nu
   const style = /^[a-z0-9-]+(?:,[a-z0-9-]+)*$/.test(text.slice(i + 1, colon)) ? spanTokens(text.slice(i + 1, colon)) : null;
   if (!style) return null;
   let depth = 1;
-  for (let at = colon + 1; at < end; at += 1) {
+  for (let at = colon + 1, stop = Math.min(end, colon + 1 + MAX_SPAN); at < stop; at += 1) { // a bounded look: an unclosed `{red:` must not make every later character rescan the whole rest of the text
     const ch = text[at];
     if (ch === '\n') return null;
     if (ch === '{') depth += 1;
@@ -52,13 +55,19 @@ const sameStyle = (a: Style, b: Style) => { const x = Object.keys(a) as (keyof S
 export function parseRuns(text: string): Run[] {
   const out: Run[] = [];
   const emit = (value: string, style: Style) => { const last = out[out.length - 1]; if (last && sameStyle({ ...last, text: undefined } as unknown as Style, { ...style, text: undefined } as unknown as Style)) last.text += value; else out.push({ text: value, ...style }); };
+  let nesting = 0;
   const scan = (from: number, to: number, inherited: Style) => {
+    if (nesting >= MAX_NESTING) { emit(text.slice(from, to), inherited); return; }
+    nesting += 1;
+    try { scanText(from, to, inherited); } finally { nesting -= 1; }
+  };
+  const scanText = (from: number, to: number, inherited: Style) => {
     let i = from;
     const wrap = (open: number, length: number, add: Style) => { scan(i + open, i + length - open, { ...inherited, ...add }); i += length; };
     while (i < to) {
       const rest = text.slice(i, to); let m: RegExpExecArray | null;
-      if ((m = /^`([^`\n]+)`/.exec(rest))) { emit(m[1], { ...inherited, code: true }); i += m[0].length; continue; }
-      if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { scan(i + 1, i + 1 + m[1].length, { ...inherited, href }); i += m[0].length; continue; } }
+      if ((m = /^`([^`\n]{1,2000})`/.exec(rest))) { emit(m[1], { ...inherited, code: true }); i += m[0].length; continue; }
+      if ((m = /^\[([^\]\n]{1,500})\]\(([^)\s]{1,2000})\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { scan(i + 1, i + 1 + m[1].length, { ...inherited, href }); i += m[0].length; continue; } }
       if ((m = /^\*\*\*([^*\n]+?)\*\*\*/.exec(rest))) { wrap(3, m[0].length, { bold: true, italic: true }); continue; }
       if ((m = /^\*\*([^*\n]+?)\*\*/.exec(rest))) { wrap(2, m[0].length, { bold: true }); continue; }
       if ((m = /^~~([^~\n]+?)~~/.exec(rest))) { wrap(2, m[0].length, { strike: true }); continue; }

@@ -111,3 +111,21 @@ test('encrypted, non-PDF and image-only files are refused with a clear reason', 
   const scan = pdf({ 1: '<< /Type /Catalog /Pages 2 0 R >>', 2: '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', 3: '<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>', 4: stream('', 'q 612 0 0 792 0 0 cm /Im0 Do Q') });
   assert.throws(() => extractText('scan.pdf', 'application/pdf', scan), /no readable text in that PDF/);
 });
+
+test('security: many small parts that each unpack to the per-part cap are refused as a whole, not read one after another', () => {
+  const zeros = (mb) => Buffer.alloc(mb * 1024 * 1024);
+  const slides = Array.from({ length: 6 }, (_, i) => [`ppt/slides/slide${i + 1}.xml`, zeros(15)]);
+  const file = zip(slides);
+  assert.ok(file.length < 200_000, `the file is small (${file.length} bytes) though it unpacks to ${6 * 15} MB`);
+  assert.throws(() => extractText('bomb.pptx', '', file), /couldn’t be read/);
+  assert.match(extractText('ok.pptx', '', zip([['ppt/slides/slide1.xml', '<a:p><a:t>Hello</a:t></a:p>']])).text, /Hello/);
+});
+
+test('security: a PDF whose many small streams each unpack to the cap is refused as a whole', () => {
+  const pages = 6;
+  const objects = { 1: '<< /Type /Catalog /Pages 2 0 R >>', 2: `<< /Type /Pages /Kids [${Array.from({ length: pages }, (_, i) => `${10 + i} 0 R`).join(' ')}] /Count ${pages} >>` };
+  for (let i = 0; i < pages; i += 1) { objects[10 + i] = `<< /Type /Page /Parent 2 0 R /Contents ${30 + i} 0 R >>`; objects[30 + i] = stream('', Buffer.alloc(15 * 1024 * 1024), true); }
+  const file = pdf(objects);
+  assert.ok(file.length < 200_000, 'the file is small');
+  assert.throws(() => pdfToText(file), /too large or complex/);
+});

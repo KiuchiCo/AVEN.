@@ -72,3 +72,17 @@ test('health checks are never rate limited', () => {
   const guard = new RateLimitGuard(1, 1000, () => 0);
   for (let i = 0; i < 5; i += 1) assert.equal(guard.canActivate(ctx('1.1.1.1', '/api/v1/health').context), true);
 });
+
+test('security: an error on a share-link or invitation address is logged without the secret token', async () => {
+  const { Logger } = await import('@nestjs/common');
+  const lines = []; const original = Logger.prototype.error;
+  Logger.prototype.error = function capture(...args) { lines.push(args.map(String).join(' ')); };
+  try {
+    for (const path of ['/api/v1/shared/documents/SECRET-TOKEN-123/images/x', '/api/v1/invitations/SECRET-TOKEN-123/accept']) {
+      const { host } = httpHost({ method: 'GET', path });
+      new AllExceptionsFilter().catch(new Error('boom'), host);
+    }
+  } finally { Logger.prototype.error = original; }
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((line) => !line.includes('SECRET-TOKEN-123') && line.includes(':token')), lines.join('\n'));
+});

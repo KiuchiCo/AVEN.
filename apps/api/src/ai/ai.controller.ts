@@ -12,7 +12,7 @@ const workspace = () => Param('workspaceId', new ParseUUIDPipe());
 const conversation = () => Param('conversationId', new ParseUUIDPipe());
 
 @Controller('workspaces/:workspaceId/ai')
-@UseGuards(ClerkAuthGuard, new RateLimitGuard(90))
+@UseGuards(ClerkAuthGuard, RateLimitGuard.strict(90))
 export class AiController {
   constructor(private readonly ai: AiService, private readonly agents: AiAgentsService) {}
 

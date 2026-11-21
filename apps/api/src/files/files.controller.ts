@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { pipeline } from 'node:stream/promises';
+import { RateLimitGuard } from '../common/rate-limit.guard.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -27,6 +28,7 @@ export class FilesController {
 
   /** The request body is the file itself (any content type); name, folder and replace target are query parameters. */
   @Post('upload')
+  @UseGuards(RateLimitGuard.strict(60)) // uploads are the heaviest request there is
   upload(@CurrentIdentity() who: Identity, @workspace() ws: string, @Req() request: Request, @Query('name') name?: string, @Query('folderId') folderId?: string, @Query('replaceFileId') replaceFileId?: string) {
     return this.files.upload(who, ws, request, { name, folderId, replaceFileId });
   }

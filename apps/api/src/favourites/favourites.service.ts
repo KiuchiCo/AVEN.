@@ -3,6 +3,7 @@ import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { FavouriteKind } from '../generated/prisma/client.js';
+import { viewerOf, visibleProjectWhere } from '../productivity/project-rules.js';
 
 export const MAX_FAVOURITES = 30;
 const kinds = ['PROJECT', 'DOCUMENT', 'DATABASE', 'WHITEBOARD'] as const;
@@ -19,9 +20,9 @@ export function parseFavourite(input: unknown): { kind: FavouriteKind; entityId:
 export class FavouritesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async title(workspaceId: string, kind: FavouriteKind, id: string): Promise<string | null> {
+  private async title(workspaceId: string, userId: string, kind: FavouriteKind, id: string): Promise<string | null> {
     switch (kind) {
-      case 'PROJECT': return (await this.prisma.project.findFirst({ where: { id, workspaceId }, select: { name: true } }))?.name ?? null;
+      case 'PROJECT': return (await this.prisma.project.findFirst({ where: { id, workspaceId, ...visibleProjectWhere(await viewerOf(this.prisma, workspaceId, userId)) }, select: { name: true } }))?.name ?? null;
       case 'DOCUMENT': return (await this.prisma.document.findFirst({ where: { id, workspaceId }, select: { title: true } }))?.title ?? null;
       case 'DATABASE': return (await this.prisma.workspaceDatabase.findFirst({ where: { id, workspaceId }, select: { name: true } }))?.name ?? null;
       case 'WHITEBOARD': return (await this.prisma.whiteboard.findFirst({ where: { id, workspaceId }, select: { name: true } }))?.name ?? null;
@@ -39,16 +40,19 @@ export class FavouritesService {
       this.prisma.whiteboard.findMany({ where: { workspaceId, id: { in: rows.filter((r) => r.kind === 'WHITEBOARD').map((r) => r.entityId) } }, select: { id: true, name: true } }),
     ]);
     const names = new Map<string, string>([...projects.map((x) => [x.id, x.name] as const), ...documents.map((x) => [x.id, x.title] as const), ...databases.map((x) => [x.id, x.name] as const), ...boards.map((x) => [x.id, x.name] as const)]);
+    const seeAll = visibleProjectWhere(await viewerOf(this.prisma, workspaceId, userId));
+    const hidden = new Set(projects.length && Object.keys(seeAll).length ? (await this.prisma.project.findMany({ where: { workspaceId, id: { in: projects.map((x) => x.id) }, NOT: seeAll }, select: { id: true } })).map((x) => x.id) : []);
     const gone = rows.filter((row) => !names.has(row.entityId));
     if (gone.length) await this.prisma.favourite.deleteMany({ where: { id: { in: gone.map((row) => row.id) } } });
-    return rows.filter((row) => names.has(row.entityId)).map((row) => ({ id: row.id, kind: row.kind, entityId: row.entityId, title: names.get(row.entityId)!, href: hrefFor(row.kind, row.entityId) }));
+    // A pin on a project that has since become team-only stays pinned but is not shown to someone outside the team.
+    return rows.filter((row) => names.has(row.entityId) && !hidden.has(row.entityId)).map((row) => ({ id: row.id, kind: row.kind, entityId: row.entityId, title: names.get(row.entityId)!, href: hrefFor(row.kind, row.entityId) }));
   }
 
   /** Pinning something twice changes nothing. You can only pin what is in this workspace. */
   async add(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId);
     const { kind, entityId } = parseFavourite(input);
-    if (await this.title(workspaceId, kind, entityId) === null) throw new BadRequestException('That item was not found in this workspace.');
+    if (await this.title(workspaceId, userId, kind, entityId) === null) throw new BadRequestException('That item was not found in this workspace.');
     const existing = await this.prisma.favourite.findUnique({ where: { userId_kind_entityId: { userId, kind, entityId } } });
     if (existing) return { id: existing.id, kind, entityId };
     if (await this.prisma.favourite.count({ where: { userId, workspaceId } }) >= MAX_FAVOURITES) throw new BadRequestException(`You can pin up to ${MAX_FAVOURITES} favourites. Remove one first.`);

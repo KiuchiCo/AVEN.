@@ -4,9 +4,10 @@ import type { Readable } from 'node:stream';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
+import { viewerOf, visibleProjectWhere, visibleTaskWhere } from '../productivity/project-rules.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import { cleanFileName, downloadHeaders, formatBytes, normalizeMimeType, uniqueName } from './file-rules.js';
+import { cleanFileName, downloadHeaders, formatBytes, normalizeMimeType, reconcileMime, uniqueName } from './file-rules.js';
 import type { StorageDriver } from './storage.js';
 import { extractText, titleFromFileName } from './text-extract.js';
 import { FILE_LIMITS, STORAGE, type FileLimits } from './tokens.js';
@@ -145,10 +146,11 @@ export class FilesService {
     if (Number.isFinite(declared) && declared > 0 && await this.usedBytes(this.prisma, workspaceId) + declared > storageQuotaBytes) throw new PayloadTooLargeException('This workspace is out of storage space.');
 
     // Sent in X-File-Mime because Content-Type must stay application/octet-stream: the JSON body parser would consume a JSON upload.
-    const mimeType = normalizeMimeType(request.headers['x-file-mime']);
+    const declaredMime = normalizeMimeType(request.headers['x-file-mime']);
     const storageKey = `${workspaceId}/${randomUUID()}`;
     const { size, checksum } = await this.storage.put(storageKey, request, maxUploadBytes);
     try {
+      const mimeType = reconcileMime(declaredMime, await this.head(storageKey));
       if (size === 0) throw new BadRequestException('The file is empty.');
       const file = await this.prisma.$transaction(async (transaction) => {
         await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workspaceId}))`;
@@ -289,8 +291,9 @@ export class FilesService {
   // ---- attachments ----------------------------------------------------------------------------------------
 
   async attachments(identity: AuthenticatedIdentity, workspaceId: string, query: { taskId?: string; documentId?: string; projectId?: string }) {
-    await this.member(identity, workspaceId);
+    const userId = await this.member(identity, workspaceId);
     const target = this.target(query);
+    if (!await this.reachable(workspaceId, userId, target)) throw new NotFoundException('The item was not found in this workspace.');
     return this.prisma.fileAttachment.findMany({
       where: { workspaceId, ...target, file: { deletedAt: null } }, orderBy: { createdAt: 'desc' },
       select: { id: true, createdAt: true, file: { select: fileSelect } },
@@ -303,10 +306,7 @@ export class FilesService {
     const fileId = id(body.fileId, 'File');
     const target = this.target(body);
     if (!await this.prisma.storedFile.findFirst({ where: { id: fileId, workspaceId, deletedAt: null }, select: { id: true } })) throw new NotFoundException('File not found in this workspace.');
-    const exists = 'taskId' in target ? await this.prisma.task.findFirst({ where: { id: target.taskId, workspaceId }, select: { id: true } })
-      : 'documentId' in target ? await this.prisma.document.findFirst({ where: { id: target.documentId, workspaceId }, select: { id: true } })
-      : await this.prisma.project.findFirst({ where: { id: target.projectId, workspaceId }, select: { id: true } });
-    if (!exists) throw new NotFoundException('The item to attach to was not found in this workspace.');
+    if (!await this.reachable(workspaceId, userId, target)) throw new NotFoundException('The item to attach to was not found in this workspace.');
     try {
       return await this.prisma.fileAttachment.create({ data: { workspaceId, fileId, createdById: userId, ...target }, select: { id: true, createdAt: true, file: { select: fileSelect } } });
     } catch (error) {
@@ -323,6 +323,24 @@ export class FilesService {
   }
 
   // ---- helpers --------------------------------------------------------------------------------------------
+
+  /** The first bytes of a stored file. */
+  private async head(storageKey: string): Promise<Buffer> {
+    const { stream } = await this.storage.get(storageKey);
+    const parts: Buffer[] = []; let length = 0;
+    for await (const chunk of stream) { parts.push(Buffer.from(chunk as Buffer)); length += (chunk as Buffer).length; if (length >= 1024) break; }
+    stream.destroy();
+    return Buffer.concat(parts).subarray(0, 1024);
+  }
+
+  /** Whether the item exists in this workspace and this member may see it: the tasks and page of a team-only project are hidden from people outside its team, and so are the files on them. */
+  private async reachable(workspaceId: string, userId: string, target: { taskId: string } | { documentId: string } | { projectId: string }) {
+    const viewer = await viewerOf(this.prisma, workspaceId, userId);
+    const found = 'taskId' in target ? await this.prisma.task.findFirst({ where: { id: target.taskId, workspaceId, ...visibleTaskWhere(viewer) }, select: { id: true } })
+      : 'documentId' in target ? await this.prisma.document.findFirst({ where: { id: target.documentId, workspaceId }, select: { id: true } })
+      : await this.prisma.project.findFirst({ where: { id: target.projectId, workspaceId, ...visibleProjectWhere(viewer) }, select: { id: true } });
+    return Boolean(found);
+  }
 
   private target(source: { taskId?: unknown; documentId?: unknown; projectId?: unknown }): { taskId: string } | { documentId: string } | { projectId: string } {
     const given = (['taskId', 'documentId', 'projectId'] as const).filter((key) => source[key] !== undefined && source[key] !== null && source[key] !== '');

@@ -8,7 +8,7 @@ import { ExportService } from './export.service.js';
 
 /** Download a document the signed-in person can open as a PDF or a Word file. */
 @Controller('workspaces/:workspaceId/documents/:documentId/export')
-@UseGuards(ClerkAuthGuard, new RateLimitGuard(30))
+@UseGuards(ClerkAuthGuard, RateLimitGuard.strict(30))
 export class DocumentExportController {
   constructor(private readonly exports: ExportService) {}
 

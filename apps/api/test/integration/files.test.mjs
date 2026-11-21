@@ -22,7 +22,7 @@ describe('file storage', { skip }, () => {
   const download = (who, id, query = '') => fetch(url(`/${id}/download${query}`), { headers: t.headers(who) });
 
   test('files come back byte for byte, and active content is never shown inline', async () => {
-    const bytes = randomBytes(1_000_000);
+    const bytes = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(1_000_000)]);
     const saved = (await t.upload('fay', W.id, bytes, 'name=photo.bin', 'image/png')).body;
     const response = await download('fay', saved.id, '?inline=1');
     assert.equal(sha(Buffer.from(await response.arrayBuffer())), sha(bytes));
@@ -34,6 +34,24 @@ describe('file storage', { skip }, () => {
     const shown = await download('fay', svg.id, '?inline=1');
     assert.match(shown.headers.get('content-disposition'), /^attachment/);
     assert.equal(shown.headers.get('x-content-type-options'), 'nosniff');
+  });
+
+  test('security: the bytes decide what a file is, so a page or script cannot pass as an image or text', async () => {
+    const html = Buffer.from('<html><script>alert(document.domain)</script></html>');
+    for (const [declared, name] of [['image/png', 'a.png'], ['image/jpeg', 'a.jpg'], ['application/pdf', 'a.pdf'], ['image/webp', 'a.webp'], ['image/gif', 'a.gif']]) {
+      const saved = (await t.upload('fay', W.id, html, `name=${name}`, declared)).body;
+      assert.equal(saved.mimeType, 'application/octet-stream', `${declared} that is really HTML`);
+      const shown = await download('fay', saved.id, '?inline=1');
+      assert.match(shown.headers.get('content-disposition'), /^attachment/); assert.equal(shown.headers.get('content-type'), 'application/octet-stream');
+    }
+    assert.equal((await t.upload('fay', W.id, Buffer.from([0x68, 0x69, 0, 0, 1, 2]), 'name=n.txt', 'text/plain')).body.mimeType, 'application/octet-stream', 'binary data cannot pass as text');
+    assert.equal((await t.upload('fay', W.id, Buffer.from('plain words'), 'name=n.txt', 'text/plain')).body.mimeType, 'text/plain');
+    const real = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), randomBytes(100)]);
+    assert.equal((await t.upload('fay', W.id, real, 'name=p.jpg', 'application/octet-stream')).body.mimeType, 'image/jpeg', 'a real picture is recognised whatever the browser said');
+    assert.equal((await t.upload('fay', W.id, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), randomBytes(50)]), 'name=p.png', 'image/png')).body.mimeType, 'image/jpeg', 'and is not mislabelled');
+    const svg = (await t.upload('fay', W.id, Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'), 'name=v.svg', 'image/svg+xml')).body;
+    const shownSvg = await download('fay', svg.id, '?inline=1');
+    assert.match(shownSvg.headers.get('content-disposition'), /^attachment/); assert.match(shownSvg.headers.get('content-security-policy'), /sandbox/);
   });
 
   test('size limits, empty files, bad names and other workspaces’ members are refused', async () => {

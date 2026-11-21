@@ -15,7 +15,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { AutomationsService } from './automations.service.js';
 import { documentTypes } from './document-library-rules.js';
-import { canAdminister, hiddenIdsFor, startBeforeDue, viewerOf, visibleProjectWhere, visibleTaskWhere, type ProjectAccessor } from './project-rules.js';
+import { canAdminister, hiddenIdsFor, hiddenLinksFor, unlinkHidden, startBeforeDue, viewerOf, visibleProjectWhere, visibleTaskWhere, type ProjectAccessor } from './project-rules.js';
 
 const projectStatuses = ['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'] as const;
 const projectVisibilities = ['WORKSPACE', 'TEAM'] as const;
@@ -200,8 +200,7 @@ export class ProductivityService {
     const ownerId = body.ownerId ? await this.ownerField(body.ownerId, workspaceId) : actorId;
     const tasks = parseTemplateTasks(template.taskTemplates);
     const milestones = parseTemplateMilestones(template.milestoneTemplates);
-    await this.entitlements.assertCanAdd(workspaceId, 'projects');
-    return this.prisma.$transaction(async (transaction) => {
+    return this.entitlements.addWithinLimit(workspaceId, 'projects', async (transaction) => {
       const project = await transaction.project.create({ data: { workspaceId, createdById: actorId, ownerId, name, description, startAt, dueAt, status: 'PLANNING' } });
       const createdTasks: { id: string }[] = [];
       const today = new Date();
@@ -349,10 +348,9 @@ export class ProductivityService {
     if (!startBeforeDue(startAt, dueAt)) throw new BadRequestException('The start date cannot be after the due date.');
     const visibility = enumField(body.visibility, projectVisibilities, 'Project visibility', 'WORKSPACE');
     const ownerId = body.ownerId ? await this.ownerField(body.ownerId, workspaceId) : userId;
-    await this.entitlements.assertCanAdd(workspaceId, 'projects');
-    const project = await this.prisma.project.create({
+    const project = await this.entitlements.addWithinLimit(workspaceId, 'projects', (transaction) => transaction.project.create({
       data: { workspaceId, createdById: userId, ownerId, name, description, status, dueAt, startAt, visibility, budgetTotalCents },
-    });
+    }));
     await this.recordActivity(workspaceId, userId, 'PROJECT', project.id, `created project “${project.name}”`);
     return project;
   }
@@ -664,11 +662,12 @@ export class ProductivityService {
   }
 
   async importTasks(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const viewer = await this.projectActor(identity, workspaceId, true);
+    const actorId = viewer.userId;
     const body = objectInput(input);
     const mode = enumField(body.mode, ['CREATE', 'UPSERT'] as const, 'Import mode', 'CREATE');
     const projectId = optionalUuid(body.projectId, 'Project');
-    if (projectId && !await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } })) throw new NotFoundException('Project not found in this workspace.');
+    if (projectId && !await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, ...visibleProjectWhere(viewer) }, select: { id: true } })) throw new NotFoundException('Project not found in this workspace.');
     if (!Array.isArray(body.tasks) || body.tasks.length < 1 || body.tasks.length > 200) throw new BadRequestException('Import between 1 and 200 tasks at a time.');
     const rows = body.tasks.map((value) => {
       const row = objectInput(value);
@@ -696,14 +695,14 @@ export class ProductivityService {
     const projectIds = [...new Set(rows.map((row) => row.projectId).filter((id): id is string => Boolean(id)))];
     const assigneeIds = [...new Set(rows.map((row) => row.assigneeId).filter((id): id is string => Boolean(id)))];
     if (projectIds.length) {
-      const projects = await this.prisma.project.findMany({ where: { workspaceId, id: { in: projectIds } }, select: { id: true } });
+      const projects = await this.prisma.project.findMany({ where: { workspaceId, id: { in: projectIds }, ...visibleProjectWhere(viewer) }, select: { id: true } });
       if (projects.length !== projectIds.length) throw new BadRequestException('Every CSV project ID must belong to this workspace.');
     }
     if (assigneeIds.length) {
       const assignees = await this.prisma.workspaceMember.findMany({ where: { workspaceId, userId: { in: assigneeIds } }, select: { userId: true } });
       if (assignees.length !== assigneeIds.length) throw new BadRequestException('Every CSV assignee ID must belong to this workspace.');
     }
-    const existingTasks = ids.length ? await this.prisma.task.findMany({ where: { workspaceId, id: { in: ids } }, select: { id: true, title: true, description: true, status: true, priority: true, startAt: true, dueAt: true, labels: true, projectId: true, assigneeId: true, completedAt: true } }) : [];
+    const existingTasks = ids.length ? await this.prisma.task.findMany({ where: { workspaceId, id: { in: ids }, ...visibleTaskWhere(viewer) }, select: { id: true, title: true, description: true, status: true, priority: true, startAt: true, dueAt: true, labels: true, projectId: true, assigneeId: true, completedAt: true } }) : [];
     if (existingTasks.length !== ids.length) throw new NotFoundException('One or more task IDs are not in this workspace. Re-export current tasks before updating.');
     const existingById = new Map(existingTasks.map((task) => [task.id, task]));
     const updatedIds = rows.filter((row) => row.id && existingById.get(row.id)?.status !== 'COMPLETED' && row.status === 'COMPLETED').map((row) => row.id!);
@@ -745,19 +744,20 @@ export class ProductivityService {
   }
 
   async createTask(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
-    const userId = await this.requireMembership(identity, workspaceId, true);
+    const viewer = await this.projectActor(identity, workspaceId, true);
+    const userId = viewer.userId;
     const body = objectInput(input);
     let projectId = optionalUuid(body.projectId, 'Project');
     const assigneeId = optionalUuid(body.assigneeId, 'Assignee');
     const parentId = optionalUuid(body.parentId, 'Parent task');
     if (parentId) {
-      const parent = await this.prisma.task.findFirst({ where: { id: parentId, workspaceId }, select: { parentId: true, projectId: true } });
+      const parent = await this.prisma.task.findFirst({ where: { id: parentId, workspaceId, ...visibleTaskWhere(viewer) }, select: { parentId: true, projectId: true } });
       if (!parent) throw new NotFoundException('Parent task not found in this workspace.');
       if (parent.parentId) throw new BadRequestException('Subtasks cannot have their own subtasks.');
       projectId = parent.projectId;
     }
     if (projectId) {
-      const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
+      const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, ...visibleProjectWhere(viewer) }, select: { id: true } });
       if (!project) throw new NotFoundException('Project not found in this workspace.');
     }
     const dueAt = dateField(body.dueAt, 'Due date');
@@ -983,12 +983,13 @@ export class ProductivityService {
   }
 
   async listDocuments(identity: AuthenticatedIdentity, workspaceId: string) {
-    await this.requireMembership(identity, workspaceId);
-    return this.prisma.document.findMany({
+    const userId = await this.requireMembership(identity, workspaceId);
+    const [documents, hidden] = await Promise.all([this.prisma.document.findMany({
       where: { workspaceId },
       orderBy: { updatedAt: 'desc' },
       include: { project: { select: { id: true, name: true } }, createdBy: { select: { id: true, displayName: true } } },
-    });
+    }), hiddenLinksFor(this.prisma, workspaceId, userId)]);
+    return documents.map((document) => unlinkHidden(document, hidden));
   }
 
   async deleteDocument(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
@@ -1074,11 +1075,17 @@ export class ProductivityService {
     return { id: userId, name: user?.displayName ?? 'Someone' };
   }
 
+  /** Streams stay open for hours: this is asked again while one is open, so someone removed from the workspace (or a deleted document) stops being served. */
+  async stillAllowed(userId: string, workspaceId: string, documentId: string) {
+    const [member, document] = await Promise.all([this.prisma.workspaceMember.count({ where: { workspaceId, userId } }), this.prisma.document.count({ where: { id: documentId, workspaceId } })]);
+    return member > 0 && document > 0;
+  }
+
   async getDocument(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
-    await this.requireMembership(identity, workspaceId);
+    const userId = await this.requireMembership(identity, workspaceId);
     const document = await this.prisma.document.findFirst({ where: { id: documentId, workspaceId }, include: { project: { select: { id: true, name: true } } } });
     if (!document) throw new NotFoundException('Document not found in this workspace.');
-    return { ...document, content: this.textSessions.reconcile(documentId, document.content) }; // includes text typed in the last moment
+    return { ...unlinkHidden(document, await hiddenLinksFor(this.prisma, workspaceId, userId)), content: this.textSessions.reconcile(documentId, document.content) }; // includes text typed in the last moment
   }
 
   async listDocumentVersions(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {
@@ -1181,12 +1188,13 @@ export class ProductivityService {
   }
 
   async listCalendarEvents(identity: AuthenticatedIdentity, workspaceId: string) {
-    await this.requireMembership(identity, workspaceId);
-    return this.prisma.calendarEvent.findMany({
+    const userId = await this.requireMembership(identity, workspaceId);
+    const [events, hidden] = await Promise.all([this.prisma.calendarEvent.findMany({
       where: { workspaceId },
       orderBy: { startsAt: 'asc' },
       include: { task: { select: { id: true, title: true } }, project: { select: { id: true, name: true } } },
-    });
+    }), hiddenLinksFor(this.prisma, workspaceId, userId)]);
+    return events.map((event) => unlinkHidden(event, hidden));
   }
 
   async searchWorkspace(identity: AuthenticatedIdentity, workspaceId: string, rawQuery: unknown) {

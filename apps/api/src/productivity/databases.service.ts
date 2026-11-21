@@ -35,8 +35,7 @@ export class DatabasesService {
     const description = body.description == null || body.description === ''
       ? null
       : textField(body.description, 'Database description', 500);
-    await this.entitlements.assertCanAdd(workspaceId, 'databases');
-    return this.prisma.workspaceDatabase.create({ data: { workspaceId, name, description } });
+    return this.entitlements.addWithinLimit(workspaceId, 'databases', (transaction) => transaction.workspaceDatabase.create({ data: { workspaceId, name, description } }));
   }
 
   async update(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {

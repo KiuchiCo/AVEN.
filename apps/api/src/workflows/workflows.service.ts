@@ -53,12 +53,11 @@ export class WorkflowsService {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
     await this.permissions.assert(workspaceId, userId, 'automations');
     const input = parseWorkflow(body, this.options());
-    await this.entitlements.assertCanAdd(workspaceId, 'workflows');
     await this.assertSteps(workspaceId, input.steps);
     await this.assertNameFree(workspaceId, input.name);
     const enabled = input.enabled ?? false;
     try {
-      return await this.prisma.$transaction(async (transaction) => {
+      return await this.entitlements.addWithinLimit(workspaceId, 'workflows', async (transaction) => {
         const workflow = await transaction.workflow.create({ data: { workspaceId, createdById: userId, name: input.name, description: input.description, enabled, trigger: input.trigger as unknown as Prisma.InputJsonValue, steps: input.steps as unknown as Prisma.InputJsonValue, nextRunAt: this.scheduleFor(input.trigger, enabled) }, select: { id: true, name: true, enabled: true } });
         await transaction.workspaceActivity.create({ data: { workspaceId, actorId: userId, entityType: 'AUTOMATION', entityId: workflow.id, message: `created workflow “${workflow.name}”` } });
         return workflow;

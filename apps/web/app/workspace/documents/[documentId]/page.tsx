@@ -193,20 +193,23 @@ export default function DocumentEditorPage() {
       if (applyRemote(latest, who) === 'conflict') setConflict(latest);
     };
     void (async () => {
-      for (let attempt = 0; attempt < 6 && !abort.signal.aborted; attempt += 1) {
+      let failures = 0; let reconnecting = false; // the server ends a stream after a while so its sign-in is checked again: that is normal, so only consecutive failures count
+      while (!abort.signal.aborted && failures < 6) {
         try {
           const token = await getToken();
           const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
-          if (!response.ok || !response.body) return;
-          if (attempt > 0) liveEngine.current?.resyncAll(); // events may have been missed while the connection was down
+          if (!response.ok || !response.body) { if (response.status < 500 && response.status !== 429) return; throw new Error('stream refused'); }
+          failures = 0;
+          if (reconnecting) liveEngine.current?.resyncAll(); // events may have been missed while the connection was down
+          reconnecting = true;
           for await (const event of readEvents<{ type: 'presence'; viewers: { id: string; name: string; blockId: string | null; connections?: number }[] } | { type: 'saved'; updatedAt: string; by: { id: string; name: string }; replaced?: boolean } | ({ type: 'text' } & TextEvent) | ({ type: 'cursor' } & CursorEvent)>(response.body)) {
             if (event.type === 'presence') { setViewers(event.viewers); liveEngine.current?.keepCursorsOf(new Set(event.viewers.map((viewer) => viewer.id))); }
             else if (event.type === 'text') liveEngine.current?.handle(event);
             else if (event.type === 'cursor') liveEngine.current?.handleCursor(event);
             else void sync(event.by.id === user.id ? t('ed.anotherTab') : event.by.name, 0, event.replaced === true).catch(() => undefined);
           }
-        } catch { if (abort.signal.aborted) return; }
-        await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
+        } catch { if (abort.signal.aborted) return; failures += 1; }
+        await new Promise((resolve) => setTimeout(resolve, failures ? Math.min(2000 * failures, 10_000) : 300));
       }
     })();
     return () => { abort.abort(); window.clearTimeout(timer); };

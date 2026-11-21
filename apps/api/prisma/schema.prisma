@@ -1324,3 +1324,13 @@ model SyncedBlock {
   @@index([workspaceId])
   @@map("synced_blocks")
 }
+
+/// A request counter shared by every API instance (RATE_LIMIT_STORE=postgres). One row per client key and time window.
+model RateLimitBucket {
+  key     String   @id @db.VarChar(300)
+  count   Int
+  resetAt DateTime @db.Timestamptz(3)
+
+  @@index([resetAt])
+  @@map("rate_limit_buckets")
+}

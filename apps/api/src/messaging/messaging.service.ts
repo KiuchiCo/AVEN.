@@ -201,4 +201,9 @@ export class MessagingService {
   async openStream(identity: AuthenticatedIdentity, workspaceId: string) {
     return requireWorkspaceMember(this.prisma, identity, workspaceId);
   }
+
+  /** Streams stay open for hours: this is asked again while one is open, so someone removed from the workspace stops hearing it. */
+  async stillMember(userId: string, workspaceId: string) {
+    return (await this.prisma.workspaceMember.count({ where: { workspaceId, userId } })) > 0;
+  }
 }

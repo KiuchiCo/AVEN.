@@ -33,7 +33,7 @@ export class DashboardService {
       }),
       this.prisma.document.findMany({
         where: { workspaceId }, orderBy: { updatedAt: 'desc' }, take: 5,
-        select: { id: true, title: true, updatedAt: true, project: { select: { name: true } } },
+        select: { id: true, title: true, updatedAt: true, project: { select: { id: true, name: true } } },
       }),
       this.prisma.workspaceActivity.findMany({
         where: { workspaceId, ...(hidden.length ? { entityId: { notIn: hidden } } : {}) }, orderBy: { createdAt: 'desc' }, take: 6,
@@ -49,7 +49,7 @@ export class DashboardService {
       unreadInbox,
       myTasks: myTasks.map((task) => ({ ...task, projectName: task.project?.name ?? null })),
       projects: projects.map(({ tasks, _count, ...project }) => ({ ...project, taskCount: _count.tasks, completedTaskCount: tasks.length })),
-      recentDocuments: documents.map(({ project, ...document }) => ({ ...document, projectName: project?.name ?? null })),
+      recentDocuments: documents.map(({ project, ...document }) => ({ ...document, projectName: project && !hidden.includes(project.id) ? project.name : null })),
       recentActivity: activity,
     };
   }

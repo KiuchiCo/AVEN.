@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { parsePlanOverrides, type PlanOverrides } from '../billing/plans.js';
 
 export type CalendarOAuth = { clientId: string; clientSecret: string; authUrl: string; tokenUrl: string; apiBase: string };
@@ -11,7 +12,9 @@ export type ApiEnvironment = {
   clerkIssuer?: string;
   isProduction: boolean;
   /** Express `trust proxy`: false, true, or how many proxies sit in front of the API. */
-  trustProxy: boolean | number;
+  trustProxy: boolean | number | string[];
+  /** Where request counters live: in this process, or in PostgreSQL so every API instance shares them and a restart does not reset them. */
+  rateLimitStore: 'memory' | 'postgres';
   storageDriver: 'local' | 's3';
   /** Present when STORAGE_DRIVER=s3. */
   s3?: { bucket: string; region: string; accessKeyId: string; secretAccessKey: string; endpoint?: string };
@@ -44,6 +47,27 @@ export type ApiEnvironment = {
 
 type EnvironmentSource = Record<string, string | undefined>;
 
+const trustNames = new Set(['loopback', 'linklocal', 'uniquelocal']);
+/**
+ * TRUST_PROXY: false, a count of proxies in front of the API, or a list of the addresses (or loopback/linklocal/uniquelocal) the proxies connect from.
+ * A list is the safest: a request that does not come from a listed address has its forwarding headers ignored, so reaching the API directly cannot forge a client address.
+ */
+function parseTrustProxy(raw: string, errors: string[]): boolean | number | string[] {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  if (/^\d{1,2}$/.test(raw)) return Number(raw);
+  const entries = raw.split(',').map((entry) => entry.trim()).filter(Boolean);
+  const valid = entries.length > 0 && entries.every((entry) => {
+    if (trustNames.has(entry)) return true;
+    const [address, prefix, extra] = entry.split('/');
+    const version = isIP(address);
+    return version !== 0 && extra === undefined && (prefix === undefined || (/^\d{1,3}$/.test(prefix) && Number(prefix) <= (version === 4 ? 32 : 128)));
+  });
+  if (valid) return entries;
+  errors.push('TRUST_PROXY must be false, the number of proxies in front of the API, or a comma-separated list of proxy addresses (loopback, linklocal, uniquelocal, 10.0.0.5, 10.0.0.0/8)');
+  return false;
+}
+
 export function readApiEnvironment(source: EnvironmentSource = process.env): ApiEnvironment {
   const errors: string[] = [];
   const rawPort = source.API_PORT?.trim() || '4000';
@@ -65,12 +89,16 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   try {
     const url = new URL(databaseUrl);
     if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || !url.pathname.slice(1)) throw new Error();
+    if (source.NODE_ENV === 'production' && ['aven-local-only', 'aven_ci', 'postgres', 'password'].includes(decodeURIComponent(url.password))) errors.push('DATABASE_URL uses a development password; set a strong database password before running in production');
   } catch { errors.push('DATABASE_URL must be a valid PostgreSQL connection URL'); }
 
   const clerkSecretKey = source.CLERK_SECRET_KEY?.trim() || undefined;
   const clerkJwtKey = source.CLERK_JWT_KEY?.replaceAll('\\n', '\n').trim() || undefined;
   const trustRaw = source.TRUST_PROXY?.trim().toLowerCase() || 'false';
-  const trustProxy: boolean | number = trustRaw === 'true' ? true : trustRaw === 'false' ? false : /^\d{1,2}$/.test(trustRaw) ? Number(trustRaw) : (errors.push('TRUST_PROXY must be true, false or the number of proxies in front of the API'), false);
+  const trustProxy = parseTrustProxy(trustRaw, errors);
+  if (trustProxy === true && source.NODE_ENV === 'production') errors.push('TRUST_PROXY=true makes the API believe any client\u2019s X-Forwarded-For header; use the number of proxies in front of it, or the addresses they connect from');
+  const rateLimitRaw = source.RATE_LIMIT_STORE?.trim().toLowerCase() || 'memory';
+  if (rateLimitRaw !== 'memory' && rateLimitRaw !== 'postgres') errors.push('RATE_LIMIT_STORE must be memory or postgres');
   const clerkIssuer = source.CLERK_ISSUER?.trim() || undefined;
   if (clerkJwtKey && !clerkJwtKey.startsWith('-----BEGIN PUBLIC KEY-----')) errors.push('CLERK_JWT_KEY must be a PEM public key');
   if ((clerkSecretKey || clerkJwtKey) && !clerkIssuer) errors.push('CLERK_ISSUER is required when Clerk verification credentials are configured');
@@ -186,5 +214,5 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, embeddings, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, rateLimitStore: rateLimitRaw === 'postgres' ? 'postgres' : 'memory', storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, embeddings, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
 }

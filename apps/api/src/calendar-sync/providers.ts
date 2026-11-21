@@ -133,13 +133,18 @@ export class MicrosoftCalendar implements CalendarProvider {
     const range = allDay ? fromAllDayDates(start.toISOString().slice(0, 10), end ? end.toISOString().slice(0, 10) : undefined) : { startsAt: start, endsAt: end };
     return { id: String(item.id), etag: String(item['@odata.etag'] ?? item.lastModifiedDateTime ?? ''), title: String(item.subject ?? ''), description: item.bodyPreview ?? null, location: item.location?.displayName ?? null, isAllDay: allDay, startsAt: range.startsAt, endsAt: range.endsAt, updatedAt: new Date(item.lastModifiedDateTime ?? Date.now()), cancelled: item.isCancelled === true };
   }
+  /** The next page the provider names, only if it is on the provider's own address: the access token is sent with it, so a link elsewhere must not be followed. */
+  private sameOrigin(link: unknown): string | null {
+    if (typeof link !== 'string') return null;
+    try { return new URL(link).origin === new URL(this.config.apiBase).origin ? link : null; } catch { return null; }
+  }
   async list(token: string, window: Window) {
     const out: RemoteEvent[] = [];
     let url: string | null = `${this.config.apiBase}/me/calendarView?${form({ startDateTime: window.from.toISOString(), endDateTime: window.to.toISOString(), $top: '100', $select: 'id,subject,bodyPreview,location,start,end,isAllDay,isCancelled,lastModifiedDateTime' })}`;
     for (let i = 0; i < 40 && url; i += 1) {
       const { body } = await call(url, { headers: this.headers(token) });
       for (const item of (body?.value ?? []) as Json[]) if (item.id) out.push(this.toRemote(item));
-      url = (body?.['@odata.nextLink'] as string | undefined) ?? null;
+      url = this.sameOrigin(body?.['@odata.nextLink']);
     }
     return out;
   }

@@ -6,6 +6,8 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { RateLimitGuard } from './common/rate-limit.guard.js';
+import { PostgresRateLimitStore } from './common/rate-limit.store.js';
+import { PrismaService } from './database/prisma.service.js';
 import { securityHeaders } from './common/security-headers.js';
 import { requestLogging } from './common/request-logging.js';
 import { readApiEnvironment } from './config/api-environment.js';
@@ -21,6 +23,7 @@ async function bootstrap() {
   app.use(requestLogging);
   app.useBodyParser('json', { limit: '4mb' });
   app.useGlobalFilters(new AllExceptionsFilter());
+  if (environment.rateLimitStore === 'postgres') RateLimitGuard.shared = new PostgresRateLimitStore(app.get(PrismaService));
   app.useGlobalGuards(new RateLimitGuard());
   app.setGlobalPrefix('api/v1');
   app.enableCors({

@@ -10,7 +10,7 @@ const workspace = () => Param('workspaceId', new ParseUUIDPipe());
 const workflow = () => Param('workflowId', new ParseUUIDPipe());
 
 @Controller('workspaces/:workspaceId/workflows')
-@UseGuards(ClerkAuthGuard, new RateLimitGuard(120))
+@UseGuards(ClerkAuthGuard, RateLimitGuard.strict(120))
 export class WorkflowsController {
   constructor(private readonly workflows: WorkflowsService) {}
 

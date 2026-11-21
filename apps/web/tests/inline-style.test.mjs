@@ -87,3 +87,15 @@ test('decoration ranges cover nested styles', () => {
 });
 
 test('restyle with a collapsed selection does nothing', () => { assert.equal(restyle('abc', 1, 1, (s) => s), null); });
+
+test('security: hostile formatting text is read in bounded time without overflowing the stack', () => {
+  const N = 100_000;
+  const cases = { 'unclosed spans': '{red,bg-blue:'.repeat(N / 13), 'unclosed links': '[a](b'.repeat(N / 5), 'nested spans': '{red:'.repeat(5000) + 'x' + '}'.repeat(5000), 'one long unclosed span': `{red:${'a'.repeat(N)}` };
+  for (const [name, text] of Object.entries(cases)) {
+    const started = Date.now();
+    const cells = cellsOf(text);
+    assert.ok(Date.now() - started < 1200, `${name} took ${Date.now() - started} ms`);
+    assert.ok(cells.length > 0, name);
+  }
+  assert.equal(visibleText('{red:ok}'), 'ok');
+});

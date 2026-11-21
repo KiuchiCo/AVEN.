@@ -7,7 +7,7 @@ import { ProductivityService } from './productivity.service.js';
 import { WorkspaceInvitationsService } from './workspace-invitations.service.js';
 
 @Controller('workspaces/:workspaceId/members')
-@UseGuards(ClerkAuthGuard, new RateLimitGuard(120))
+@UseGuards(ClerkAuthGuard, RateLimitGuard.strict(120))
 export class MembersController {
   constructor(private readonly productivity: ProductivityService, private readonly invitations: WorkspaceInvitationsService) {}
 

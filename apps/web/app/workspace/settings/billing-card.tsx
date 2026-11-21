@@ -3,7 +3,7 @@
 import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useState } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
-
+import { safeRedirectUrl } from './safe-redirect';
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
 type Limits = Record<'projects' | 'databases' | 'workflows' | 'customAgents' | 'members' | 'storageBytes' | 'aiCredits', number | null>;
@@ -38,7 +38,7 @@ export function BillingCard() {
 
   async function go(path: string, body?: unknown) {
     setBusy(true); setMessage('');
-    try { window.location.assign((await call<{ url: string }>(path, 'POST', body)).url); }
+    try { window.location.assign(safeRedirectUrl((await call<{ url: string }>(path, 'POST', body)).url, window.location.href)); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Something went wrong.'); setBusy(false); }
   }
 

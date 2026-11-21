@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useT } from '../../../i18n';
 import { useWorkspaceSession } from '../../workspace-shell';
+import { safeRedirectUrl } from '../safe-redirect';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 type Provider = { key: 'GOOGLE' | 'MICROSOFT'; label: string; configured: boolean; setup: string };
@@ -46,7 +47,7 @@ function Connections() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Something went wrong.'); }
     finally { setBusy(''); }
   }
-  const connect = (provider: Provider['key'], pushEnabled: boolean) => run(`connect-${provider}`, async () => { const { url } = await call<{ url: string }>('/connect', 'POST', { provider, pushEnabled }); window.location.assign(url); return t('cn.opening'); });
+  const connect = (provider: Provider['key'], pushEnabled: boolean) => run(`connect-${provider}`, async () => { const { url } = await call<{ url: string }>('/connect', 'POST', { provider, pushEnabled }); window.location.assign(safeRedirectUrl(url, window.location.href)); return t('cn.opening'); });
   const summary = (s: Summary) => { const parts = [s.imported && t('cn.s.added', { n: s.imported }), s.updated && t('cn.s.updated', { n: s.updated }), s.removed && t('cn.s.removed', { n: s.removed }), s.sent && t('cn.s.sent', { n: s.sent }), s.conflicts && t('cn.s.conflicts', { n: s.conflicts })].filter(Boolean); return parts.length ? t('cn.synced', { parts: parts.join(', ') }) : t('cn.upToDate'); };
 
   if (!allowed) return <section className="workspace-settings-page"><header><p className="workspace-page-eyebrow">{t('set.eyebrow')}</p><h1>{t('cn.title')}</h1><p>{t('cn.onlyAdmins')}</p></header></section>;

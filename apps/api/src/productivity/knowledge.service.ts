@@ -3,13 +3,14 @@ import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { extractWikiLinks, tagCounts } from './knowledge-links.js';
+import { hiddenLinksFor, unlinkHidden } from './project-rules.js';
 
 @Injectable()
 export class KnowledgeService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(identity: AuthenticatedIdentity, workspaceId: string, input: { q?: string; archived?: string; projectId?: string; documentId?: string; taskId?: string; tag?: string; page?: string }) {
-    await this.requireMember(identity, workspaceId);
+    const userId = await this.requireMember(identity, workspaceId);
     const query = input.q?.trim();
     if (query && (query.length < 2 || query.length > 100)) throw new BadRequestException('Search must be between 2 and 100 characters.');
     const page = input.page === undefined ? 1 : Number(input.page);
@@ -35,7 +36,8 @@ export class KnowledgeService {
       this.prisma.knowledgeItem.count({ where }),
     ]);
     const hasMore = items.length > 50;
-    return { items: hasMore ? items.slice(0, 50) : items, total, page, hasMore };
+    const hidden = await hiddenLinksFor(this.prisma, workspaceId, userId);
+    return { items: (hasMore ? items.slice(0, 50) : items).map((item) => unlinkHidden(item, hidden)), total, page, hasMore };
   }
 
   async tags(identity: AuthenticatedIdentity, workspaceId: string) {
@@ -112,12 +114,13 @@ export class KnowledgeService {
   }
 
   async versions(identity: AuthenticatedIdentity, workspaceId: string, itemId: string) {
-    await this.requireMember(identity, workspaceId);
+    const userId = await this.requireMember(identity, workspaceId);
     if (!await this.prisma.knowledgeItem.findFirst({ where: { id: itemId, workspaceId }, select: { id: true } })) throw new NotFoundException('Knowledge item not found in this workspace.');
-    return this.prisma.knowledgeVersion.findMany({
+    const [versions, hidden] = await Promise.all([this.prisma.knowledgeVersion.findMany({
       where: { workspaceId, knowledgeItemId: itemId }, orderBy: { createdAt: 'desc' }, take: 50,
       include: { createdBy: { select: { displayName: true } }, project: { select: { id: true, name: true } }, document: { select: { id: true, title: true } }, task: { select: { id: true, title: true } } },
-    });
+    }), hiddenLinksFor(this.prisma, workspaceId, userId)]);
+    return versions.map((version) => unlinkHidden(version, hidden));
   }
 
   async restoreVersion(identity: AuthenticatedIdentity, workspaceId: string, itemId: string, versionId: string) {

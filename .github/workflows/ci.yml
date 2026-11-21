@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read # the workflow only reads the repository
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -20,8 +23,12 @@ jobs:
     env:
       DATABASE_URL: postgresql://aven:aven_ci@localhost:5432/aven?schema=public
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Actions are pinned to a commit, not a tag: a tag can be moved to different code later. Update deliberately (the comment names the release).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # the secret scan reads the whole history
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -32,6 +39,10 @@ jobs:
       - run: npm run db:generate
       - name: Dependency audit (production dependencies, high and critical)
         run: npm audit --omit=dev --audit-level=high
+      - name: Package signatures (registry signatures and provenance of what was installed)
+        run: npm audit signatures
+      - name: Secret scan (every line ever added to Git; prints locations only, never values)
+        run: node scripts/secret-scan.mjs history
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

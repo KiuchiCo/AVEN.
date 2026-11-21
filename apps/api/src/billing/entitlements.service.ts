@@ -2,8 +2,10 @@ import { HttpException, Injectable } from '@nestjs/common';
 import { monthWindow } from '../ai/ai-rules.js';
 import { readApiEnvironment } from '../config/api-environment.js';
 import { PrismaService } from '../database/prisma.service.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import { buildCatalog, limitMessage, resolveEntitlements, withinLimit, type Entitlements, type Feature, type LimitKey, type Plan, type PlanKey } from './plans.js';
 
+type Db = PrismaService | Prisma.TransactionClient;
 export type CountedResource = 'projects' | 'databases' | 'workflows' | 'customAgents';
 
 /** What a workspace's plan allows, and the checks that enforce it. Refusals are 402 (payment required) with a plain message. */
@@ -16,8 +18,8 @@ export class EntitlementsService {
     return buildCatalog({ storageBytes: env.storageQuotaBytes, aiCredits: env.aiMonthlyCredits }, env.billingPlanOverrides);
   }
 
-  async forWorkspace(workspaceId: string): Promise<Entitlements> {
-    const subscription = await this.prisma.subscription.findUnique({ where: { workspaceId }, select: { planKey: true, status: true, seats: true, limitsOverride: true } });
+  async forWorkspace(workspaceId: string, db: Db = this.prisma): Promise<Entitlements> {
+    const subscription = await db.subscription.findUnique({ where: { workspaceId }, select: { planKey: true, status: true, seats: true, limitsOverride: true } });
     return resolveEntitlements(subscription, this.catalog());
   }
 
@@ -26,34 +28,55 @@ export class EntitlementsService {
   }
 
   /** People other than Guests, counting invitations that have not been accepted yet. */
-  async memberCount(workspaceId: string, options: { includePending?: boolean } = {}): Promise<number> {
-    const members = await this.prisma.workspaceMember.count({ where: { workspaceId, role: { not: 'GUEST' } } });
+  async memberCount(workspaceId: string, options: { includePending?: boolean } = {}, db: Db = this.prisma): Promise<number> {
+    const members = await db.workspaceMember.count({ where: { workspaceId, role: { not: 'GUEST' } } });
     if (!options.includePending) return members;
-    const pending = await this.prisma.workspaceInvite.count({ where: { workspaceId, status: 'PENDING', expiresAt: { gt: new Date() }, role: { not: 'GUEST' } } });
+    const pending = await db.workspaceInvite.count({ where: { workspaceId, status: 'PENDING', expiresAt: { gt: new Date() }, role: { not: 'GUEST' } } });
     return members + pending;
   }
 
-  private count(workspaceId: string, resource: CountedResource): Promise<number> {
+  private count(workspaceId: string, resource: CountedResource, db: Db = this.prisma): Promise<number> {
     switch (resource) {
-      case 'projects': return this.prisma.project.count({ where: { workspaceId } });
-      case 'databases': return this.prisma.workspaceDatabase.count({ where: { workspaceId } });
-      case 'workflows': return this.prisma.workflow.count({ where: { workspaceId } });
-      case 'customAgents': return this.prisma.aiAgent.count({ where: { workspaceId } });
+      case 'projects': return db.project.count({ where: { workspaceId } });
+      case 'databases': return db.workspaceDatabase.count({ where: { workspaceId } });
+      case 'workflows': return db.workflow.count({ where: { workspaceId } });
+      case 'customAgents': return db.aiAgent.count({ where: { workspaceId } });
     }
   }
 
   /** Refuses with 402 when the workspace already has as many as its plan allows. Existing items are never touched. */
-  async assertCanAdd(workspaceId: string, resource: CountedResource): Promise<void> {
-    const entitlements = await this.forWorkspace(workspaceId);
+  async assertCanAdd(workspaceId: string, resource: CountedResource, db: Db = this.prisma): Promise<void> {
+    const entitlements = await this.forWorkspace(workspaceId, db);
     const limit = entitlements.limits[resource];
-    if (!withinLimit(await this.count(workspaceId, resource), limit)) throw new HttpException(limitMessage(resource, limit ?? 0, entitlements.plan.name), 402);
+    if (!withinLimit(await this.count(workspaceId, resource, db), limit)) throw new HttpException(limitMessage(resource, limit ?? 0, entitlements.plan.name), 402);
+  }
+
+  /**
+   * Checks the plan limit and creates the item as one step that others wait for. Without it, ten parallel requests could all pass the check
+   * before any of them saved, and a Free workspace would end up far over its limit. `work` must do its writes with the transaction it is given.
+   */
+  async addWithinLimit<T>(workspaceId: string, resource: CountedResource, work: (transaction: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(async (transaction) => {
+      await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${workspaceId}:${resource}`}))`;
+      await this.assertCanAdd(workspaceId, resource, transaction); // on the same connection: a second one per waiting request would starve the pool
+      return work(transaction);
+    });
+  }
+
+  /** The same for adding a person (or an invitation, when `includePending` is set). */
+  async addMemberWithinLimit<T>(workspaceId: string, options: { includePending: boolean }, work: (transaction: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(async (transaction) => {
+      await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${workspaceId}:members`}))`;
+      await this.assertCanAddMember(workspaceId, options, transaction);
+      return work(transaction);
+    });
   }
 
   /** `extra` is how many people are about to be added besides those already counted. */
-  async assertCanAddMember(workspaceId: string, options: { includePending: boolean }): Promise<void> {
-    const entitlements = await this.forWorkspace(workspaceId);
+  async assertCanAddMember(workspaceId: string, options: { includePending: boolean }, db: Db = this.prisma): Promise<void> {
+    const entitlements = await this.forWorkspace(workspaceId, db);
     const limit = entitlements.limits.members;
-    if (!withinLimit(await this.memberCount(workspaceId, options), limit)) throw new HttpException(`${limitMessage('members', limit ?? 0, entitlements.plan.name)} Guests don’t count.`, 402);
+    if (!withinLimit(await this.memberCount(workspaceId, options, db), limit)) throw new HttpException(`${limitMessage('members', limit ?? 0, entitlements.plan.name)} Guests don’t count.`, 402);
   }
 
   async hasFeature(workspaceId: string, feature: Feature): Promise<boolean> {

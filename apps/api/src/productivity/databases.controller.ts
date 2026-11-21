@@ -1,11 +1,12 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { RateLimitGuard } from '../common/rate-limit.guard.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { DatabasesService } from './databases.service.js';
 
 @Controller('workspaces/:workspaceId/databases')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, new RateLimitGuard(300))
 export class DatabasesController {
   constructor(private readonly databases: DatabasesService) {}
 

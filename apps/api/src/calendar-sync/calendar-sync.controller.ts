@@ -11,7 +11,7 @@ const workspace = () => Param('workspaceId', new ParseUUIDPipe());
 const connection = () => Param('connectionId', new ParseUUIDPipe());
 
 @Controller('workspaces/:workspaceId/integrations/calendar')
-@UseGuards(ClerkAuthGuard, new RateLimitGuard(60))
+@UseGuards(ClerkAuthGuard, RateLimitGuard.strict(60))
 export class CalendarSyncController {
   constructor(private readonly sync: CalendarSyncService) {}
   @Get() overview(@CurrentIdentity() who: Who, @workspace() ws: string) { return this.sync.overview(who, ws); }

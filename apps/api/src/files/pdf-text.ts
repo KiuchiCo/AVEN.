@@ -6,6 +6,9 @@ export class PdfError extends Error {}
 type Obj = { dict: string; stream?: Buffer };
 const MAX_STREAM = 20 * 1024 * 1024;
 const MAX_PAGES = 500;
+/** Most a whole PDF may unpack to. Each stream is capped, but hundreds of small streams that each unpack to the cap would otherwise add up to gigabytes. */
+const MAX_UNPACKED = 64 * 1024 * 1024;
+let unpacked = 0; // reset at the start of each read; the reader is synchronous, so reads never overlap
 
 const latin = (bytes: Buffer) => bytes.toString('latin1');
 
@@ -25,6 +28,12 @@ const refId = (value: string | null) => { const m = value && /^(\d+)\s+\d+\s+R/.
 const refsIn = (value: string | null) => [...(value ?? '').matchAll(/(\d+)\s+\d+\s+R/g)].map((m) => Number(m[1]));
 
 function decodeStream(dict: string, data: Buffer): Buffer | null {
+  const out = inflateStream(dict, data);
+  if (out && out !== data) { unpacked += out.length; if (unpacked > MAX_UNPACKED) throw new PdfError('That PDF is too large or complex to read.'); }
+  return out;
+}
+
+function inflateStream(dict: string, data: Buffer): Buffer | null {
   const filter = entry(dict, 'Filter') ?? '';
   if (!filter) return data;
   if (/FlateDecode|\/Fl\b/.test(filter) && !/\/(LZW|ASCII85|RunLength|DCT|JPX|CCITT|JBIG2)/.test(filter)) {
@@ -158,6 +167,7 @@ function contentText(content: string, fonts: Map<string, Font>): string {
 /** Text of a PDF's pages, in order. Needs no libraries; reads text-based PDFs, not scans, and refuses encrypted files. */
 export function pdfToText(file: Buffer): string {
   if (!file.subarray(0, 1024).toString('latin1').includes('%PDF-')) throw new PdfError('That file isn’t a PDF.');
+  unpacked = 0;
   const objects = readObjects(file);
   if ([...objects.values()].some((object) => /\/Encrypt\b/.test(object.dict)) || /\/Encrypt\s+\d+\s+\d+\s+R/.test(latin(file.subarray(Math.max(0, file.length - 4096))))) throw new PdfError('That PDF is password-protected.');
   const pageIds: number[] = [];

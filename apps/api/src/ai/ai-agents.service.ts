@@ -38,9 +38,8 @@ export class AiAgentsService {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
     const data = parseAgentInput(body) as AgentInput;
     await this.entitlements.assertFeature(workspaceId, 'aiAgents', 'Custom agents');
-    await this.entitlements.assertCanAdd(workspaceId, 'customAgents');
     await this.assertNameFree(workspaceId, data.name);
-    try { return await this.prisma.aiAgent.create({ data: { workspaceId, createdById: userId, ...data }, select: { id: true, name: true } }); }
+    try { return await this.entitlements.addWithinLimit(workspaceId, 'customAgents', (transaction) => transaction.aiAgent.create({ data: { workspaceId, createdById: userId, ...data }, select: { id: true, name: true } })); }
     catch (error) { throw this.conflict(error); }
   }
 

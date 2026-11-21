@@ -43,6 +43,10 @@ function spanTokens(tokens: string): Style | null {
   return out;
 }
 
+/** Longest a style span may be, and deepest spans may nest: limits that keep a hostile block (one huge unclosed brace, thousands of nested ones) from costing seconds or overflowing the stack. Ordinary text is nowhere near them. */
+const MAX_SPAN = 5000;
+const MAX_NESTING = 40;
+
 /** A style span at `i`: where its words start and end, and what it sets. Braces inside balance, so spans can hold spans. */
 function spanAt(text: string, i: number, end: number): { open: number; close: number; style: Style } | null {
   if (text[i] !== '{') return null;
@@ -51,7 +55,7 @@ function spanAt(text: string, i: number, end: number): { open: number; close: nu
   const style = /^[a-z0-9-]+(?:,[a-z0-9-]+)*$/.test(text.slice(i + 1, colon)) ? spanTokens(text.slice(i + 1, colon)) : null;
   if (!style) return null;
   let depth = 1;
-  for (let at = colon + 1; at < end; at += 1) {
+  for (let at = colon + 1, stop = Math.min(end, colon + 1 + MAX_SPAN); at < stop; at += 1) { // a bounded look: an unclosed `{red:` must not make every later character rescan the whole rest of the text
     const ch = text[at];
     if (ch === '\n') return null;
     if (ch === '{') depth += 1;
@@ -63,7 +67,14 @@ function spanAt(text: string, i: number, end: number): { open: number; close: nu
 export type Sink = { char: (at: number, style: Style) => void; mark: (start: number, end: number) => void; style: (start: number, end: number, kind: StyleKey | 'colour' | 'link', value?: string | number) => void };
 
 /** Reads text[from, to) with `inherited` styles, telling the sink about each visible character, each marker character and each styled range. */
+let nesting = 0;
 export function scan(text: string, from: number, to: number, inherited: Style, sink: Sink): void {
+  if (nesting >= MAX_NESTING) { for (let at = from; at < to; at += 1) sink.char(at, inherited); return; } // too deep to read: shown as it is
+  nesting += 1;
+  try { scanText(text, from, to, inherited, sink); } finally { nesting -= 1; }
+}
+
+function scanText(text: string, from: number, to: number, inherited: Style, sink: Sink): void {
   let i = from;
   const wrap = (open: number, close: number, length: number, add: Style, kinds: StyleKey[]) => {
     sink.mark(i, i + open); sink.mark(i + length - close, i + length);
@@ -73,8 +84,8 @@ export function scan(text: string, from: number, to: number, inherited: Style, s
   };
   while (i < to) {
     const rest = text.slice(i, to); let m: RegExpExecArray | null;
-    if ((m = /^`([^`\n]+)`/.exec(rest))) { sink.mark(i, i + 1); sink.mark(i + m[0].length - 1, i + m[0].length); sink.style(i + 1, i + m[0].length - 1, 'code'); for (let at = i + 1; at < i + m[0].length - 1; at += 1) sink.char(at, { ...inherited, code: true }); i += m[0].length; continue; }
-    if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) {
+    if ((m = /^`([^`\n]{1,2000})`/.exec(rest))) { sink.mark(i, i + 1); sink.mark(i + m[0].length - 1, i + m[0].length); sink.style(i + 1, i + m[0].length - 1, 'code'); for (let at = i + 1; at < i + m[0].length - 1; at += 1) sink.char(at, { ...inherited, code: true }); i += m[0].length; continue; }
+    if ((m = /^\[([^\]\n]{1,500})\]\(([^)\s]{1,2000})\)/.exec(rest))) {
       const href = safeHref(m[2]);
       if (href) { const label = m[1].length; sink.mark(i, i + 1); sink.mark(i + 1 + label, i + m[0].length); sink.style(i + 1, i + 1 + label, 'link', href); scan(text, i + 1, i + 1 + label, { ...inherited, href }, sink); i += m[0].length; continue; }
     }

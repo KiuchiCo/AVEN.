@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpExcep
 import type { Request, Response } from 'express';
 import { DocumentEvents } from './document-events.js';
 import { TextSessions } from './text-sessions.js';
+import { streamMaxLifetimeMs, streamRecheckMs } from '../common/stream-recheck.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -29,8 +30,11 @@ export class DocumentsController {
     response.flushHeaders();
     response.write(': connected\n\n');
     const unsubscribe = this.events.subscribe(documentId, viewer, (event) => { if (!response.writableEnded) response.write(`data: ${JSON.stringify(event)}\n\n`); });
-    const heartbeat = setInterval(() => { if (!response.writableEnded) response.write(': keep-alive\n\n'); }, 25_000);
-    request.on('close', () => { clearInterval(heartbeat); unsubscribe(); release(); });
+    const heartbeat = setInterval(() => {
+      void this.productivity.stillAllowed(viewer.id, workspaceId, documentId).then((ok) => { if (!ok) response.end(); else if (!response.writableEnded) response.write(': keep-alive\n\n'); }).catch(() => undefined);
+    }, streamRecheckMs);
+    const expiry = setTimeout(() => response.end(), streamMaxLifetimeMs); // the client reconnects with a fresh token, which is verified again
+    request.on('close', () => { clearInterval(heartbeat); clearTimeout(expiry); unsubscribe(); release(); });
   }
 
   /** The live text of one block and the revision to write edits against. */

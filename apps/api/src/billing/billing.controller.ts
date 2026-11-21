@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
+import { RateLimitGuard } from '../common/rate-limit.guard.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -12,7 +13,7 @@ type Who = AuthenticatedIdentity;
 const workspace = () => Param('workspaceId', new ParseUUIDPipe());
 
 @Controller('workspaces/:workspaceId/billing')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, RateLimitGuard.strict(60))
 export class BillingController {
   constructor(private readonly billing: BillingService, private readonly permissions: PermissionsService) {}
 

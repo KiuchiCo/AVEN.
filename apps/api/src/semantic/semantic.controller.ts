@@ -6,7 +6,7 @@ import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { SemanticService } from './semantic.service.js';
 
 @Controller('workspaces/:workspaceId/search/semantic')
-@UseGuards(ClerkAuthGuard, new RateLimitGuard(60))
+@UseGuards(ClerkAuthGuard, RateLimitGuard.strict(60))
 export class SemanticController {
   constructor(private readonly semantic: SemanticService) {}
 
