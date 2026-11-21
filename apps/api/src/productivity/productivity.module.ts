@@ -4,6 +4,7 @@ import { ProjectsController } from './projects.controller.js';
 import { TasksController } from './tasks.controller.js';
 import { ProductivityService } from './productivity.service.js';
 import { DocumentsController } from './documents.controller.js';
+import { DocumentLibraryService } from './document-library.service.js';
 import { CalendarController } from './calendar.controller.js';
 import { DatabasesController } from './databases.controller.js';
 import { DatabasesService } from './databases.service.js';
@@ -32,7 +33,7 @@ import { TaskCollaborationModule } from './task-collaboration/task-collaboration
 @Module({
   imports: [TaskCollaborationModule, EmailModule, FilesModule],
   controllers: [WorkspaceAdminController, ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController, IntelligenceController, InvitationsController, KnowledgeController, AutomationsController, DashboardController],
-  providers: [DocumentEvents, TextSessions, ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, KnowledgeService, AutomationsService, DashboardService, WorkflowTriggersService, ClerkAuthGuard],
+  providers: [DocumentLibraryService, DocumentEvents, TextSessions, ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, KnowledgeService, AutomationsService, DashboardService, WorkflowTriggersService, ClerkAuthGuard],
   exports: [ProductivityService, IntelligenceService, WorkflowTriggersService],
 })
 export class ProductivityModule {}

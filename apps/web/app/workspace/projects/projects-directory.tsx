@@ -45,7 +45,7 @@ export function ProjectsDirectory() {
   const statuses = ['ALL', 'PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'];
 
   return <div className="pw-page">
-    <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.projects')} description={t('pw.directoryHint')} icon="folder">
+    <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.projects')} description={t('pw.directoryHint')}>
       <button type="button" className="rd-btn" onClick={() => setCreating({})}><Icon name="plus" size={18} />{t('pw.newProject')}</button>
     </PageHeader>
     <PillTabs label={t('pw.directoryTabs')} value={tab} onChange={setTab} items={[{ key: 'PROJECTS', label: t('pw.allProjects'), icon: 'folder', count: counts.total }, { key: 'TEMPLATES', label: t('pw.templates'), icon: 'layers', count: templates.length }]} />

@@ -4,32 +4,19 @@ import { useT } from '../i18n';
 import type { Key } from '../i18n/en';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabels } from './task-labels';
-import { documentTemplates, encodeTemplate } from './documents/templates';
-import { createLocalDocument } from './documents/[documentId]/local-documents';
 import { Icon } from './home-icons';
-import { EmptyState, PageHeader, Panel, PillTabs } from './ui';
-import { FavouriteStar, useFavourites } from './favourites';
+import { PageHeader } from './ui';
 
 type Project = { id: string; name: string };
 type Task = { id: string; title: string; status: string; labels: string[]; dueAt: string | null };
-type DocumentRecord = { id: string; title: string; content: string; updatedAt: string; project: Project | null };
 type CalendarEventType = 'MEETING' | 'FOCUS' | 'PERSONAL' | 'REMINDER' | 'OTHER';
 type CalendarEvent = { updatedAt: string; id: string; title: string; description: string | null; location: string | null; type: CalendarEventType; isAllDay: boolean; startsAt: string; endsAt: string | null; recurrence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null; recurrenceInterval: number; recurrenceUntil: string | null; recurrenceTimeZone: string | null; task: Pick<Task, 'id' | 'title'> | null; project: Project | null };
 type CalendarItem = { id: string; eventId?: string; taskId?: string; title: string; startsAt: string; endsAt: string | null; kind: 'Event' | 'Deadline'; taskTitle: string | null; labels?: string[]; projectTitle?: string | null; recurrence?: string | null; eventType?: CalendarEventType; isAllDay?: boolean; location?: string | null; description?: string | null };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
-
-function documentPreview(content: string) {
-  try {
-    const value = JSON.parse(content) as { format?: string; blocks?: { text?: string }[] };
-    if (value.format === 'aven-doc-v1' && Array.isArray(value.blocks)) return value.blocks.map((block) => block.text).filter(Boolean).join(' · ');
-  } catch { /* Older notes use plain text. */ }
-  return content;
-}
 
 function localDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -107,132 +94,6 @@ function expandCalendarEvent(event: CalendarEvent, rangeStart: Date, rangeEnd: D
     cursor = next; parts = nextParts; attempts += 1;
   }
   return occurrences;
-}
-
-export function DocumentsWorkspace() {
-  const [nowMs] = useState(() => Date.now());
-  const t = useT();
-  const router = useRouter();
-  const { getToken } = useAuth();
-  const { workspace, user } = useWorkspaceSession();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [templateHint, setTemplateHint] = useState('');
-  const favourites = useFavourites();
-  const [view, setView] = useState<'ALL' | 'PROJECT' | 'RECENT' | 'FAVOURITES'>('ALL');
-  const [sort, setSort] = useState<'UPDATED' | 'TITLE' | 'OLDEST'>('UPDATED');
-
-  const request = useCallback(async (path: string, options: RequestInit = {}) => {
-    const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
-    const response = await fetch(`${apiBase}${path}`, {
-      ...options,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers },
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null) as { message?: string } | null;
-      throw new Error(body?.message ?? 'AVEN could not complete that request.');
-    }
-    return response.json();
-  }, [getToken]);
-
-  const reload = useCallback(async () => {
-    const [projectRows, documentRows] = await Promise.all([
-      request(`/workspaces/${workspace.id}/projects`),
-      request(`/workspaces/${workspace.id}/documents`),
-    ]) as [Project[], DocumentRecord[]];
-    setProjects(projectRows);
-    setDocuments(documentRows);
-  }, [request, workspace.id]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try { await reload(); }
-      catch (reason) { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load documents.'); }
-      finally { if (!cancelled) setLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [reload]);
-
-  async function createDocument(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const template = documentTemplates.find((item) => item.id === form.get('template'));
-    setBusy(true); setError('');
-    try {
-      const created = await request(`/workspaces/${workspace.id}/documents`, {
-        method: 'POST',
-        body: JSON.stringify({ title: form.get('title') || template?.title, content: template ? encodeTemplate(template, String(form.get('content') ?? '')) : form.get('content'), projectId: form.get('projectId') || undefined }),
-      }) as DocumentRecord;
-      formElement.reset();
-      router.push(`/workspace/documents/${created.id}`);
-    } catch (reason) {
-      // No connection: the document is made on this device and created for real as soon as the connection returns.
-      if (reason instanceof TypeError) {
-        const id = createLocalDocument(window.localStorage, { userId: user.id, workspaceId: workspace.id }, { title: String(form.get('title') || template?.title || ''), content: template ? encodeTemplate(template, String(form.get('content') ?? '')) : String(form.get('content') ?? ''), projectId: String(form.get('projectId') || '') || null }, () => crypto.randomUUID());
-        if (id) { formElement.reset(); router.push(`/workspace/documents/${id}`); return; }
-      }
-      setError(reason instanceof Error ? reason.message : 'Could not create the document.');
-    }
-    finally { setBusy(false); }
-  }
-
-  async function deleteDocument(document: DocumentRecord) {
-    if (!window.confirm(t('doc.confirm', { title: document.title }))) return;
-    setBusy(true); setError('');
-    try {
-      await request(`/workspaces/${workspace.id}/documents/${document.id}`, { method: 'DELETE' });
-      setDocuments((current) => current.filter((item) => item.id !== document.id));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the document.'); }
-    finally { setBusy(false); }
-  }
-
-  const weekAgo = nowMs - 7 * 86_400_000;
-  const shown = documents
-    .filter((document) => view === 'RECENT' ? Date.parse(document.updatedAt) >= weekAgo : view === 'FAVOURITES' ? Boolean(favourites?.isPinned('DOCUMENT', document.id)) : true)
-    .sort((a, b) => sort === 'TITLE' ? a.title.localeCompare(b.title) : sort === 'OLDEST' ? Date.parse(a.updatedAt) - Date.parse(b.updatedAt) : Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  const sections = view === 'PROJECT' ? [...new Set(shown.map((document) => document.project?.name ?? ''))].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b))).map((name) => ({ title: name || t('doc.noProject'), items: shown.filter((document) => (document.project?.name ?? '') === name) })) : [{ title: '', items: shown }];
-
-  return (
-    <div className="workspace-section-page connected-page">
-      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.documents')} description={t('doc.desc')} />
-      {error && <p className="productivity-error" role="alert">{error}</p>}
-      <div className="rd-grid rd-grid--form">
-        <Panel icon="doc" title={t('doc.newTitle')} subtitle={t('doc.newSub')} id="doc-new" className="connected-compose">
-          <form className="rd-formstack" onSubmit={createDocument}>
-            <label className="rd-field">{t('doc.startFrom')}<select name="template" defaultValue="" onChange={(event) => { const choice = documentTemplates.find((item) => item.id === event.target.value); if (choice) setTemplateHint(choice.description); else setTemplateHint(''); }}><option value="">{t('doc.blank')}</option>{documentTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>{templateHint && <small>{templateHint}</small>}</label>
-            <label className="rd-field">{t('doc.title')}<input name="title" maxLength={200} placeholder={t('doc.titlePh')} required={!templateHint} /></label>
-            <label className="rd-field"><span>{t('doc.project')} <small>({t('doc.optional')})</small></span><select name="projectId" defaultValue=""><option value="">{t('doc.noProject')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-            <label className="rd-field">{t('doc.content')}<textarea name="content" maxLength={20000} rows={8} placeholder={t('doc.contentPh')} /></label>
-            <div><button className="rd-btn" type="submit" disabled={busy}>{busy ? t('set.saving') : t('doc.save')}</button></div>
-          </form>
-        </Panel>
-        <section className="connected-record-list rd-panel" aria-labelledby="document-list-title">
-          <header className="rd-panel__head"><span className="rd-tile" aria-hidden="true"><Icon name="doc" size={24} /></span><div className="rd-panel__titles"><p className="workspace-eyebrow">{t('doc.saved')}</p><h2 id="document-list-title">{t('doc.yours')}</h2></div><span className="rd-muted">{documents.length === 1 ? t('doc.countOne') : t('doc.countMany', { n: documents.length })}</span></header>
-          <div className="rd-listbar">
-            <PillTabs size="small" label={t('doc.filterAria')} value={view} onChange={setView} items={[{ key: 'ALL', label: t('doc.f.all'), icon: 'doc' }, { key: 'PROJECT', label: t('doc.f.project'), icon: 'folder' }, { key: 'RECENT', label: t('doc.f.recent'), icon: 'clock' }, { key: 'FAVOURITES', label: t('doc.f.favourites'), icon: 'star' }]} />
-            <select className="rd-select" value={sort} aria-label={t('doc.sortAria')} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="UPDATED">{t('doc.sort.updated')}</option><option value="TITLE">{t('doc.sort.title')}</option><option value="OLDEST">{t('doc.sort.oldest')}</option></select>
-          </div>
-          {loading ? <p className="productivity-message">{t('doc.loading')}</p> : documents.length === 0 ? <EmptyState art="stack" compact title={t('doc.empty')} /> : shown.length === 0 ? <EmptyState art="search" compact title={t('doc.noMatch')} /> : (
-            <div className="connected-record-stack">{sections.map((section) => <div key={section.title || 'all'}>{section.title && <h3 className="rd-sectiontitle">{section.title}</h3>}{section.items.map((document) => (
-              <article className="connected-record rd-docrow" key={document.id}>
-                <span className="rd-tile" aria-hidden="true"><Icon name="doc" size={22} /></span>
-                <div className="rd-docrow__main"><h3><Link href={`/workspace/documents/${document.id}`}>{document.title}</Link></h3><p>{documentPreview(document.content) || t('doc.emptyDoc')}</p><small>{t('doc.updated', { date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(document.updatedAt)) })}{document.project && <> · <span className="connected-link-pill">{document.project.name}</span></>}</small></div>
-                <Link className="rd-btn rd-btn--soft rd-btn--small" href={`/workspace/documents/${document.id}`}>{t('doc.open')} <span aria-hidden="true">→</span></Link>
-                <FavouriteStar kind="DOCUMENT" entityId={document.id} />
-                <details className="rd-menu"><summary className="rd-iconbtn" aria-label={t('doc.more', { title: document.title })}><Icon name="more" size={20} /></summary><div className="rd-menu__list"><Link href={`/workspace/documents/${document.id}`}><Icon name="edit" size={16} />{t('doc.open')}</Link><button type="button" className="is-danger" disabled={busy} onClick={() => void deleteDocument(document)}><Icon name="trash" size={16} />{t('wb.delete')}</button></div></details>
-              </article>
-            ))}</div>)}</div>
-          )}
-        </section>
-      </div>
-    </div>
-  );
 }
 
 export function CalendarWorkspace() {

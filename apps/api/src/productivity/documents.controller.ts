@@ -6,11 +6,12 @@ import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { ProductivityService } from './productivity.service.js';
+import { DocumentLibraryService } from './document-library.service.js';
 
 @Controller('workspaces/:workspaceId/documents')
 @UseGuards(ClerkAuthGuard)
 export class DocumentsController {
-  constructor(private readonly productivity: ProductivityService, private readonly events: DocumentEvents, private readonly textSessions: TextSessions) {}
+  constructor(private readonly productivity: ProductivityService, private readonly events: DocumentEvents, private readonly textSessions: TextSessions, private readonly library: DocumentLibraryService) {}
 
   /** Server-sent events for one open document: who else is here, and when someone saves a newer version. */
   @Get(':documentId/stream')
@@ -94,6 +95,36 @@ export class DocumentsController {
     if (blockId !== null && (typeof blockId !== 'string' || !/^[\w-]{1,64}$/.test(blockId))) throw new BadRequestException('blockId must be a block id or null.');
     const viewer = await this.productivity.openDocumentStream(identity, workspaceId, documentId);
     this.events.setFocus(documentId, viewer.id, blockId);
+  }
+
+  @Get('folders')
+  listFolders(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
+    return this.library.listFolders(identity, workspaceId);
+  }
+
+  @Post('folders')
+  createFolder(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
+    return this.library.createFolder(identity, workspaceId, body);
+  }
+
+  @Patch('folders/:folderId')
+  updateFolder(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('folderId', new ParseUUIDPipe()) folderId: string, @Body() body: unknown) {
+    return this.library.updateFolder(identity, workspaceId, folderId, body);
+  }
+
+  @Delete('folders/:folderId')
+  deleteFolder(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('folderId', new ParseUUIDPipe()) folderId: string) {
+    return this.library.deleteFolder(identity, workspaceId, folderId);
+  }
+
+  @Post('bulk')
+  bulk(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Body() body: unknown) {
+    return this.library.bulk(identity, workspaceId, body);
+  }
+
+  @Post(':documentId/duplicate')
+  duplicate(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Param('documentId', new ParseUUIDPipe()) documentId: string) {
+    return this.library.duplicate(identity, workspaceId, documentId);
   }
 
   @Get()

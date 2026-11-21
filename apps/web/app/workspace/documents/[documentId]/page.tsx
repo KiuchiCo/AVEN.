@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useT } from '../../../i18n';
 import type { Key } from '../../../i18n/en';
@@ -82,7 +82,8 @@ export default function DocumentEditorPage() {
   const [liveBusy, setLiveBusy] = useState(false);
   const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor[]>>({});
   const liveEngine = useRef<LiveTextEngine | null>(null);
-  const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE' | 'RELATED'>('OUTLINE');
+  const openShare = useSearchParams().get('panel') === 'share';
+  const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE' | 'RELATED'>(() => (openShare ? 'SHARE' : 'OUTLINE'));
   const [viewers, setViewers] = useState<{ id: string; name: string; blockId: string | null; connections?: number }[]>([]);
   const revision = useRef(0);
   const announced = useRef<{ sent: string | null; timer?: number }>({ sent: null });

@@ -17,8 +17,12 @@ export const documentTemplates: DocumentTemplate[] = [
   { id: 'weekly-plan', name: 'Weekly plan', description: 'Priorities, schedule and a short review.', title: 'Weekly plan', blocks: [
     h1('Weekly plan'), h2('Top priorities'), todo(''), todo(''), todo(''), h2('Schedule'), bullet('Monday: '), bullet('Tuesday: '), bullet('Wednesday: '), bullet('Thursday: '), bullet('Friday: '),
     { type: 'DIVIDER', text: '' }, h2('End-of-week review'), p('What went well, what to change.') ] },
-  { id: 'decision-record', name: 'Decision record', description: 'Context, options considered and the decision.', title: 'Decision record', blocks: [
-    h1('Decision record'), h2('Context'), p(''), h2('Options considered'), bullet(''), bullet(''), h2('Decision'), p(''), h2('Consequences'), bullet(''), { type: 'QUOTE', text: 'Record why, so the decision can be revisited with the same information.' } ] },
+  { id: 'decision-record', name: 'Decision log', description: 'Context, options considered and the decision.', title: 'Decision log', blocks: [
+    h1('Decision log'), h2('Context'), p(''), h2('Options considered'), bullet(''), bullet(''), h2('Decision'), p(''), h2('Consequences'), bullet(''), { type: 'QUOTE', text: 'Record why, so the decision can be revisited with the same information.' } ] },
+  { id: 'task-plan', name: 'Task plan', description: 'Outcome, tasks, owners and a definition of done.', title: 'Task plan', blocks: [
+    h1('Task plan'), h2('Outcome'), p('What will be true when this is finished?'), h2('Tasks'), todo(''), todo(''), todo(''), h2('Owners and dates'), bullet(''), h2('Definition of done'), bullet(''), h2('Blockers'), bullet('') ] },
+  { id: 'research-notes', name: 'Research notes', description: 'Question, sources, findings and next steps.', title: 'Research notes', blocks: [
+    h1('Research notes'), h2('Question'), p('What do we want to find out?'), h2('Sources'), bullet(''), h2('Findings'), bullet(''), h2('Open questions'), todo(''), h2('Next steps'), todo('') ] },
   { id: 'study-notes', name: 'Study notes', description: 'Key ideas, questions and a review checklist.', title: 'Study notes', blocks: [
     h1('Study notes'), h2('Key ideas'), bullet(''), h2('Questions to answer'), todo(''), h2('Examples'), p(''), h2('Review checklist'), todo('Summarise in my own words'), todo('Test myself without notes') ] },
 ];

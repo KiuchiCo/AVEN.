@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useT } from '../../i18n';
 import type { Key } from '../../i18n/en';
 import { Avatar, Pill } from '../ui';
@@ -69,13 +70,13 @@ export function Modal({ title, onClose, children, footer, size = 'md', descripti
     const [start, end] = [items[0], items[items.length - 1]];
     if (event.shiftKey && document.activeElement === start) { event.preventDefault(); end.focus(); } else if (!event.shiftKey && document.activeElement === end) { event.preventDefault(); start.focus(); }
   }
-  return <div className="pw-modal" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onKeyDown={keys}>
+  return createPortal(<div className="pw-modal" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onKeyDown={keys}>
     <div ref={panel} className={`pw-modal__panel pw-modal__panel--${size}`} role="dialog" aria-modal="true" aria-labelledby={`${id}-t`} aria-describedby={description ? `${id}-d` : undefined}>
       <header><div><h2 id={`${id}-t`}>{title}</h2>{description && <p id={`${id}-d`}>{description}</p>}</div><button type="button" className="rd-iconbtn" aria-label={t('blk.close')} onClick={onClose}><Icon name="close" size={18} /></button></header>
       <div className="pw-modal__body">{children}</div>
       {footer && <footer>{footer}</footer>}
     </div>
-  </div>;
+  </div>, document.body);
 }
 
 /** Asks before something that cannot be undone. `confirmText` makes the person type a word first. */

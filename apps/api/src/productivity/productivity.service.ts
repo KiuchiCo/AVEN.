@@ -14,6 +14,7 @@ import { workspaceNotificationWhere } from './notification-filter.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { AutomationsService } from './automations.service.js';
+import { documentTypes } from './document-library-rules.js';
 import { canAdminister, startBeforeDue, visibleProjectWhere, type ProjectAccessor } from './project-rules.js';
 
 const projectStatuses = ['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'] as const;
@@ -984,7 +985,7 @@ export class ProductivityService {
     return this.prisma.document.findMany({
       where: { workspaceId },
       orderBy: { updatedAt: 'desc' },
-      include: { project: { select: { id: true, name: true } } },
+      include: { project: { select: { id: true, name: true } }, createdBy: { select: { id: true, displayName: true } } },
     });
   }
 
@@ -1007,14 +1008,20 @@ export class ProductivityService {
       const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId }, select: { id: true } });
       if (!project) throw new NotFoundException('Project not found in this workspace.');
     }
+    const folderId = optionalUuid(body.folderId, 'Folder');
+    if (folderId && !await this.prisma.documentFolder.findFirst({ where: { id: folderId, workspaceId }, select: { id: true } })) throw new NotFoundException('Folder not found in this workspace.');
+    const docType = body.docType == null ? null : enumField(body.docType, documentTypes, 'Document type');
     const document = await this.prisma.document.create({
       data: {
         workspaceId,
         projectId,
+        folderId,
+        docType,
+        createdById: actorId,
         title: textField(body.title, 'Document title', 200),
         content: typeof body.content === 'string' && body.content.length <= 100000 ? body.content : invalidText('Document content must be 100,000 characters or fewer.'),
       },
-      include: { project: { select: { id: true, name: true } } },
+      include: { project: { select: { id: true, name: true } }, createdBy: { select: { id: true, displayName: true } } },
     });
     await this.recordActivity(workspaceId, actorId, 'DOCUMENT', document.id, `created document “${document.title}”`);
     return document;

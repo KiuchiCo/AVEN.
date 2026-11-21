@@ -111,6 +111,8 @@ model User {
   personalWorkspace           Workspace?          @relation("PersonalWorkspaceOwner")
   createdProjects             Project[]           @relation("ProjectCreator")
   ownedProjects               Project[]           @relation("ProjectOwner")
+  createdDocuments            Document[]          @relation("DocumentCreator")
+  createdDocumentFolders      DocumentFolder[]    @relation("DocumentFolderCreator")
   projectMemberships          ProjectMember[]
   createdProjectTemplates     ProjectTemplate[]   @relation("ProjectTemplateCreator")
   createdTaskViews            WorkspaceTaskView[] @relation("TaskViewCreator")
@@ -173,6 +175,7 @@ model Workspace {
   recordLinks        DatabaseRecordLink[]
   milestones         ProjectMilestone[]
   projectTemplates   ProjectTemplate[]
+  documentFolders    DocumentFolder[]
   activity           WorkspaceActivity[]
   documentVersions   DocumentVersion[]
   documentComments   DocumentComment[]
@@ -490,12 +493,17 @@ model Document {
   id                String             @id @default(uuid()) @db.Uuid
   workspaceId       String             @db.Uuid
   projectId         String?            @db.Uuid
+  folderId          String?            @db.Uuid
+  createdById       String?            @db.Uuid
+  docType           String?            @db.VarChar(32)
   title             String             @db.VarChar(200)
   content           String             @default("") @db.Text
   createdAt         DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
   workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project           Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  folder            DocumentFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  createdBy         User?              @relation("DocumentCreator", fields: [createdById], references: [id], onDelete: SetNull)
   versions          DocumentVersion[]
   comments          DocumentComment[]
   knowledgeItems    KnowledgeItem[]    @relation("KnowledgeDocument")
@@ -506,7 +514,27 @@ model Document {
 
   @@index([workspaceId, updatedAt])
   @@index([projectId])
+  @@index([workspaceId, folderId])
   @@map("documents")
+}
+
+/// A folder for documents. Folders nest; a document sits in at most one folder (or at the top level when folderId is null).
+model DocumentFolder {
+  id          String           @id @default(uuid()) @db.Uuid
+  workspaceId String           @db.Uuid
+  parentId    String?          @db.Uuid
+  createdById String           @db.Uuid
+  name        String           @db.VarChar(120)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent      DocumentFolder?  @relation("DocumentFolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children    DocumentFolder[] @relation("DocumentFolderTree")
+  createdBy   User             @relation("DocumentFolderCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  documents   Document[]
+
+  @@index([workspaceId, parentId])
+  @@map("document_folders")
 }
 
 model KnowledgeItem {

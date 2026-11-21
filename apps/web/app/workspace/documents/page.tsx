@@ -1,5 +1,6 @@
-import { DocumentsWorkspace } from '../connected-records';
+import { Suspense } from 'react';
+import { DocumentsBrowser } from './documents-browser';
 
 export default function DocumentsPage() {
-  return <DocumentsWorkspace />;
+  return <Suspense fallback={null}><DocumentsBrowser /></Suspense>;
 }
