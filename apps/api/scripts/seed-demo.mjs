@@ -63,7 +63,7 @@ const projectSpecs = [
   ['Empty Project (no tasks)', 'PLANNING', null, null, 0, null],
 ];
 const taskTitles = ['Design homepage hero', 'Write launch announcement', 'Fix checkout bug on Safari', 'Set up analytics events', 'Review accessibility audit', 'Draft pricing page copy', 'Create onboarding emails', 'Prepare investor update', 'Refactor settings screen', 'Interview five customers', 'Update brand guidelines', 'Plan sprint retrospective', 'Migrate image CDN', 'Write API documentation', 'Test offline mode', 'Triage support backlog', 'Prototype whiteboard templates', 'Localise the app into French', 'Benchmark page speed', 'Order team swag'];
-const longTitle = 'A deliberately very long task title to check wrapping, truncation and layout in tables, boards, cards, menus and notifications across every breakpoint — 日本語のテキストも含めます';
+const longTitle = 'A deliberately very long task title to check wrapping, truncation and layout in tables, boards, cards, menus and notifications across every breakpoint—日本語のテキストも含めます';
 
 for (const workspace of await prisma.workspace.findMany({ include: { members: true } })) {
   const owner = workspace.members.find((member) => member.role === 'OWNER')?.userId ?? workspace.createdById;
@@ -97,7 +97,7 @@ for (const workspace of await prisma.workspace.findMany({ include: { members: tr
   for (const [i, parent] of tasks.slice(0, 6).entries()) for (const j of [0, 1]) tasks.push(await mk('task', { workspaceId: workspace.id, projectId: parent.projectId, parentId: parent.id, createdById: demo(i).id, assigneeId: pick(users).id, title: `Subtask ${j + 1} of “${parent.title.slice(0, 30)}”`, status: j ? 'TODO' : 'COMPLETED', completedAt: j ? null : at(-2), priority: 'MEDIUM', labels: [] }));
   for (let i = 10; i < 20; i += 2) await prisma.task.update({ where: { id: tasks[i].id }, data: { dependsOn: { connect: { id: tasks[i - 4].id } } } });
   for (const [i, task] of tasks.slice(0, 16).entries()) {
-    await mk('taskComment', { workspaceId: workspace.id, taskId: task.id, authorId: demo(i).id, body: i % 3 === 0 ? 'Looks good to me — shipping this after review.' : 'Can we confirm the scope before Friday? I have a few edge cases to raise.', mentionedUserIds: i % 4 === 0 ? [owner] : [] });
+    await mk('taskComment', { workspaceId: workspace.id, taskId: task.id, authorId: demo(i).id, body: i % 3 === 0 ? 'Looks good to me—shipping this after review.' : 'Can we confirm the scope before Friday? I have a few edge cases to raise.', mentionedUserIds: i % 4 === 0 ? [owner] : [] });
     for (const [p, title] of ['Draft', 'Review', 'Publish'].entries()) await mk('taskChecklistItem', { workspaceId: workspace.id, taskId: task.id, createdById: demo(i).id, title, position: p, completedAt: p < i % 3 ? at(-1) : null, completedById: p < i % 3 ? demo(i).id : null });
     await mk('taskFollower', { workspaceId: workspace.id, taskId: task.id, userId: owner }).catch(() => undefined);
   }
@@ -116,7 +116,7 @@ for (const workspace of await prisma.workspace.findMany({ include: { members: tr
 
   // Documents, knowledge, databases.
   const docs = [];
-  const docSpecs = [['Product requirements', blocks(['HEADING_1', 'Product requirements'], ['PARAGRAPH', 'This document describes what we are building and why.'], ['HEADING_2', 'Goals'], ['BULLET', 'Reduce time to first project'], ['BULLET', 'Make mobile a first-class experience'], ['TODO', 'Confirm scope with design', true], ['TODO', 'Write the rollout plan'], ['CALLOUT', 'Decisions are final once the review is signed off.'], ['CODE', 'GET /api/projects?status=active'], ['DIVIDER', ''], ['QUOTE', 'Simplicity is the ultimate sophistication.'])], ['Meeting notes — design review', blocks(['HEADING_1', 'Design review'], ['NUMBERED', 'Walk through the new navigation'], ['NUMBERED', 'Agree on the empty states'], ['PARAGRAPH', 'Action items were added to the task board.'])], ['Brand guidelines', blocks(['HEADING_1', 'Brand guidelines'], ['PARAGRAPH', 'Palette: Ivory, Sand, Taupe, Bronze, Umber, Charcoal.'])], ['Empty document', ''], ['Roadmap Q1', blocks(['HEADING_1', 'Roadmap'], ['TABLE', '', false])], ['A very long document title that keeps going to test truncation in lists, breadcrumbs and the editor header area', blocks(['PARAGRAPH', 'Short body.'])]];
+  const docSpecs = [['Product requirements', blocks(['HEADING_1', 'Product requirements'], ['PARAGRAPH', 'This document describes what we are building and why.'], ['HEADING_2', 'Goals'], ['BULLET', 'Reduce time to first project'], ['BULLET', 'Make mobile a first-class experience'], ['TODO', 'Confirm scope with design', true], ['TODO', 'Write the rollout plan'], ['CALLOUT', 'Decisions are final once the review is signed off.'], ['CODE', 'GET /api/projects?status=active'], ['DIVIDER', ''], ['QUOTE', 'Simplicity is the ultimate sophistication.'])], ['Meeting notes—design review', blocks(['HEADING_1', 'Design review'], ['NUMBERED', 'Walk through the new navigation'], ['NUMBERED', 'Agree on the empty states'], ['PARAGRAPH', 'Action items were added to the task board.'])], ['Brand guidelines', blocks(['HEADING_1', 'Brand guidelines'], ['PARAGRAPH', 'Palette: Ivory, Sand, Taupe, Bronze, Umber, Charcoal.'])], ['Empty document', ''], ['Roadmap Q1', blocks(['HEADING_1', 'Roadmap'], ['TABLE', '', false])], ['A very long document title that keeps going to test truncation in lists, breadcrumbs and the editor header area', blocks(['PARAGRAPH', 'Short body.'])]];
   for (const [i, [title, content]] of docSpecs.entries()) {
     const doc = await mk('document', { workspaceId: workspace.id, projectId: i < 3 ? projects[i].id : null, title, content, createdAt: at(-i * 3), updatedAt: at(-i) }); docs.push(doc);
     if (content && i < 3) { await mk('documentVersion', { workspaceId: workspace.id, documentId: doc.id, createdById: demo(i).id, title, content, label: 'First draft' }); await mk('documentComment', { workspaceId: workspace.id, documentId: doc.id, createdById: demo(i + 1).id, body: 'Could we tighten this section?', resolvedAt: i === 1 ? at(-1) : null }); }
@@ -147,7 +147,7 @@ for (const workspace of await prisma.workspace.findMany({ include: { members: tr
   const dm = await mk('channel', { workspaceId: workspace.id, createdById: owner, kind: 'DIRECT', dmKey: [owner, users[0].id].sort().join(':').slice(0, 80) });
   const group = await mk('channel', { workspaceId: workspace.id, createdById: owner, kind: 'GROUP', dmKey: `g-${randomBytes(6).toString('hex')}` });
   await prisma.channelMember.createMany({ data: [{ channelId: dm.id, userId: owner }, { channelId: dm.id, userId: users[0].id }, ...[owner, users[1].id, users[2].id].map((userId) => ({ channelId: group.id, userId }))] });
-  const lines = ['Morning everyone — standup in 10.', 'Pushed the new navigation to staging.', 'Can someone review the pricing copy?', 'Looks great. One minor issue with the onboarding copy; will push a fix tomorrow.', 'Release notes drafted: see the doc.', 'Reminder: freeze starts Friday.'];
+  const lines = ['Morning everyone—standup in 10.', 'Pushed the new navigation to staging.', 'Can someone review the pricing copy?', 'Looks great. One minor issue with the onboarding copy; will push a fix tomorrow.', 'Release notes drafted: see the doc.', 'Reminder: freeze starts Friday.'];
   for (const [c, channel] of [...channels, dm, group].entries()) {
     let parent = null;
     for (let m = 0; m < 9; m += 1) {
@@ -155,7 +155,7 @@ for (const workspace of await prisma.workspace.findMany({ include: { members: tr
       const message = await mk('channelMessage', { channelId: channel.id, workspaceId: workspace.id, authorId: author, body: lines[(m + c) % lines.length], createdAt: new Date(now - (9 - m) * 47 * 60_000 - c * 3600_000), editedAt: m === 3 ? new Date(now - 3600_000) : null, deletedAt: m === 5 && c === 0 ? new Date(now - 1800_000) : null });
       if (m === 3) parent = message;
     }
-    if (parent) for (const r of [0, 1]) await mk('channelMessage', { channelId: channel.id, workspaceId: workspace.id, authorId: users[r].id, parentId: parent.id, body: r ? 'Thanks — confirmed.' : 'On it.', createdAt: new Date(now - 20 * 60_000 + r * 60_000) });
+    if (parent) for (const r of [0, 1]) await mk('channelMessage', { channelId: channel.id, workspaceId: workspace.id, authorId: users[r].id, parentId: parent.id, body: r ? 'Thanks—confirmed.' : 'On it.', createdAt: new Date(now - 20 * 60_000 + r * 60_000) });
     await prisma.channelRead.create({ data: { channelId: channel.id, userId: owner, lastReadAt: new Date(now - (c % 2 ? 6 : 1) * 3600_000 * (c + 1)) } }).catch(() => undefined);
   }
 

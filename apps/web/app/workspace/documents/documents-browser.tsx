@@ -12,7 +12,7 @@ import { EmptyState, PageHeader, PillTabs } from '../ui';
 import { BulkBar, Breadcrumbs, EntryList, ViewSwitcher, type Entry, type MenuAction } from './library-ui';
 import { CreateDocumentModal, FiltersPanel, MoveDialog, NameDialog, sortLabel } from './library-dialogs';
 import { downloadExport } from './download-export';
-import { VIEW_KEY, advancedCount, browse, noAdvanced, nextSort, pathLabel, pathTo, readView, type Advanced, type DocRecord, type FolderRecord, type NavFilter, type SortKey } from './library-model';
+import { VIEW_KEY, advancedCount, canBulkDownload, browse, noAdvanced, nextSort, pathLabel, pathTo, readView, type Advanced, type DocRecord, type FolderRecord, type NavFilter, type SortKey } from './library-model';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? '';
 type Dialog = { kind: 'create' } | { kind: 'newFolder' } | { kind: 'renameDoc'; doc: DocRecord } | { kind: 'renameFolder'; folder: FolderRecord } | { kind: 'move'; ids: string[]; folder?: FolderRecord } | { kind: 'deleteDocs'; ids: string[] } | { kind: 'deleteFolder'; folder: FolderRecord };
@@ -139,7 +139,7 @@ export function DocumentsBrowser() {
       <ViewSwitcher value={view} onChange={setView} />
     </div>
 
-    {selected.size > 0 && <BulkBar count={selected.size} canDownload={selected.size <= 10} onClear={() => setSelected(new Set())} onMove={() => setDialog({ kind: 'move', ids: [...selected] })} onDelete={() => setDialog({ kind: 'deleteDocs', ids: [...selected] })}
+    {selected.size > 0 && <BulkBar count={selected.size} canDownload={canBulkDownload(selected.size)} onClear={() => setSelected(new Set())} onMove={() => setDialog({ kind: 'move', ids: [...selected] })} onDelete={() => setDialog({ kind: 'deleteDocs', ids: [...selected] })}
       onFavourite={() => void run(async () => { for (const doc of selectedDocs) if (!favouriteIds.has(doc.id)) { const message = await favourites?.toggle('DOCUMENT', doc.id); if (message) throw new Error(message); } flash(selectedDocs.length === 1 ? t('dl.favouriteAddedOne') : t('dl.favouritesAdded', { n: selectedDocs.length })); })}
       onDownload={() => void run(async () => { for (const doc of selectedDocs) { await exportDoc(doc, 'docx'); await new Promise((resolve) => window.setTimeout(resolve, 400)); } })} />}
 

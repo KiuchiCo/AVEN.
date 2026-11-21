@@ -13,13 +13,14 @@ import { Doc, Text, Title, TextBlock, UniqueBlockIds, Decorations, emptyLive, li
 import { AtomBlockView, EnvContext, SourceBlockView, SyncedBlockView, ToggleBlockView, type EditorEnv, type HostEnv } from './editor-nodeviews';
 import { blocksToDoc, nodeNameFor } from './editor-convert';
 import { findMatches, locateBlocks, readDoc, reconcile, sameBlocks, selectBlock, selectionInBlock } from './editor-sync';
-import type { BlockType } from './editor-model';
-import { applySlash, blankBlock, contentOf, convertBlock, duplicateBlock, filterSlash, findSlash, indentBlock, keepsNewlines, makeLink, markdownShortcut, moveBlockBy, normalizeBlock, pasteLines, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, setColour, toggleMark, type Block, type Mark } from './editor-model';
+import type { BlockType, Align, FontFamily } from './editor-model';
+import { applySlash, blankBlock, contentOf, convertBlock, duplicateBlock, filterSlash, findSlash, indentBlock, keepsNewlines, makeLink, markdownShortcut, moveBlockBy, normalizeBlock, pasteLines, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, setColour, toggleMark, type Block, type Mark, activeMarks, activeTones, clearBlockFormatting, isFormattable, setLayout, isTextBlock } from './editor-model';
 import { blockCatalog, catalogCategories, iconForBlock, type BlockCategory, type CatalogEntry } from './block-catalog';
 import { BlockIcon } from '../../block-icons';
 import { FormatBar, SlashMenu } from './editor-ui';
 import { readRecent, recordRecent } from './recent-blocks';
 import { FindBar } from './FindBar';
+import { addColumn, addRow, removeColumn, removeRow } from './table-rules';
 import { AiPanel, type AiRequest, type AiTarget } from './AiAssist';
 
 export type DocEditorApi = {
@@ -29,7 +30,26 @@ export type DocEditorApi = {
   currentBlockId: () => string | null;
   askAi: () => void;
   blocks: () => Block[];
+  // formatting commands used by the toolbar; each acts on the selected text or the selected block(s)
+  undo: () => void; redo: () => void; openFind: () => void;
+  toggleMark: (mark: Mark) => void; setTone: (tone: string | null) => void;
+  linkTarget: () => LinkTarget | null; applyLink: (url: string, target: LinkTarget) => boolean;
+  setBlockType: (entry: Pick<CatalogEntry, 'type' | 'patch'>) => void; toggleList: (type: 'BULLET' | 'NUMBERED' | 'TODO') => void;
+  setLayout: (patch: { align?: Align; spacing?: number; font?: FontFamily; size?: number }) => void;
+  indent: (direction: 1 | -1) => void; clearFormatting: () => void; commentSelection: () => void;
+  insertBlock: (type: BlockType, patch?: Partial<Block>) => void; tableOp: (op: TableOp) => void; blockOp: (op: BlockOp) => void; setHalf: (half: boolean) => void;
+  setTitle: (title: string) => void; focus: () => void; replaceBlockFile: (fileId: string) => void;
 };
+/** What the formatting toolbar needs to know about the selection: what is active, what can be done, and which kind of block is selected. */
+export type FormatState = {
+  editable: boolean; ids: string[]; type: BlockType | null; kind: 'none' | 'text' | 'code' | 'image' | 'table' | 'atom';
+  marks: string[]; colour: string | null; background: string | null; align: Align | null; spacing: number | null; font: FontFamily | null; size: number | null;
+  hasSelection: boolean; canLayout: boolean; canIndent: boolean; canOutdent: boolean; canUndo: boolean; canRedo: boolean; half: boolean; rows: number; columns: number; find: boolean;
+};
+export const noFormat: FormatState = { editable: false, ids: [], type: null, kind: 'none', marks: [], colour: null, background: null, align: null, spacing: null, font: null, size: null, hasSelection: false, canLayout: false, canIndent: false, canOutdent: false, canUndo: false, canRedo: false, half: false, rows: 0, columns: 0, find: false };
+export type LinkTarget = { id: string; start: number; end: number };
+export type TableOp = 'addRow' | 'addColumn' | 'removeRow' | 'removeColumn';
+export type BlockOp = 'duplicate' | 'delete' | 'up' | 'down';
 export type LocalChange = { title: string; blocks: Block[]; previous: Block[] };
 export type SelectionReport = { id: string | null; start: number; end: number; inline: boolean };
 
@@ -40,6 +60,12 @@ type Props = {
   onCreateTask: (block: Block) => void; onComment: (block: Block, quote: string) => void; onMoveOut: (block: Block) => void; onNotice: (message: string) => void; onError: (message: string) => void;
   /** Runs one AI writing action. Null when AVEN Intelligence is not available to this person, so nothing AI is shown. */
   onAssist: ((request: AiRequest) => Promise<string>) | null;
+  /** Told whenever the selection or the document changes, so the toolbar can show what is active. */
+  onFormatState?: (state: FormatState) => void;
+  /** Show the small bar that floats over selected text. The toolbar normally covers it, so it only appears when the toolbar is hidden. */
+  floatingBar?: boolean;
+  /** Cmd/Ctrl + K: the toolbar opens its link box. Without it the editor falls back to a prompt. */
+  onLinkRequest?: () => void;
   apiRef: Ref<DocEditorApi>;
 };
 
@@ -62,13 +88,13 @@ function Popover({ left, top, bar, children }: { left: number; top: number; bar?
 const uuid = () => crypto.randomUUID();
 const toolClass = 'aven-handle__menu';
 
-export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLocalChange, onSelection, onCreateTask, onComment, onMoveOut, onNotice, onError, onAssist, apiRef }: Props) {
+export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLocalChange, onSelection, onCreateTask, onComment, onMoveOut, onNotice, onError, onAssist, onFormatState, floatingBar = true, onLinkRequest, apiRef }: Props) {
   const t = useT();
   const wrapper = useRef<HTMLDivElement>(null);
   const [live] = useState<LiveState>(emptyLive);
   const last = useRef<Block[]>(blocks);
-  const latest = useRef({ onLocalChange, onSelection, readOnly, t, onError });
-  useEffect(() => { latest.current = { onLocalChange, onSelection, readOnly, t, onError }; });
+  const latest = useRef({ onLocalChange, onSelection, readOnly, t, onError, onFormatState, onLinkRequest });
+  useEffect(() => { latest.current = { onLocalChange, onSelection, readOnly, t, onError, onFormatState, onLinkRequest }; });
   const [slash, setSlash] = useState<{ blockId: string; start: number; query: string; index: number; left: number; top: number; category: BlockCategory | null } | null>(null);
   const [format, setFormat] = useState<{ left: number; top: number } | null>(null);
   const slashRef = useRef(slash); useEffect(() => { slashRef.current = slash; }, [slash]);
@@ -93,7 +119,7 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
   const extensions = useMemo(() => [Doc, Text, Title, TextBlock, ToggleBlockView, SourceBlockView, SyncedBlockView, AtomBlockView, UniqueBlockIds, Decorations.configure({ live: () => live }), UndoRedo, Gapcursor], [live]);
 
   // The editor is created once; its event handlers reach the latest versions of these functions through this ref.
-  const handlers = useRef<{ keyDown: (event: KeyboardEvent) => boolean; textInput: (from: number, to: number, text: string) => boolean; paste: (event: ClipboardEvent) => boolean; gutterClick: (event: MouseEvent) => boolean; linkClick: (event: MouseEvent) => boolean; refreshAssist: () => void; reportSelection: () => void } | null>(null);
+  const handlers = useRef<{ keyDown: (event: KeyboardEvent) => boolean; textInput: (from: number, to: number, text: string) => boolean; paste: (event: ClipboardEvent) => boolean; gutterClick: (event: MouseEvent) => boolean; linkClick: (event: MouseEvent) => boolean; refreshAssist: () => void; reportSelection: () => void; pushFormat: () => void } | null>(null);
   const editor = useEditor({
     extensions, content: blocksToDoc(title, blocks), editable: !readOnly, immediatelyRender: false, shouldRerenderOnTransaction: false,
     editorProps: {
@@ -112,9 +138,9 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
       const read = readDoc(ed.state.doc);
       const previous = last.current; last.current = read.blocks;
       latest.current.onLocalChange({ title: read.title, blocks: read.blocks, previous });
-      handlers.current?.refreshAssist();
+      handlers.current?.refreshAssist(); handlers.current?.pushFormat();
     },
-    onSelectionUpdate: () => { handlers.current?.refreshAssist(); handlers.current?.reportSelection(); },
+    onSelectionUpdate: () => { handlers.current?.refreshAssist(); handlers.current?.reportSelection(); handlers.current?.pushFormat(); },
   });
 
   // ---- helpers that act on the editor ---------------------------------------------------------------------------------------
@@ -208,10 +234,100 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
   function applyLink() {
     if (!editor) return;
     const sel = selectionInBlock(editor.state); if (!sel?.inline) return;
+    if (latest.current.onLinkRequest) { latest.current.onLinkRequest(); return; }
     const url = window.prompt(latest.current.t('ed.linkPrompt')); if (!url) return;
     const next = makeLink(sel.node.textContent, sel.start, sel.end, url);
     if (!next) { latest.current.onError(latest.current.t('ed.linkInvalid')); return; }
     commit(currentBlocks().map((block) => (block.id === sel.id ? normalizeBlock({ ...block, text: next.text }) : block)), { id: sel.id, caret: next.start, end: next.end });
+  }
+
+
+  // ---- formatting commands (the toolbar calls these through the editor's api) ------------------------------------------------------
+  /** The blocks the selection touches: the blocks picked as a whole, or every block a text selection passes through. */
+  const selectedIds = useCallback((): string[] => {
+    if (!editor) return [];
+    const chosen = pickedRef.current; if (chosen) return chosen.ids;
+    const { from, to } = editor.state.selection;
+    return locateBlocks(editor.state.doc).filter(({ node, pos }) => pos < Math.max(to, from + 1) && pos + node.nodeSize > from).map((entry) => entry.id);
+  }, [editor]);
+  const lastFormat = useRef('');
+  const pushFormat = useCallback(() => {
+    const report = latest.current.onFormatState; if (!editor || !report) return;
+    const all = currentBlocks(); const ids = selectedIds();
+    const chosen = ids.map((id) => all.find((block) => block.id === id)).filter((block): block is Block => Boolean(block));
+    const first = chosen[0]; const sel = selectionInBlock(editor.state);
+    const markable = Boolean(sel?.inline && first && first.type !== 'CODE' && first.type !== 'EQUATION' && first.type !== 'MERMAID');
+    const text = markable && sel ? sel.node.textContent : '';
+    const tones = markable && sel ? activeTones(text, sel.start, sel.end) : { colour: null, background: null };
+    const kind: FormatState['kind'] = !first ? 'none' : first.type === 'TABLE' ? 'table' : first.type === 'IMAGE' ? 'image' : first.type === 'CODE' ? 'code' : isTextBlock(first.type) ? 'text' : 'atom';
+    const shared = <K extends 'align' | 'spacing' | 'font' | 'size'>(key: K) => (chosen.length && chosen.every((block) => block[key] === first[key]) ? first[key] ?? null : null);
+    const state: FormatState = {
+      editable: !latest.current.readOnly, ids, type: first?.type ?? null, kind,
+      marks: markable && sel ? [...activeMarks(text, sel.start, sel.end)] : [], colour: tones.colour, background: tones.background,
+      align: shared('align') as Align | null, spacing: shared('spacing') as number | null, font: shared('font') as FontFamily | null, size: shared('size') as number | null,
+      hasSelection: Boolean(sel?.inline && sel.end > sel.start), canLayout: chosen.length > 0 && chosen.every((block) => isFormattable(block.type)),
+      canIndent: Boolean(first && indentBlock(all, first.id, 1)), canOutdent: Boolean(first && indentBlock(all, first.id, -1)),
+      canUndo: editor.can().undo(), canRedo: editor.can().redo(), half: first?.span === 'half', rows: first?.rows?.length ?? 0, columns: first?.rows?.[0]?.length ?? 0, find: findOpen.current,
+    };
+    const key = JSON.stringify(state); if (key === lastFormat.current) return;
+    lastFormat.current = key; report(state);
+  }, [editor, currentBlocks, selectedIds]);
+  useEffect(() => { pushFormat(); }, [pushFormat, picked, find, readOnly, blocks]);
+
+  function changeSelected(change: (block: Block) => Block) {
+    const ids = selectedIds(); if (!ids.length) return;
+    const all = currentBlocks(); const next = all.map((block) => (ids.includes(block.id) ? change(block) : block));
+    if (JSON.stringify(next) !== JSON.stringify(all)) commit(next);
+  }
+  function setBlockType(entry: Pick<CatalogEntry, 'type' | 'patch'>) {
+    changeSelected((block) => {
+      if (!isTextBlock(block.type) || block.type === 'TOGGLE') return block;
+      const { align, spacing, font, size, indent } = block;
+      return normalizeBlock({ ...convertBlock(block, entry), align, spacing, font, size, indent });
+    });
+  }
+  function toggleList(type: 'BULLET' | 'NUMBERED' | 'TODO') {
+    const ids = selectedIds(); const all = currentBlocks();
+    const chosen = all.filter((block) => ids.includes(block.id) && isTextBlock(block.type) && block.type !== 'TOGGLE' && block.type !== 'CODE');
+    if (!chosen.length) return;
+    const off = chosen.every((block) => block.type === type);
+    setBlockType(off ? { type: 'PARAGRAPH' } : { type });
+  }
+  function indentSelected(direction: 1 | -1) {
+    let next = currentBlocks(); const ids = selectedIds();
+    for (const id of direction === 1 ? ids : [...ids].reverse()) { const changed = indentBlock(next, id, direction); if (changed) next = changed; }
+    if (next !== currentBlocks()) commit(next);
+  }
+  function commentOnSelection() {
+    if (!editor) return;
+    const sel = selectionInBlock(editor.state); const block = sel ? currentBlocks().find((item) => item.id === sel.id) : currentBlocks().find((item) => item.id === selectedIds()[0]);
+    if (!block) return;
+    onComment(block, sel && sel.end > sel.start ? block.text.slice(sel.start, sel.end) : block.text);
+  }
+  function linkTarget(): LinkTarget | null { const sel = editor ? selectionInBlock(editor.state) : null; return sel?.inline ? { id: sel.id, start: sel.start, end: sel.end } : null; }
+  function applyLinkTo(url: string, target: LinkTarget): boolean {
+    const block = currentBlocks().find((item) => item.id === target.id); if (!block) return false;
+    const next = makeLink(block.text, target.start, target.end, url); if (!next) { latest.current.onError(latest.current.t('ed.linkInvalid')); return false; }
+    commit(currentBlocks().map((item) => (item.id === target.id ? normalizeBlock({ ...item, text: next.text }) : item)), { id: target.id, caret: next.start, end: next.end });
+    return true;
+  }
+  function insertBlock(type: BlockType, patch?: Partial<Block>) {
+    const all = currentBlocks(); const afterId = selectedIds().slice(-1)[0] ?? all[all.length - 1]?.id; const at = afterId ? all.findIndex((block) => block.id === afterId) : all.length - 1;
+    const created = blankBlock(uuid(), type, patch);
+    commit([...all.slice(0, at + 1), created, ...all.slice(at + 1)], { id: created.id, caret: 0 });
+  }
+  function tableOp(op: TableOp) {
+    const id = selectedIds()[0]; const block = currentBlocks().find((item) => item.id === id); if (!block || block.type !== 'TABLE' || !block.rows) return;
+    const rows = block.rows;
+    const next = op === 'addRow' ? addRow(rows) : op === 'addColumn' ? addColumn(rows) : op === 'removeRow' ? removeRow(rows, rows.length - 1) : removeColumn(rows, (rows[0]?.length ?? 1) - 1);
+    if (next === rows) { onNotice(latest.current.t('ed.tableLimit')); return; }
+    commit(currentBlocks().map((item) => (item.id === id ? normalizeBlock({ ...item, rows: next }) : item)));
+  }
+  function blockOp(op: BlockOp) {
+    const all = currentBlocks(); const ids = selectedIds(); const id = ids[0]; if (!id) return;
+    if (op === 'duplicate') { const result = duplicateBlock(all, id, uuid); if (result) commit(result.blocks, result.focus); }
+    else if (op === 'up' || op === 'down') { const next = moveBlockBy(all, id, op === 'up' ? -1 : 1); if (next !== all) commit(next, { id, caret: 0 }); }
+    else { const next = all.filter((block) => !ids.includes(block.id)); setPicked(null); commit(next.length ? next : [blankBlock(uuid())]); }
   }
 
   // ---- keyboard, typing, paste, clicks ----------------------------------------------------------------------------------------
@@ -364,7 +480,7 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     window.open(href, '_blank', 'noopener,noreferrer'); return true;
   }
 
-  useEffect(() => { handlers.current = { keyDown, textInput, paste, gutterClick, linkClick, refreshAssist, reportSelection }; });
+  useEffect(() => { handlers.current = { keyDown, textInput, paste, gutterClick, linkClick, refreshAssist, reportSelection, pushFormat }; });
 
   // ---- keep the editor in step with the block list ------------------------------------------------------------------------------
   useEffect(() => {
@@ -423,9 +539,20 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     focusBlock: (id, caret = 0) => { if (editor) { editor.view.dispatch(selectBlock(editor.state.tr, id, caret).scrollIntoView()); editor.view.focus(); } },
     replaceBlock: (id, change) => { const all = currentBlocks(); commit(all.map((block) => (block.id === id ? normalizeBlock({ ...block, ...change }) : block))); },
     currentBlockId: () => (editor ? selectionInBlock(editor.state)?.id ?? null : null),
-    askAi: () => setAi({ kind: 'document' }),
+    askAi: () => { const sel = editor ? selectionInBlock(editor.state) : null; if (sel?.inline && sel.end > sel.start) openAiOnSelection(); else setAi({ kind: 'document' }); },
     blocks: currentBlocks,
-  }), [editor, commit, currentBlocks]);
+    undo: () => { editor?.chain().focus().undo().run(); }, redo: () => { editor?.chain().focus().redo().run(); },
+    openFind: () => { if (!editor) return; const picked = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to); setFind((current) => ({ query: picked && !picked.includes('\n') ? picked : current?.query ?? '', replace: current?.replace ?? '', index: 0 })); },
+    toggleMark: (mark) => applyMark(mark), setTone: (tone) => applyColour(tone),
+    linkTarget, applyLink: applyLinkTo, setBlockType, toggleList,
+    setLayout: (patch) => { const ids = selectedIds(); const next = setLayout(currentBlocks(), ids, patch); if (next !== currentBlocks()) commit(next); },
+    indent: indentSelected, clearFormatting: () => changeSelected((block) => (isTextBlock(block.type) ? clearBlockFormatting(block) : block)),
+    commentSelection: commentOnSelection, insertBlock, tableOp, blockOp,
+    setHalf: (half) => changeSelected((block) => normalizeBlock({ ...block, span: half ? 'half' : undefined })),
+    setTitle: (next) => { if (!editor) return; const tr = reconcile(editor.state.tr, currentBlocks(), next); editor.view.dispatch(tr); },
+    focus: () => { editor?.view.focus(); },
+    replaceBlockFile: (fileId) => changeSelected((block) => (block.type === 'IMAGE' ? normalizeBlock({ ...block, fileId }) : block)),
+  }), [editor, commit, currentBlocks]); // eslint-disable-line react-hooks/exhaustive-deps -- the commands read the editor through refs and always see the latest document
 
   // ---- block handle (drag, turn into, move, duplicate, delete) --------------------------------------------------------------------
   function onMove(event: React.MouseEvent) {
@@ -491,7 +618,7 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
       {picked && <p className="sr-only" role="status">{t('ed.pickedCount', { n: picked.ids.length })}</p>}
       <EditorContent editor={editor} />
       {slash && <Popover left={slash.left} top={slash.top}><SlashMenu query={slash.query} index={slash.index} category={slash.category} onCategory={(category) => setSlash({ ...slash, category, index: 0 })} onPick={chooseSlash} onHover={(index) => setSlash({ ...slash, index })} /></Popover>}
-      {format && <Popover left={format.left} top={format.top} bar><FormatBar onMark={applyMark} onLink={applyLink} onColour={applyColour} onAi={onAssist ? openAiOnSelection : undefined} /></Popover>}
+      {format && floatingBar && <Popover left={format.left} top={format.top} bar><FormatBar onMark={applyMark} onLink={applyLink} onColour={applyColour} onAi={onAssist ? openAiOnSelection : undefined} /></Popover>}
       {!readOnly && hover && hoverBlock && <div className="aven-handle" style={{ top: hover.top }}>
         <button type="button" className="aven-handle__drag" draggable aria-label={t('ed.dragHandle')} title={t('ed.dragHandle')}
           onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', hover.id); setDrag({ id: hover.id, over: null }); }} onDragEnd={() => setDrag(null)}>⋮⋮</button>

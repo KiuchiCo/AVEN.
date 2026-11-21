@@ -10,6 +10,8 @@ export type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'HEADING_3' | 
   | 'EQUATION' | 'MERMAID' | 'TABS' | 'SYNCED' | 'MEETING';
 export type DatabaseView = 'TABLE' | 'BOARD' | 'GALLERY' | 'LIST' | 'BAR_V' | 'BAR_H' | 'DONUT' | 'NUMBER' | 'CALENDAR' | 'TIMELINE' | 'FEED' | 'DASHBOARD' | 'LINE' | 'MAP';
 export type TabPane = { title: string; body: string };
+export type Align = 'center' | 'right' | 'justify'; // left is the default and is not stored
+export type FontFamily = 'sans' | 'serif' | 'mono';
 /** `text` is the block's main text (a caption for media, the title of a toggle, the label of a button). Other fields belong to specific block types. */
 export type Block = {
   id: string; type: BlockType; text: string; checked?: boolean;
@@ -25,6 +27,7 @@ export type Block = {
   indent?: number;                              // nesting depth (Tab / Shift+Tab), 0-5: list items nest, and blocks indented under a toggle, tabs or meeting notes are its content
   span?: 'half';                                // database views, charts and media: two of these in a row sit side by side
   tab?: number;                                 // for content under a tabs block: which tab it belongs to
+  align?: Align; spacing?: number; font?: FontFamily; size?: number; // how a text block is laid out: alignment, line spacing, font family and size (the whole block, not a selection)
 };
 export type Focus = { id: string; caret: number };
 export type EditResult = { blocks: Block[]; focus: Focus };
@@ -226,6 +229,7 @@ export function toggleMark(text: string, start: number, end: number, mark: Mark)
     const inner = selected.slice(open.length, selected.length - open.length);
     return { text: text.slice(0, a) + inner + text.slice(b), start: a, end: a + inner.length };
   }
+  if (mark === 'italic' && text.slice(a - 3, a) === '***' && text.slice(b, b + 3) === '***') return { text: text.slice(0, a - 1) + selected + text.slice(b + 1), start: a - 1, end: b - 1 }; // bold + italic: take away the italic only
   if (text.slice(a - open.length, a) === open && text.slice(b, b + open.length) === open && !(mark === 'italic' && (text[a - 2] === '*' || text[b + 1] === '*'))) {
     return { text: text.slice(0, a - open.length) + selected + text.slice(b + open.length), start: a - open.length, end: b - open.length };
   }
@@ -275,7 +279,7 @@ const isEdge = (text: string, at: number) => at === 0 || !/[\p{L}\p{N}+=]/u.test
 export const tones = ['brown', 'red', 'orange', 'green', 'blue', 'purple', 'gray'] as const;
 export type Tone = (typeof tones)[number];
 const colourPattern = new RegExp(`^\\{((?:bg-)?(?:${tones.join('|')})):([^{}\\n]+?)\\}`);
-export type Inline = { kind: 'text' | 'bold' | 'italic' | 'code' | 'strike' | 'underline' | 'highlight' | 'colour' | 'link'; text: string; href?: string; tone?: string };
+export type Inline = { kind: 'text' | 'bold' | 'bolditalic' | 'italic' | 'code' | 'strike' | 'underline' | 'highlight' | 'colour' | 'link'; text: string; href?: string; tone?: string };
 
 /** Splits text into plain and formatted runs. Unmatched marks stay as literal characters; nothing is ever treated as HTML. */
 export function parseInline(text: string): Inline[] {
@@ -288,6 +292,7 @@ export function parseInline(text: string): Inline[] {
     let m: RegExpExecArray | null;
     if ((m = /^`([^`\n]+)`/.exec(rest))) { flush(); out.push({ kind: 'code', text: m[1] }); i += m[0].length; continue; }
     if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { flush(); out.push({ kind: 'link', text: m[1], href }); i += m[0].length; continue; } }
+    if ((m = /^\*\*\*([^*\n]+?)\*\*\*/.exec(rest))) { flush(); out.push({ kind: 'bolditalic', text: m[1] }); i += m[0].length; continue; }
     if ((m = /^\*\*([^*\n]+?)\*\*/.exec(rest))) { flush(); out.push({ kind: 'bold', text: m[1] }); i += m[0].length; continue; }
     if ((m = /^~~([^~\n]+?)~~/.exec(rest))) { flush(); out.push({ kind: 'strike', text: m[1] }); i += m[0].length; continue; }
     if (isEdge(text, i) && (m = /^\+\+(\S(?:[^+\n]*?\S)?)\+\+/.exec(rest))) { flush(); out.push({ kind: 'underline', text: m[1] }); i += m[0].length; continue; }
@@ -306,7 +311,7 @@ export const hasInlineMarks = (text: string) => parseInline(text).some((run) => 
 // ---- The canonical block ------------------------------------------------------------------------------------------------------
 
 const defaultsOf = (block: Block): Partial<Record<keyof Block, unknown>> => ({ checked: false, level: block.type === 'TOGGLE' ? 0 : undefined, indent: 0, tab: 0 });
-const KEY_ORDER: (keyof Block)[] = ['id', 'type', 'text', 'checked', 'rows', 'fileId', 'level', 'body', 'url', 'docId', 'databaseId', 'view', 'create', 'linked', 'tabs', 'syncId', 'date', 'attendees', 'actions', 'indent', 'tab', 'span'];
+const KEY_ORDER: (keyof Block)[] = ['id', 'type', 'text', 'checked', 'rows', 'fileId', 'level', 'body', 'url', 'docId', 'databaseId', 'view', 'create', 'linked', 'tabs', 'syncId', 'date', 'attendees', 'actions', 'indent', 'tab', 'span', 'align', 'spacing', 'font', 'size'];
 /**
  * One shape for a block, whatever it came from: known fields only, always in the same order, empty and default values left out
  * (`checked` stays, because older documents always carry it). The editor, the saved document and the merge all compare blocks in this
@@ -320,6 +325,10 @@ export function normalizeBlock(input: Block): Block {
     if (value === undefined || value === null) continue;
     if (key === 'checked') { out.checked = value === true; continue; }
     if (key === 'span' && value !== 'half') continue;
+    if (key === 'align' && !['center', 'right', 'justify'].includes(value as string)) continue;
+    if (key === 'font' && !['sans', 'serif', 'mono'].includes(value as string)) continue;
+    if (key === 'spacing' && !(typeof value === 'number' && value >= 1 && value <= 3)) continue;
+    if (key === 'size' && !(typeof value === 'number' && Number.isInteger(value) && value >= MIN_SIZE && value <= MAX_SIZE)) continue;
     if (key in skip && skip[key] === value) continue;
     if ((key === 'create' || key === 'linked') && value !== true) continue;
     if ((key === 'body' || key === 'url' || key === 'docId' || key === 'databaseId' || key === 'syncId' || key === 'fileId' || key === 'date' || key === 'attendees' || key === 'actions') && value === '') continue;
@@ -404,6 +413,7 @@ export function inlineRanges(text: string): InlineRange[] {
     const wrap = (kind: InlineRange['kind'], open: number, close: number, length: number) => { out.push({ start: i, end: i + open, kind: 'mark' }, { start: i + open, end: i + length - close, kind }, { start: i + length - close, end: i + length, kind: 'mark' }); i += length; };
     if ((m = /^`([^`\n]+)`/.exec(rest))) { wrap('code', 1, 1, m[0].length); continue; }
     if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { const label = m[1].length; out.push({ start: i, end: i + 1, kind: 'mark' }, { start: i + 1, end: i + 1 + label, kind: 'link', href }, { start: i + 1 + label, end: i + m[0].length, kind: 'mark' }); i += m[0].length; continue; } }
+    if ((m = /^\*\*\*([^*\n]+?)\*\*\*/.exec(rest))) { out.push({ start: i, end: i + 3, kind: 'mark' }, { start: i + 3, end: i + m[0].length - 3, kind: 'bold' }, { start: i + 3, end: i + m[0].length - 3, kind: 'italic' }, { start: i + m[0].length - 3, end: i + m[0].length, kind: 'mark' }); i += m[0].length; continue; }
     if ((m = /^\*\*([^*\n]+?)\*\*/.exec(rest))) { wrap('bold', 2, 2, m[0].length); continue; }
     if ((m = /^~~([^~\n]+?)~~/.exec(rest))) { wrap('strike', 2, 2, m[0].length); continue; }
     if (isEdge(text, i) && (m = /^\+\+(\S(?:[^+\n]*?\S)?)\+\+/.exec(rest))) { wrap('underline', 2, 2, m[0].length); continue; }
@@ -442,4 +452,75 @@ export function pasteLines(blocks: Block[], id: string, start: number, end: numb
   const first = normalizeBlock({ ...block, text: head + lines[0] });
   const created = [...middle, lastBlock];
   return { blocks: [...blocks.slice(0, at), first, ...created, ...blocks.slice(at + 1)], focus: { id: lastBlock.id, caret: lastKeeps ? lastLine.length : last.text.length } };
+}
+
+
+// ---- Formatting controls: what the toolbar reads and writes -------------------------------------------------------------------
+
+export const MIN_SIZE = 8; export const MAX_SIZE = 96; export const BASE_SIZE = 16;
+/** Sizes offered in the size menu; the plus and minus buttons walk through them. */
+export const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72, 96] as const;
+export const lineSpacings = [1, 1.15, 1.5, 2] as const;
+export const fontFamilies: FontFamily[] = ['sans', 'serif', 'mono'];
+/** Block types whose alignment, spacing, font and size can be set. Code keeps its own look. */
+export const formattable = new Set<BlockType>(['PARAGRAPH', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'BULLET', 'NUMBERED', 'TODO', 'QUOTE', 'CALLOUT']);
+export const isFormattable = (type: BlockType) => formattable.has(type);
+
+/** The next size up or down from `current` (the document's base size when there is none). */
+export function stepSize(current: number | undefined, direction: 1 | -1): number {
+  const size = current ?? BASE_SIZE;
+  const next = direction === 1 ? fontSizes.find((value) => value > size) : [...fontSizes].reverse().find((value) => value < size);
+  return next ?? (direction === 1 ? MAX_SIZE : MIN_SIZE);
+}
+export const clampSize = (value: number) => Math.max(MIN_SIZE, Math.min(MAX_SIZE, Math.round(value)));
+
+/** Which marks the selection (or the caret) sits inside, so the toolbar can show them as active. */
+export function activeMarks(text: string, start: number, end: number): Set<Mark | 'link'> {
+  const a = Math.min(start, end), b = Math.max(start, end); const found = new Set<Mark | 'link'>();
+  const ranges = inlineRanges(text);
+  for (const range of ranges) {
+    if (range.kind === 'mark' || range.kind === 'colour') continue;
+    // the formatted words and the marker characters around them count together, so selecting a whole formatted word (markers and all) still reads as formatted
+    const open = ranges.find((other) => other.kind === 'mark' && other.end === range.start); const close = ranges.find((other) => other.kind === 'mark' && other.start === range.end);
+    const from = open?.start ?? range.start; const to = close?.end ?? range.end;
+    const inside = a === b ? a > range.start && a <= range.end : a >= from && b <= to;
+    if (inside) found.add(range.kind);
+  }
+  return found;
+}
+/** The text colour and the highlight colour at the selection, if any. */
+export function activeTones(text: string, start: number, end: number): { colour: string | null; background: string | null } {
+  const a = Math.min(start, end), b = Math.max(start, end); const out = { colour: null as string | null, background: null as string | null };
+  const ranges = inlineRanges(text);
+  for (const range of ranges) {
+    if (range.kind !== 'colour' || !range.tone) continue;
+    const open = ranges.find((other) => other.kind === 'mark' && other.end === range.start); const close = ranges.find((other) => other.kind === 'mark' && other.start === range.end);
+    const inside = a === b ? a > range.start && a <= range.end : a >= (open?.start ?? range.start) && b <= (close?.end ?? range.end);
+    if (!inside) continue;
+    if (range.tone.startsWith('bg-')) out.background = range.tone.slice(3); else out.colour = range.tone;
+  }
+  return out;
+}
+/** The words of a block with every mark and colour removed (a link keeps its label). */
+export function plainFormat(text: string): string {
+  // marks can sit inside a colour, so strip until nothing more changes
+  let current = text;
+  for (let pass = 0; pass < 5; pass += 1) { const next = parseInline(current).map((run) => run.text).join(''); if (next === current) break; current = next; }
+  return current;
+}
+/** Clears the formatting of a block: marks, colours and its alignment, spacing, font and size. */
+export function clearBlockFormatting(block: Block): Block {
+  const { align, spacing, font, size, ...rest } = block; void align; void spacing; void font; void size;
+  return normalizeBlock({ ...rest, text: block.type === 'CODE' ? block.text : plainFormat(block.text) });
+}
+/** Sets (or, with undefined, removes) one layout attribute on the blocks with these ids, leaving blocks that cannot take it alone. */
+export function setLayout(blocks: Block[], ids: readonly string[], patch: Partial<Pick<Block, 'align' | 'spacing' | 'font' | 'size'>>): Block[] {
+  let changed = false;
+  const next = blocks.map((block) => {
+    if (!ids.includes(block.id) || !isFormattable(block.type)) return block;
+    const merged = normalizeBlock({ ...block, ...patch });
+    if (JSON.stringify(merged) === JSON.stringify(block)) return block;
+    changed = true; return merged;
+  });
+  return changed ? next : blocks;
 }

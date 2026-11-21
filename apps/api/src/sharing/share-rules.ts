@@ -1,11 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
-import { parseBlocks, type SavedBlock } from '../export/document-model.js';
+import { layoutOf, parseBlocks, type Layout, type SavedBlock } from '../export/document-model.js';
 import { safeHref } from '../export/inline.js';
 
 export const shareLimits = { activePerDocument: 10, expiryDays: [7, 30, 90] as const } as const;
 export type PublicBlock = {
   type: string; text: string; checked?: boolean; rows?: string[][]; image?: string | null; level?: number; indent?: number; tab?: number;
   href?: string; tabs?: string[]; meta?: string;
+  /** Alignment, line spacing, font and size the author set on a text block. */
+  layout?: Layout;
 };
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,7 +39,8 @@ export function publicBlocks(content: string, imageUrl: (fileId: string) => stri
     const type = typeof block.type === 'string' ? block.type : '';
     const layout = { ...(block.indent && block.indent > 0 ? { indent: Math.min(5, Math.floor(block.indent)) } : {}), ...(block.tab && block.tab > 0 ? { tab: Math.floor(block.tab) } : {}) };
     const text = clip(block.text, 20_000);
-    if (plainTypes.has(type)) out.push({ type, text, ...(type === 'TODO' ? { checked: block.checked === true } : {}), ...layout });
+    const look = type === 'CODE' ? undefined : layoutOf(block);
+    if (plainTypes.has(type)) out.push({ type, text, ...(type === 'TODO' ? { checked: block.checked === true } : {}), ...(look ? { layout: look } : {}), ...layout });
     else if (type === 'TABLE') out.push({ type, text: '', rows: clipRows(block.rows), ...layout });
     else if (type === 'IMAGE') out.push({ type, text: text.slice(0, 300), image: typeof block.fileId === 'string' && uuid.test(block.fileId) ? imageUrl(block.fileId.toLowerCase()) : null, ...layout });
     else if (type === 'TOGGLE') out.push({ type, text, level: typeof block.level === 'number' && block.level >= 0 && block.level <= 3 ? Math.floor(block.level) : 0, ...layout });

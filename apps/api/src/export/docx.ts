@@ -36,16 +36,22 @@ function table(rows: string[][], caption: string | undefined): (Paragraph | Tabl
   return [...(caption ? [new Paragraph({ keepNext: true, spacing: { before: 200, after: 80 }, children: [new TextRun({ text: caption, bold: true, color: MUTED, size: 20 })] })] : []), body, new Paragraph({ spacing: { after: 120 }, children: [] })];
 }
 
+const alignOf = (layout?: { align?: string }) => (layout?.align === 'center' ? AlignmentType.CENTER : layout?.align === 'right' ? AlignmentType.RIGHT : layout?.align === 'justify' ? AlignmentType.JUSTIFIED : undefined);
+const fontOf = (layout?: { font?: string }) => (layout?.font === 'serif' ? DISPLAY : layout?.font === 'mono' ? MONO : layout?.font === 'sans' ? BODY : undefined);
+/** Run options for the font and size an author chose; empty when they chose none, so Word styles still apply. */
+const runLayout = (layout?: { font?: string; size?: number }, extra: Record<string, unknown> = {}) => ({ ...extra, ...(fontOf(layout) ? { font: fontOf(layout) } : {}), ...(layout?.size ? { size: layout.size * 2 } : {}) });
+const lineOf = (layout?: { spacing?: number }, fallback = 300) => (layout?.spacing ? Math.round(layout.spacing * 240) : fallback);
+
 function convert(node: ExportNode, state: { numbering: number }): (Paragraph | Table)[] {
   switch (node.kind) {
-    case 'heading': return [new Paragraph({ heading: headingLevels[node.level - 1], keepNext: true, spacing: { before: node.level === 1 ? 360 : 240, after: 100 }, children: runsToChildren(node.runs) })];
-    case 'paragraph': return [new Paragraph({ spacing: { after: 120, line: 300 }, children: runsToChildren(node.runs) })];
+    case 'heading': return [new Paragraph({ heading: headingLevels[node.level - 1], alignment: alignOf(node.layout), keepNext: true, spacing: { before: node.level === 1 ? 360 : 240, after: 100, ...(node.layout?.spacing ? { line: lineOf(node.layout) } : {}) }, children: runsToChildren(node.runs, runLayout(node.layout)) })];
+    case 'paragraph': return [new Paragraph({ alignment: alignOf(node.layout), spacing: { after: 120, line: lineOf(node.layout) }, children: runsToChildren(node.runs, runLayout(node.layout)) })];
     case 'item': {
-      if (node.style === 'todo') return [new Paragraph({ spacing: { after: 60 }, indent: { left: indentFor(node.depth) + 360, hanging: 360 }, children: [new TextRun({ text: node.checked ? '☑ ' : '☐ ', font: 'Segoe UI Symbol' }), ...runsToChildren(node.runs, node.checked ? { color: MUTED } : {})] })];
+      if (node.style === 'todo') return [new Paragraph({ alignment: alignOf(node.layout), spacing: { after: 60, ...(node.layout?.spacing ? { line: lineOf(node.layout) } : {}) }, indent: { left: indentFor(node.depth) + 360, hanging: 360 }, children: [new TextRun({ text: node.checked ? '☑ ' : '☐ ', font: 'Segoe UI Symbol' }), ...runsToChildren(node.runs, runLayout(node.layout, node.checked ? { color: MUTED } : {}))] })];
       if (node.style === 'numbered' && node.number === 1 && node.depth === 0) state.numbering += 1;
-      return [new Paragraph({ spacing: { after: 60 }, numbering: node.style === 'bullet' ? { reference: 'bullets', level: Math.min(node.depth, 5) } : { reference: 'numbers', level: Math.min(node.depth, 5), instance: Math.max(1, state.numbering) }, children: runsToChildren(node.runs) })];
+      return [new Paragraph({ alignment: alignOf(node.layout), spacing: { after: 60, ...(node.layout?.spacing ? { line: lineOf(node.layout) } : {}) }, numbering: node.style === 'bullet' ? { reference: 'bullets', level: Math.min(node.depth, 5) } : { reference: 'numbers', level: Math.min(node.depth, 5), instance: Math.max(1, state.numbering) }, children: runsToChildren(node.runs, runLayout(node.layout)) })];
     }
-    case 'quote': return [new Paragraph({ spacing: { before: 120, after: 120 }, indent: { left: 480 }, border: { left: { style: BorderStyle.SINGLE, size: 18, color: BRONZE, space: 12 } }, children: runsToChildren(node.runs, { italics: true }) })];
+    case 'quote': return [new Paragraph({ alignment: alignOf(node.layout), spacing: { before: 120, after: 120, ...(node.layout?.spacing ? { line: lineOf(node.layout) } : {}) }, indent: { left: 480 }, border: { left: { style: BorderStyle.SINGLE, size: 18, color: BRONZE, space: 12 } }, children: runsToChildren(node.runs, runLayout(node.layout, { italics: true })) })];
     case 'callout': return [new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [new TableRow({ cantSplit: true, children: [new TableCell({ shading: { type: ShadingType.CLEAR, fill: SAND, color: 'auto' }, margins: { top: 100, bottom: 100, left: 160, right: 160 }, borders: { top: { style: BorderStyle.SINGLE, size: 4, color: BORDER }, bottom: { style: BorderStyle.SINGLE, size: 4, color: BORDER }, left: { style: BorderStyle.SINGLE, size: 18, color: BRONZE }, right: { style: BorderStyle.SINGLE, size: 4, color: BORDER } }, children: [new Paragraph({ children: runsToChildren(node.runs) })] })] })] }), new Paragraph({ spacing: { after: 120 }, children: [] })];
     case 'code': return [
       ...(node.label ? [new Paragraph({ keepNext: true, spacing: { before: 160, after: 40 }, children: [new TextRun({ text: node.label, bold: true, color: MUTED, size: 18 })] })] : []),

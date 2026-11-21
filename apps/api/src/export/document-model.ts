@@ -4,15 +4,19 @@ import { parseRuns, plainOf, safeHref, type Run } from './inline.js';
 export type SavedBlock = {
   id?: string; type?: string; text?: string; checked?: boolean; rows?: unknown; fileId?: string; level?: number; body?: string; url?: string; docId?: string;
   databaseId?: string; view?: string; tabs?: { title?: string; body?: string }[]; date?: string; attendees?: string; actions?: string; indent?: number; tab?: number;
+  align?: string; spacing?: number; font?: string; size?: number;
 };
+
+/** How a text block is laid out when its author set alignment, line spacing, font or size. Anything unset is left to the writer's own style. */
+export type Layout = { align?: 'center' | 'right' | 'justify'; spacing?: number; font?: 'sans' | 'serif' | 'mono'; size?: number };
 
 /** What the two writers (PDF and Word) draw. Every saved block type becomes some of these; see `exporters`. */
 export type ExportNode =
-  | { kind: 'heading'; level: 1 | 2 | 3 | 4; runs: Run[] }
-  | { kind: 'paragraph'; runs: Run[] }
-  | { kind: 'item'; style: 'bullet' | 'numbered' | 'todo'; depth: number; number: number; checked: boolean; runs: Run[] }
-  | { kind: 'quote'; runs: Run[] }
-  | { kind: 'callout'; runs: Run[] }
+  | { kind: 'heading'; level: 1 | 2 | 3 | 4; runs: Run[]; layout?: Layout }
+  | { kind: 'paragraph'; runs: Run[]; layout?: Layout }
+  | { kind: 'item'; style: 'bullet' | 'numbered' | 'todo'; depth: number; number: number; checked: boolean; runs: Run[]; layout?: Layout }
+  | { kind: 'quote'; runs: Run[]; layout?: Layout }
+  | { kind: 'callout'; runs: Run[]; layout?: Layout }
   | { kind: 'code'; text: string; label?: string }
   | { kind: 'equation'; source: string }
   | { kind: 'divider' }
@@ -80,7 +84,7 @@ function databaseNodes(block: SavedBlock, db: ResolvedDatabase): ExportNode[] {
     if (block.view === 'NUMBER' || !group) return [{ kind: 'paragraph', runs: [{ text: `${db.name}: `, bold: true }, { text: `${db.records.length} records` }] }];
     const counts = new Map<string, number>();
     for (const record of db.records) { const label = cell(record.values[group.id]) || '—'; counts.set(label, (counts.get(label) ?? 0) + 1); }
-    return [{ kind: 'table', caption: `${db.name} — by ${group.name}`, rows: [[group.name, 'Records'], ...[...counts].map(([label, count]) => [label, String(count)])] }];
+    return [{ kind: 'table', caption: `${db.name}—by ${group.name}`, rows: [[group.name, 'Records'], ...[...counts].map(([label, count]) => [label, String(count)])] }];
   }
   const shown = db.records.slice(0, MAX_ROWS);
   const rows = [db.properties.map((property) => property.name), ...shown.map((record) => db.properties.map((property) => cell(record.values[property.id])))];
@@ -136,13 +140,25 @@ const headingsOf = (blocks: SavedBlock[]) => blocks.flatMap((block): ExportNode[
   return level && text(block.text).trim() ? [{ kind: 'item', style: 'bullet', depth: level - 1, number: 0, checked: false, runs: [{ text: plainOf(text(block.text)) }] }] : [];
 });
 
+/** The layout an author set on a block, with anything unusable dropped. */
+export function layoutOf(block: SavedBlock): Layout | undefined {
+  const layout: Layout = {};
+  if (block.align === 'center' || block.align === 'right' || block.align === 'justify') layout.align = block.align;
+  if (typeof block.spacing === 'number' && block.spacing >= 1 && block.spacing <= 3) layout.spacing = block.spacing;
+  if (block.font === 'sans' || block.font === 'serif' || block.font === 'mono') layout.font = block.font;
+  if (typeof block.size === 'number' && Number.isInteger(block.size) && block.size >= 8 && block.size <= 96) layout.size = block.size;
+  return Object.keys(layout).length ? layout : undefined;
+}
+const laidOut = new Set(['heading', 'paragraph', 'item', 'quote', 'callout']);
+
 async function walk(blocks: SavedBlock[], context: Context, all: SavedBlock[]): Promise<ExportNode[]> {
   const out: ExportNode[] = [];
   for (let at = 0; at < blocks.length; at += 1) {
     const block = blocks[at]; const type = String(block.type ?? '');
     if (type !== 'NUMBERED' && type !== 'BULLET' && type !== 'TODO') context.counters.length = 0;
     if (type === 'TOC') { const list = headingsOf(all); out.push(...(list.length ? [{ kind: 'heading' as const, level: 3 as const, runs: [{ text: 'Contents' }] }, ...list] : [])); continue; }
-    out.push(...await (exporters[type] ?? fallback)(block, context));
+    const made = await (exporters[type] ?? fallback)(block, context); const layout = layoutOf(block);
+    out.push(...(layout ? made.map((node) => (laidOut.has(node.kind) ? { ...node, layout } as ExportNode : node)) : made));
     if (type === 'TOGGLE' || type === 'TABS' || type === 'MEETING') {
       const depth = indentOf(block); const inside: SavedBlock[] = [];
       while (at + 1 < blocks.length && indentOf(blocks[at + 1]) > depth) inside.push(blocks[(at += 1)]);

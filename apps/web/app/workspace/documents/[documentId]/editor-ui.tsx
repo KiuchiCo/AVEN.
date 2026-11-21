@@ -14,6 +14,7 @@ export function RichText({ text }: { text: string }) {
   return <>{parseInline(text).map((run, index) => {
     const key = `${index}-${run.kind}`;
     if (run.kind === 'bold') return <strong key={key}>{run.text}</strong>;
+    if (run.kind === 'bolditalic') return <strong key={key}><em>{run.text}</em></strong>;
     if (run.kind === 'italic') return <em key={key}>{run.text}</em>;
     if (run.kind === 'strike') return <s key={key}>{run.text}</s>;
     if (run.kind === 'underline') return <u key={key}>{run.text}</u>;

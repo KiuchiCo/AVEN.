@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { advancedCount, browse, folderTree, nextSort, noAdvanced, pathLabel, previewText, readView, sortColumn } from '../app/workspace/documents/library-model.ts';
+import { advancedCount, canBulkDownload, browse, folderTree, nextSort, noAdvanced, pathLabel, previewText, readView, sortColumn } from '../app/workspace/documents/library-model.ts';
 
 const now = Date.parse('2026-06-15T12:00:00Z');
 const me = { id: 'u1', displayName: 'Mia' }; const bo = { id: 'u2', displayName: 'Bo' };
@@ -72,3 +72,5 @@ test('breadcrumb paths and the folder picker follow the tree, and leave out excl
 });
 
 test('the remembered view only accepts known values', () => { assert.equal(readView('GRID'), 'GRID'); assert.equal(readView('x'), null); assert.equal(readView(null), null); });
+
+test('bulk download is offered for 1 to 10 documents only', () => { assert.equal(canBulkDownload(0), false); assert.equal(canBulkDownload(1), true); assert.equal(canBulkDownload(10), true); assert.equal(canBulkDownload(11), false); });

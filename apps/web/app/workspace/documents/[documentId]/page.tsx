@@ -9,13 +9,14 @@ import type { Key } from '../../../i18n/en';
 import { useWorkspaceSession } from '../../workspace-shell';
 import { AttachmentsPanel } from '../../files/attachments-panel';
 import { SharePanel } from './share-panel';
+import type { CatalogEntry } from './block-catalog';
+import { DocumentHeader } from './document-header';
+import { EditorIcon } from './editor-icons';
+import { EditorToolbar } from './editor-toolbar';
 import { BlockBrowser } from './editor-ui';
 import type { AiRequest } from './AiAssist';
-import { DocEditor, type DocEditorApi, type LocalChange, type SelectionReport } from './DocEditor';
-import { blockCatalog, type CatalogEntry } from './block-catalog';
-import { BlockIcon } from '../../block-icons';
+import { noFormat, type FormatState, DocEditor, type DocEditorApi, type LocalChange, type SelectionReport } from './DocEditor';
 import { blankBlock, blockTypeList, liftBodies, headingLevel, isLiveText, normalizeBlock } from './editor-model';
-import { FavouriteStar } from '../../favourites';
 import { readEvents } from '../../messages/sse';
 import { mergeBlocks, reconcileDraft } from './block-merge';
 import { LiveTextEngine, type CursorEvent, type RemoteCursor, type TextEvent } from './live-text';
@@ -68,7 +69,6 @@ export default function DocumentEditorPage() {
   const [commentTarget, setCommentTarget] = useState<{ blockId: string; quote: string } | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: string; text: string } | null>(null);
   const [moving, setMoving] = useState<{ block: Block; docs: DocSummary[] | null } | null>(null);
-  const [entryId, setEntryId] = useState<string>('document-text');
   const [browserOpen, setBrowserOpen] = useState(false);
   const [creatingTask, setCreatingTask] = useState('');
   const [loading, setLoading] = useState(true);
@@ -78,11 +78,20 @@ export default function DocumentEditorPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [conflict, setConflict] = useState<Document | null>(null);
+  const openShare = useSearchParams().get('panel') === 'share';
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [format, setFormat] = useState<FormatState>(noFormat);
+  const [viewing, setViewing] = useState(false);
+  const [linkRequest, setLinkRequest] = useState(0);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const updateCollapsed = (next: boolean) => { setToolbarCollapsed(next); try { window.localStorage.setItem('aven.editor.toolbar', next ? 'collapsed' : 'open'); } catch { /* not remembered */ } };
+  const updatePanelOpen = (next: boolean) => { setPanelOpen(next); try { window.localStorage.setItem('aven.editor.panel', next ? 'open' : 'closed'); } catch { /* not remembered */ } };
+  useEffect(() => { let live = true; void Promise.resolve().then(() => { try { if (!live) return; if (window.localStorage.getItem('aven.editor.toolbar') === 'collapsed') setToolbarCollapsed(true); if (window.localStorage.getItem('aven.editor.panel') === 'closed' && !openShare) setPanelOpen(false); } catch { /* ignore */ } }); return () => { live = false; }; }, [openShare]);
   const [offline, setOffline] = useState(false);
   const [liveBusy, setLiveBusy] = useState(false);
   const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor[]>>({});
   const liveEngine = useRef<LiveTextEngine | null>(null);
-  const openShare = useSearchParams().get('panel') === 'share';
   const [activePanel, setActivePanel] = useState<'OUTLINE' | 'COMMENTS' | 'HISTORY' | 'FILES' | 'SHARE' | 'RELATED'>(() => (openShare ? 'SHARE' : 'OUTLINE'));
   const [viewers, setViewers] = useState<{ id: string; name: string; blockId: string | null; connections?: number }[]>([]);
   const revision = useRef(0);
@@ -277,7 +286,7 @@ export default function DocumentEditorPage() {
     }
     try {
       const updated = await request(`/workspaces/${workspace.id}/documents/${document.id}`, { method: 'PATCH', body: JSON.stringify(payload) }) as Document;
-      setDocument(updated); setOffline(false);
+      setDocument(updated); setOffline(false); setSaveFailed(false);
       if (revision.current === currentRevision) {
         setDirty(false);
         return true;
@@ -287,7 +296,7 @@ export default function DocumentEditorPage() {
       setOffline(reason instanceof OfflineError); // any answer from the server means the connection is back
       if (reason instanceof OfflineError) { /* kept on this device; retried when the connection returns */ }
       else if (reason instanceof ConflictError) { if (applyRemote(reason.current, t('ed.someone')) === 'conflict') setConflict(reason.current); }
-      else setError(reason instanceof Error ? reason.message : 'Autosave failed.');
+      else { setSaveFailed(true); setError(reason instanceof Error ? reason.message : 'Autosave failed.'); }
       return false;
     }
     finally { setSaving(false); }
@@ -573,7 +582,9 @@ export default function DocumentEditorPage() {
   }
 
   return <div className="workspace-section-page document-studio">
-    <div className="document-studio__crumb"><Link href="/workspace/documents">{t('ed.crumbDocuments')}</Link><span>›</span><span>{document?.project?.name ?? workspace.name}</span><span>›</span><strong>{document?.title ?? t('ed.document')}</strong><span className="document-studio__save-state">{saving ? t('ed.saving') : dirty ? t('ed.unsaved') : success || t('ed.allSaved')}</span></div>
+    <DocumentHeader title={title} onTitle={(next) => editorApi.current?.setTitle(next)} readOnly={readOnlyRole(workspace.role) || viewing} where={document?.project?.name ?? workspace.name} documentId={document?.id} status={saving ? 'saving' : saveFailed && dirty ? 'failed' : offline && dirty ? 'offline' : dirty ? 'unsaved' : 'saved'} message={success}
+      onRetry={() => { setError(''); void saveDocument(); }} local={local} aiReady={aiReady && !readOnlyRole(workspace.role)} onAi={() => editorApi.current?.askAi()} onShare={() => { setPanelOpen(true); setActivePanel('SHARE'); window.requestAnimationFrame(() => window.document.querySelector('.document-studio__sidebar')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); }}
+      exporting={exporting} onExport={(format) => void exportAs(format)} onPrint={() => window.print()} onSaveNow={() => void saveDocument()} dirty={dirty} panelOpen={panelOpen} onPanel={updatePanelOpen} onHistory={() => { setPanelOpen(true); setActivePanel('HISTORY'); }} onComments={() => { setPanelOpen(true); setActivePanel('COMMENTS'); }} />
     {viewers.some((viewer) => viewer.id === user.id && (viewer.connections ?? 1) > 1) && <p className="document-presence" role="status">{t('ed.otherTab')}</p>}
     {viewers.filter((viewer) => viewer.id !== user.id).length > 0 && <p className="document-presence" role="status">{t('ed.alsoHere', { names: viewers.filter((viewer) => viewer.id !== user.id).map((viewer) => viewer.name).join(', ') })}</p>}
     {conflict && <div className="productivity-error document-conflict" role="alertdialog" aria-labelledby="document-conflict-title">
@@ -585,7 +596,7 @@ export default function DocumentEditorPage() {
     {offline && dirty && !local && <p className="productivity-error" role="status">{t('ed.offlineKept')}</p>}
     {error && <p className="productivity-error" role="alert">{error}<button type="button" onClick={() => { setError(''); void saveDocument(); }}>{t('ed.retry')}</button></p>}
     {loading ? <p className="productivity-message">{t('ed.opening')}</p> : !document ? <div className="workspace-section-empty"><h2>{t('ed.unavailable')}</h2><p>{t('ed.unavailableBody')}</p><Link href="/workspace/documents">{t('ed.back')}</Link></div> : <>
-      <div className="document-studio__toolbar"><label>{t('ed.newBlock')}<select id="document-block-type" value={entryId} onChange={(event) => setEntryId(event.target.value)}>{(['basic', 'media', 'database', 'advanced'] as const).map((category) => <optgroup key={category} label={t(`blk.cat.${category}` as Key)}>{blockCatalog.filter((entry) => entry.category === category).map((entry) => <option key={entry.id} value={entry.id}>{t(`blk.${entry.id}` as Key)}</option>)}</optgroup>)}</select></label><button type="button" onClick={() => addEntry(blockCatalog.find((item) => item.id === entryId))}>{t('ed.addBlock')}</button><button type="button" onClick={() => setBrowserOpen(true)}><BlockIcon id="database-gallery" size={16} />{t('blk.browse')}</button>{aiReady && <button type="button" onClick={() => editorApi.current?.askAi()}>{t('ed.ai')} · {t('ed.ai.askDoc')}</button>}<span className="document-studio__toolbar-spacer" />{!local && <button type="button" aria-pressed={activePanel === 'SHARE'} onClick={() => { setActivePanel('SHARE'); window.requestAnimationFrame(() => window.document.querySelector('.document-studio__sidebar')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); }}>{t('sh.title')}</button>}{!local && <details className="rd-menu document-export"><summary role="button" aria-haspopup="menu" aria-busy={exporting !== null}>{exporting ? t('ed.exporting') : t('ed.export')}</summary><div className="rd-menu__list" role="menu"><button type="button" role="menuitem" disabled={exporting !== null} onClick={(event) => { (event.currentTarget.closest('details') as HTMLDetailsElement).open = false; void exportAs('pdf'); }}>{t('ed.exportPdf')}</button><button type="button" role="menuitem" disabled={exporting !== null} onClick={(event) => { (event.currentTarget.closest('details') as HTMLDetailsElement).open = false; void exportAs('docx'); }}>{t('ed.exportWord')}</button></div></details>}<button type="button" onClick={() => void saveDocument()} disabled={!dirty || saving}>{t('ed.saveNow')}</button><Link href="/workspace/documents">{t('ed.allDocuments')}</Link><FavouriteStar kind="DOCUMENT" entityId={document?.id} /></div>
+      <EditorToolbar api={editorApi} format={format} onPrint={() => window.print()} onBrowseBlocks={() => setBrowserOpen(true)} viewing={viewing} onViewing={setViewing} canEdit={!readOnlyRole(workspace.role)} collapsed={toolbarCollapsed} onCollapse={updateCollapsed} linkRequest={linkRequest} onError={setError} onNotice={setSuccess} />
       {browserOpen && !readOnlyRole(workspace.role) && <BlockBrowser onClose={() => setBrowserOpen(false)} onPick={(entry) => { addEntry(entry); setBrowserOpen(false); setSuccess(t('ed.addBlockFromBrowser', { name: t(`blk.${entry.id}` as Key) })); }} />}
       {moving && <div className="document-browser" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMoving(null); }} onKeyDown={(event) => { if (event.key === 'Escape') setMoving(null); }}>
         <div className="document-browser__panel document-move" role="dialog" aria-modal="true" aria-label={t('ed.moveTitle')}>
@@ -593,12 +604,13 @@ export default function DocumentEditorPage() {
           <div className="document-browser__scroll">{moving.docs === null ? <p className="document-slash__empty">{t('ed.opening')}</p> : moving.docs.length === 0 ? <p className="document-slash__empty">{t('ed.noOtherDocs')}</p> : <ul>{moving.docs.map((item) => <li key={item.id}><button type="button" onClick={() => void moveTo(item)}>{item.title || t('ed.document')}</button></li>)}</ul>}</div>
         </div>
       </div>}
-      <div className="document-studio__layout">
+      <div className={`document-studio__layout${panelOpen ? '' : ' document-studio__layout--solo'}`}>
+        {!panelOpen && <button type="button" className="document-studio__reopen" title={t('ed.tb.showPanel')} aria-label={t('ed.tb.showPanel')} onClick={() => updatePanelOpen(true)}><EditorIcon name="panel" size={18} /><span>{t('ed.tb.sidePanel')}</span></button>}
         <main className="document-studio__paper">
           <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}<span className="document-studio__meta"> · {t('ed.meta', { words: words.toLocaleString(), minutes: Math.max(1, Math.round(words / 220)) })}</span></p>
-          <DocEditor title={title} blocks={blocks} readOnly={readOnlyRole(workspace.role)} env={editorEnv} cursors={editorCursors} others={editorOthers} onLocalChange={handleEditorChange} onSelection={handleSelection} onCreateTask={(block) => void createTaskFromBlock(block)} onComment={(block, quote) => { setCommentTarget({ blockId: block.id, quote }); setActivePanel('COMMENTS'); }} onMoveOut={(block) => void startMove(block)} onNotice={setSuccess} onAssist={aiReady ? assist : null} onError={setError} apiRef={editorApi} />
+          <DocEditor title={title} blocks={blocks} readOnly={readOnlyRole(workspace.role) || viewing} onFormatState={setFormat} floatingBar={toolbarCollapsed} onLinkRequest={() => { setToolbarCollapsed(false); setLinkRequest((n) => n + 1); }} env={editorEnv} cursors={editorCursors} others={editorOthers} onLocalChange={handleEditorChange} onSelection={handleSelection} onCreateTask={(block) => void createTaskFromBlock(block)} onComment={(block, quote) => { setCommentTarget({ blockId: block.id, quote }); setActivePanel('COMMENTS'); }} onMoveOut={(block) => void startMove(block)} onNotice={setSuccess} onAssist={aiReady ? assist : null} onError={setError} apiRef={editorApi} />
         </main>
-        <aside className="document-studio__sidebar"><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(local ? ['OUTLINE'] as const : ['OUTLINE', 'RELATED', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'RELATED' ? t('ed.tab.related') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
+        {panelOpen && <aside className="document-studio__sidebar"><div className="document-studio__panelbar"><span>{t('ed.tb.sidePanel')}</span><button type="button" className="rd-iconbtn" title={t('ed.tb.hidePanel')} aria-label={t('ed.tb.hidePanel')} onClick={() => updatePanelOpen(false)}><EditorIcon name="back" size={18} /></button></div><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(local ? ['OUTLINE'] as const : ['OUTLINE', 'RELATED', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'RELATED' ? t('ed.tab.related') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
           {activePanel === 'SHARE' && <SharePanel documentId={document.id} />}
           {activePanel === 'FILES' && <section className="document-studio__panel"><AttachmentsPanel target={{ documentId: document.id }} /></section>}
           {activePanel === 'RELATED' && <section className="document-studio__panel"><h2>{t('ed.tab.related')}</h2>{others === null ? <p>{t('ed.opening')}</p> : others.length === 0 ? <p>{t('ed.relatedEmpty')}</p> : <>
@@ -623,7 +635,7 @@ export default function DocumentEditorPage() {
               </div>
             </article>)}</div></section>}
           {activePanel === 'HISTORY' && <section className="document-studio__panel"><h2>{t('ed.versionHistory')}</h2><form className="document-studio__version-form" onSubmit={saveVersion}><input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} maxLength={120} placeholder={t('ed.versionNotePh')} /><button type="submit">{t('ed.saveVersion')}</button></form><div className="document-studio__versions">{versions.length === 0 ? <p>{t('ed.versionsEmpty')}</p> : versions.map((version) => <article key={version.id}><strong>{version.label || version.title}</strong><small>{version.createdBy.displayName} · {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(version.createdAt))}</small><button type="button" onClick={() => void restoreVersion(version)}>{t('ed.restore')}</button></article>)}</div></section>}
-        </aside>
+        </aside>}
       </div>
     </>}
   </div>;

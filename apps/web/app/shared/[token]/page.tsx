@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Shared document · AVEN.', robots: { index: false, follow: false }, referrer: 'no-referrer' };
 
 const api = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
-type Block = { type: string; text: string; checked?: boolean; rows?: string[][]; image?: string | null; level?: number; indent?: number; tab?: number; href?: string; tabs?: string[]; meta?: string };
+type Block = { type: string; text: string; checked?: boolean; rows?: string[][]; image?: string | null; level?: number; indent?: number; tab?: number; href?: string; tabs?: string[]; meta?: string; layout?: { align?: 'center' | 'right' | 'justify'; spacing?: number; font?: 'sans' | 'serif' | 'mono'; size?: number } };
+const fonts = { sans: 'var(--aven-interface-font)', serif: 'var(--aven-display-font)', mono: "ui-monospace, 'SF Mono', Menlo, monospace" } as const;
 type Shared = { title: string; updatedAt: string; allowDownload: boolean; allowPrint: boolean; blocks: Block[] };
 
 async function load(token: string): Promise<Shared | null> {
@@ -37,7 +38,9 @@ function Blocks({ blocks }: { blocks: Block[] }) {
   const headings = blocks.filter((block) => block.type.startsWith('HEADING_') && block.text.trim());
   const labels = tabLabels(blocks);
   return <>{blocks.map((block, index) => {
-    const depth = block.indent ?? 0; const style = depth ? { marginLeft: `${depth * 22}px` } : undefined;
+    const depth = block.indent ?? 0; const look = block.layout;
+    const built = { ...(depth ? { marginLeft: `${depth * 22}px` } : {}), ...(look?.align ? { textAlign: look.align } : {}), ...(look?.spacing ? { lineHeight: look.spacing } : {}), ...(look?.font ? { fontFamily: fonts[look.font] } : {}), ...(look?.size ? { fontSize: `${look.size}px` } : {}) };
+    const style = Object.keys(built).length ? built : undefined;
     const label = labels[index] ? <h4 className="shared-doc__tab" style={style}>{labels[index]}</h4> : null;
     const number = numbers[index];
     const body = (() => {

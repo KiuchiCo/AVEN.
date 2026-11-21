@@ -74,6 +74,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
+      if (event.defaultPrevented) return; // the document editor uses Cmd/Ctrl + K for links when text is selected
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         router.push('/workspace/search');

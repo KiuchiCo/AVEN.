@@ -1,4 +1,4 @@
-/* AVEN design system — the one place that defines tokens, the page grid and the shared component sizes.
+/* AVEN design system—the one place that defines tokens, the page grid and the shared component sizes.
    Load order: globals.css (legacy) → mockup.css (editorial theme) → design-system.css (this file) → redesign.css (page pieces).
    Pages must use these tokens instead of their own pixel values. Workspaces never change them: nothing here reads workspace data. */
 

@@ -117,3 +117,7 @@ export const sortColumn = (sort: SortKey): { column: 'NAME' | 'MODIFIED' | 'OWNE
 
 export const VIEW_KEY = (workspaceId: string) => `aven.documents.view.${workspaceId}`;
 export const readView = (raw: string | null): 'LIST' | 'GRID' | null => (raw === 'LIST' || raw === 'GRID' ? raw : null);
+
+/** Browsers may block a burst of downloads, so the bulk Download button works for up to this many documents. */
+export const BULK_DOWNLOAD_LIMIT = 10;
+export const canBulkDownload = (count: number) => count >= 1 && count <= BULK_DOWNLOAD_LIMIT;

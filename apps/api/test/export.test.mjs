@@ -6,6 +6,7 @@ import { buildExportDocument, contentDisposition, exportFilename, parseBlocks } 
 import { renderDocx } from '../dist/export/docx.js';
 import { renderPdf } from '../dist/export/pdf.js';
 import { parseRuns } from '../dist/export/inline.js';
+import { publicBlocks } from '../dist/sharing/share-rules.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const png = await sharp({ create: { width: 300, height: 200, channels: 3, background: '#A48766' } }).png().toBuffer();
@@ -102,4 +103,17 @@ test('request logs never contain the secret of a share link or an invitation', a
   assert.equal(redactPath('/api/v1/shared/documents/abcSECRETtoken123/export'), '/api/v1/shared/documents/:token/export');
   assert.equal(redactPath('/api/v1/invitations/inviteSECRET'), '/api/v1/invitations/:token');
   assert.equal(redactPath('/api/v1/workspaces/1/documents'), '/api/v1/workspaces/1/documents');
+});
+
+test('bold and italic together, and the layout an author set, reach the Word file, the PDF and the public view', async () => {
+  assert.deepEqual(parseRuns('x ***both*** y').map((run) => [run.text, Boolean(run.bold), Boolean(run.italic)]), [['x ', false, false], ['both', true, true], [' y', false, false]]);
+  const doc = await build([b('PARAGRAPH', 'Centred ***text***', { align: 'center', spacing: 2, font: 'serif', size: 20 }), b('HEADING_2', 'Right', { align: 'right' }), b('PARAGRAPH', 'bad', { align: 'sideways', spacing: 9, font: 'comic', size: 3 })]);
+  assert.deepEqual(doc.nodes[0].layout, { align: 'center', spacing: 2, font: 'serif', size: 20 }); assert.deepEqual(doc.nodes[1].layout, { align: 'right' }); assert.equal(doc.nodes[2].layout, undefined, 'unusable values are dropped');
+  const xml = strFromU8(unzipSync(new Uint8Array(await renderDocx(doc)))['word/document.xml']);
+  assert.ok(xml.includes('<w:jc w:val="center"/>') && xml.includes('<w:jc w:val="right"/>'), 'alignment');
+  assert.ok(xml.includes('w:line="480"') && xml.includes('<w:sz w:val="40"/>'), 'line spacing and size in half points');
+  assert.ok(xml.includes('Georgia') && xml.includes('<w:b/>') && xml.includes('<w:i/>'));
+  const pdf = await renderPdf(doc); assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  const shown = publicBlocks(JSON.stringify({ format: 'aven-doc-v1', blocks: [{ type: 'PARAGRAPH', text: 'a', align: 'center', size: 18 }, { type: 'CODE', text: 'c', align: 'center' }] }), () => '');
+  assert.deepEqual(shown[0].layout, { align: 'center', size: 18 }); assert.equal(shown[1].layout, undefined, 'code keeps its own look');
 });

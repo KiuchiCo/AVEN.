@@ -195,7 +195,7 @@ export function CalendarWorkspace() {
       setStartValue(`${selectedDate}T09:00`);
       await reload();
     } catch (reason) {
-      if ((reason as { status?: number }).status === 409) { setEditingEvent(null); setError('Someone else changed this event while you were editing. The latest version has been loaded — open it again to make your change.'); await reload(); }
+      if ((reason as { status?: number }).status === 409) { setEditingEvent(null); setError('Someone else changed this event while you were editing. The latest version has been loaded—open it again to make your change.'); await reload(); }
       else setError(reason instanceof Error ? reason.message : 'Could not schedule the event.');
     }
     finally { setBusy(false); }
@@ -296,7 +296,7 @@ export function CalendarWorkspace() {
       {importSummary && <div className="calendar-import-summary" role="status">
         <strong>{t('cal.importDone')}</strong> {t('cal.importCounts', { created: importSummary.created, updated: importSummary.updated, unchanged: importSummary.unchanged })}{importSummary.skipped.length ? t('cal.importSkipped', { n: importSummary.skipped.length }) : ''}.
         {importSummary.notes.map((note) => <p key={note}>{note}</p>)}
-        {importSummary.skipped.length > 0 && <details><summary>{t('cal.whySkipped', { n: importSummary.skipped.length })}</summary><ul>{importSummary.skipped.map((item, index) => <li key={`${item.title}-${index}`}><strong>{item.title}</strong> — {item.reason}</li>)}</ul></details>}
+        {importSummary.skipped.length > 0 && <details><summary>{t('cal.whySkipped', { n: importSummary.skipped.length })}</summary><ul>{importSummary.skipped.map((item, index) => <li key={`${item.title}-${index}`}><strong>{item.title}</strong>—{item.reason}</li>)}</ul></details>}
         <p>{t('cal.importAgain')}</p>
         <button type="button" onClick={() => setImportSummary(null)}>{t('cal.dismiss')}</button>
       </div>}

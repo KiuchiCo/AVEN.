@@ -401,7 +401,7 @@ export function DatabasesWorkspace() {
       setEditingId('');
       await reload();
     } catch (reason) {
-      if ((reason as { status?: number }).status === 409) { setEditingId(''); setError('Someone else changed this record while you were editing. The latest version has been loaded — review it and edit again.'); await reload(); }
+      if ((reason as { status?: number }).status === 409) { setEditingId(''); setError('Someone else changed this record while you were editing. The latest version has been loaded—review it and edit again.'); await reload(); }
       else setError(reason instanceof Error ? reason.message : 'Could not update the record.');
     }
     finally { setBusy(false); }
@@ -474,7 +474,7 @@ export function DatabasesWorkspace() {
       });
       await reload();
     } catch (reason) {
-      if ((reason as { status?: number }).status === 409) { setError('Someone else changed this record. The latest version has been loaded — try the move again.'); await reload(); }
+      if ((reason as { status?: number }).status === 409) { setError('Someone else changed this record. The latest version has been loaded—try the move again.'); await reload(); }
       else setError(reason instanceof Error ? reason.message : 'Could not move this record.');
     }
     finally { setBusy(false); }

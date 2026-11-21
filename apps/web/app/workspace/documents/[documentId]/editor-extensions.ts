@@ -33,12 +33,14 @@ const headingLevel = (type: string) => ({ HEADING_1: 1, HEADING_2: 2, HEADING_3:
 /** Paragraphs, headings, list items, to-dos, quotes, code and callouts: one node, told apart by `type`, with the text as its content. */
 export const TextBlock = Node.create({
   name: 'textBlock', group: 'block', content: 'text*', marks: '', defining: true,
-  addAttributes() { return { blockId: { default: null }, type: { default: 'PARAGRAPH' }, checked: { default: false }, indent: { default: 0 }, tab: { default: 0 } }; },
+  addAttributes() { return { blockId: { default: null }, type: { default: 'PARAGRAPH' }, checked: { default: false }, indent: { default: 0 }, tab: { default: 0 }, align: { default: null }, spacing: { default: null }, font: { default: null }, size: { default: null } }; },
   parseHTML() { return [{ tag: 'div[data-block-id]' }]; },
   renderHTML({ node }) {
-    const { blockId, type, checked, indent } = node.attrs as { blockId: string; type: string; checked: boolean; indent: number };
+    const { blockId, type, checked, indent, align, spacing, font, size } = node.attrs as { blockId: string; type: string; checked: boolean; indent: number; align: string | null; spacing: number | null; font: string | null; size: number | null };
     const level = headingLevel(type);
-    return ['div', { id: `block-${blockId}`, class: `aven-block aven-${type.toLowerCase()}`, 'data-block-id': blockId, 'data-type': type, 'data-indent': String(indent ?? 0), ...(type === 'TODO' ? { 'data-checked': String(checked === true) } : {}), ...(level ? { role: 'heading', 'aria-level': String(level) } : {}) },
+    const style = [size ? `--b-size:${size}px` : '', spacing ? `--b-lh:${spacing}` : ''].filter(Boolean).join(';');
+    return ['div', { id: `block-${blockId}`, class: `aven-block aven-${type.toLowerCase()}`, 'data-block-id': blockId, 'data-type': type, 'data-indent': String(indent ?? 0), ...(type === 'TODO' ? { 'data-checked': String(checked === true) } : {}), ...(level ? { role: 'heading', 'aria-level': String(level) } : {}),
+      ...(align ? { 'data-align': align } : {}), ...(font ? { 'data-font': font } : {}), ...(size ? { 'data-size': String(size) } : {}), ...(spacing ? { 'data-spacing': String(spacing) } : {}), ...(style ? { style } : {}) },
       ['span', { class: 'aven-gutter', contenteditable: 'false' }], ['div', { class: 'aven-content' }, 0]];
   },
 });

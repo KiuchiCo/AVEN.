@@ -24,9 +24,9 @@ Authentication, persistent user data, backend services, real project records, or
 
 ## Files
 
-- `index.html` — application structure and entry point.
-- `styles.css` — responsive visual system and layouts.
-- `app.js` — workspace, navigation, and dashboard interactions.
+- `index.html`—application structure and entry point.
+- `styles.css`—responsive visual system and layouts.
+- `app.js`—workspace, navigation, and dashboard interactions.
 
 ## Review checklist
 

@@ -33,7 +33,7 @@ const familyFor = (run: Run, base: { bold?: boolean; italic?: boolean; font?: st
 
 function ensure(doc: Doc, height: number) { if (doc.y + height > doc.page.height - PAGE.margin.bottom) doc.addPage(); }
 
-function drawRuns(doc: Doc, runs: Run[], options: { x: number; width: number; size: number; color?: string; bold?: boolean; italic?: boolean; font?: string; lineGap?: number }) {
+function drawRuns(doc: Doc, runs: Run[], options: { x: number; width: number; size: number; color?: string; bold?: boolean; italic?: boolean; font?: string; lineGap?: number; align?: 'center' | 'right' | 'justify' }) {
   const shown = runs.filter((run) => run.text);
   if (!shown.length) { doc.moveDown(0.2); return; }
   shown.forEach((run, index) => {
@@ -41,7 +41,7 @@ function drawRuns(doc: Doc, runs: Run[], options: { x: number; width: number; si
     const last = index === shown.length - 1;
     const text = printable(doc, run.text);
     // explicit values everywhere: PDFKit makes a continued run inherit any option that is left undefined
-    const settings = { continued: !last, underline: Boolean(run.underline || run.href), strike: Boolean(run.strike), link: run.href ?? null, width: options.width, lineGap: options.lineGap ?? 3 };
+    const settings = { continued: !last, underline: Boolean(run.underline || run.href), strike: Boolean(run.strike), link: run.href ?? null, width: options.width, lineGap: options.lineGap ?? 3, align: (options.align ?? 'left') as 'left' | 'center' | 'right' | 'justify' };
     if (index === 0) doc.text(text, options.x, doc.y, settings); else doc.text(text, settings);
   });
 }
@@ -75,15 +75,21 @@ function drawTable(doc: Doc, rows: string[][], caption: string | undefined) {
   doc.moveDown(0.8); doc.x = PAGE.margin.left;
 }
 
+/** The author's alignment, font and size for a text block, as drawing options. Spacing widens or tightens the gap between lines. */
+function laidOut(base: { size: number; lineGap: number; font?: string }, layout?: { align?: 'center' | 'right' | 'justify'; spacing?: number; font?: 'sans' | 'serif' | 'mono'; size?: number }) {
+  const size = layout?.size ?? base.size;
+  return { size, lineGap: layout?.spacing ? Math.max(1, size * (layout.spacing - 1) * 0.9) : base.lineGap, align: layout?.align, font: layout?.font === 'serif' ? 'Playfair' : layout?.font === 'mono' ? 'Mono' : base.font };
+}
+
 function drawNode(doc: Doc, node: ExportNode) {
   const left = PAGE.margin.left; const width = doc.page.width - PAGE.margin.left - PAGE.margin.right;
   switch (node.kind) {
     case 'heading': {
-      const size = [22, 17, 14, 12][node.level - 1]; const font = node.level <= 2 ? 'Playfair' : node.level === 3 ? 'Inter-Bold' : 'Inter-BoldItalic';
+      const size = node.layout?.size ?? [22, 17, 14, 12][node.level - 1]; const font = node.layout?.font === 'serif' ? 'Playfair' : node.layout?.font === 'mono' ? 'Mono' : node.layout?.font === 'sans' ? 'Inter-Bold' : node.level <= 2 ? 'Playfair' : node.level === 3 ? 'Inter-Bold' : 'Inter-BoldItalic';
       ensure(doc, size * 1.4 + 70); // a heading is never left alone at the bottom of a page
-      doc.moveDown(node.level === 1 ? 0.9 : 0.6); drawRuns(doc, node.runs.map((run) => ({ ...run, bold: undefined })), { x: left, width, size, font }); doc.moveDown(0.25); break;
+      doc.moveDown(node.level === 1 ? 0.9 : 0.6); drawRuns(doc, node.runs.map((run) => ({ ...run, bold: undefined })), { x: left, width, size, font, align: node.layout?.align }); doc.moveDown(0.25); break;
     }
-    case 'paragraph': drawRuns(doc, node.runs, { x: left, width, size: 10.5, lineGap: 4 }); doc.moveDown(0.5); break;
+    case 'paragraph': drawRuns(doc, node.runs, { x: left, width, ...laidOut({ size: 10.5, lineGap: 4 }, node.layout) }); doc.moveDown(0.5); break;
     case 'item': {
       const indent = 18 + node.depth * 18; const x = left + indent; ensure(doc, 24);
       const top = doc.y; const color = node.style === 'todo' && node.checked ? MUTED : INK;
@@ -96,7 +102,7 @@ function drawNode(doc: Doc, node: ExportNode) {
         const marker = node.style === 'bullet' ? ['•', '–', '·'][node.depth % 3] : `${node.number}.`;
         doc.font('Inter').fontSize(10.5).fillColor(MUTED).text(printable(doc, marker), x - 18, top, { width: 16, align: 'right', lineBreak: false });
       }
-      doc.y = top; drawRuns(doc, node.runs, { x, width: width - indent, size: 10.5, color, lineGap: 3 });
+      doc.y = top; drawRuns(doc, node.runs, { x, width: width - indent, color, ...laidOut({ size: 10.5, lineGap: 3 }, node.layout) });
       doc.moveDown(0.25); break;
     }
     case 'quote': {

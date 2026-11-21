@@ -25,6 +25,7 @@ export function parseRuns(text: string): Run[] {
     const rest = text.slice(i); let m: RegExpExecArray | null;
     if ((m = /^`([^`\n]+)`/.exec(rest))) { flush(); out.push({ text: m[1], code: true }); i += m[0].length; continue; }
     if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { flush(); out.push({ text: m[1], href }); i += m[0].length; continue; } }
+    if ((m = /^\*\*\*([^*\n]+?)\*\*\*/.exec(rest))) { flush(); out.push({ text: m[1], bold: true, italic: true }); i += m[0].length; continue; }
     if ((m = /^\*\*([^*\n]+?)\*\*/.exec(rest))) { flush(); out.push({ text: m[1], bold: true }); i += m[0].length; continue; }
     if ((m = /^~~([^~\n]+?)~~/.exec(rest))) { flush(); out.push({ text: m[1], strike: true }); i += m[0].length; continue; }
     if (isEdge(text, i) && (m = /^\+\+(\S(?:[^+\n]*?\S)?)\+\+/.exec(rest))) { flush(); out.push({ text: m[1], underline: true }); i += m[0].length; continue; }

@@ -15,8 +15,11 @@ export const formatDay = (value: string) => new Intl.DateTimeFormat(undefined, {
 export const countText = (t: (key: Key, values?: Record<string, string | number>) => string, docs: number, folders: number) => `${docs === 1 ? t('dl.docsOne') : t('dl.docsMany', { n: docs })} · ${folders === 1 ? t('dl.foldersOne') : t('dl.foldersMany', { n: folders })}`;
 export const kindName = (type: string | null): Key => (type ? `dl.type.${type}` : 'dl.type.OTHER') as Key;
 
+/** Panels that are open right now, oldest first, so a menu opened from inside another menu does not close its parent. */
+const openPanels: HTMLDivElement[] = [];
+
 /** A small anchored panel that closes on Escape or an outside click and always stays inside the window. Used for the filter panel and every actions menu. */
-export function Popover({ buttonClass, buttonLabel, buttonContent, onOpen, children, label, className = '', align = 'end' }: { buttonClass: string; buttonLabel?: string; buttonContent: ReactNode; onOpen?: () => void; children: (close: () => void) => ReactNode; label: string; className?: string; align?: 'start' | 'end' }) {
+export function Popover({ buttonClass, buttonLabel, buttonContent, onOpen, children, label, className = '', align = 'end', keepFocus, buttonTitle, disabled, pressed }: { buttonClass: string; buttonLabel?: string; buttonContent: ReactNode; onOpen?: () => void; children: (close: () => void) => ReactNode; label: string; className?: string; align?: 'start' | 'end'; /** Keeps the caret in the document while the menu opens (toolbars). */ keepFocus?: boolean; buttonTitle?: string; disabled?: boolean; pressed?: boolean }) {
   const [open, setOpen] = useState(false);
   const isMenu = className.includes('dl-menu');
   const button = useRef<HTMLButtonElement>(null);
@@ -34,7 +37,8 @@ export function Popover({ buttonClass, buttonLabel, buttonContent, onOpen, child
   }, [open, align]);
   useEffect(() => {
     if (!open) return;
-    const outside = (event: MouseEvent) => { const target = event.target as Node; if (!panel.current?.contains(target) && !button.current?.contains(target)) setOpen(false); };
+    const me = panel.current; if (me) openPanels.push(me);
+    const outside = (event: MouseEvent) => { const target = event.target as Node; const child = openPanels.slice(openPanels.indexOf(me as HTMLDivElement) + 1).some((other) => other.contains(target)); if (!child && !panel.current?.contains(target) && !button.current?.contains(target)) setOpen(false); };
     const keys = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); button.current?.focus(); return; }
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -47,10 +51,10 @@ export function Popover({ buttonClass, buttonLabel, buttonContent, onOpen, child
     const away = () => setOpen(false);
     document.addEventListener('mousedown', outside); document.addEventListener('keydown', keys); window.addEventListener('resize', away); window.addEventListener('scroll', away, true);
     panel.current?.querySelector<HTMLElement>('[role="menuitem"], input, select, button')?.focus();
-    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', keys); window.removeEventListener('resize', away); window.removeEventListener('scroll', away, true); };
+    return () => { const at = openPanels.indexOf(me as HTMLDivElement); if (at >= 0) openPanels.splice(at, 1); document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', keys); window.removeEventListener('resize', away); window.removeEventListener('scroll', away, true); };
   }, [open]);
   return <>
-    <button ref={button} type="button" className={buttonClass} aria-haspopup={isMenu ? 'menu' : 'dialog'} aria-expanded={open} aria-label={buttonLabel} onClick={(event) => { event.stopPropagation(); if (!open) onOpen?.(); setStyle({ visibility: 'hidden' }); setOpen((value) => !value); }}>{buttonContent}</button>
+    <button ref={button} type="button" className={buttonClass} aria-haspopup={isMenu ? 'menu' : 'dialog'} aria-expanded={open} aria-pressed={pressed} aria-label={buttonLabel} title={buttonTitle} disabled={disabled} onMouseDown={keepFocus ? (event) => event.preventDefault() : undefined} onClick={(event) => { event.stopPropagation(); if (!open) onOpen?.(); setStyle({ visibility: 'hidden' }); setOpen((value) => !value); }}>{buttonContent}</button>
     {open && createPortal(<div ref={panel} className={`dl-popover ${className}`} style={style} role={isMenu ? 'menu' : 'dialog'} aria-label={label}>{children(close)}</div>, document.body)}
   </>;
 }

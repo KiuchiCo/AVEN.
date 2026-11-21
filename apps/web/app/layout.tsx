@@ -13,7 +13,7 @@ const display = Playfair_Display({ subsets: ['latin'], weight: ['400', '500', '6
 const interfaceFont = Inter({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-interface', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: 'AVEN. — Your entire world, organised.',
+  title: 'AVEN.—Your entire world, organised.',
   description: 'A connected workspace for projects, documents, databases, and your day.',
   manifest: '/manifest.webmanifest',
   icons: { icon: '/assets/aven-icon.svg', apple: '/assets/aven-icon-192.png' },
