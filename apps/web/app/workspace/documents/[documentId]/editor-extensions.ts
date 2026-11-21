@@ -5,6 +5,14 @@ import { Extension, Node } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { hiddenIds, inlineRanges } from './editor-model.ts';
+import { cellsOf } from './inline-style.ts';
+
+/** Where `quote` (as it reads, without formatting marks) sits in a block's raw text, as raw offsets. */
+export function findQuote(raw: string, quote: string): { start: number; end: number } | null {
+  const cells = cellsOf(raw); const words = cells.map((cell) => cell.ch).join('');
+  const at = words.indexOf(quote);
+  return at < 0 || !quote ? null : { start: cells[at].src, end: cells[at + quote.length - 1].src + 1 };
+}
 import { findMatches, selectionInBlock } from './editor-sync.ts';
 
 export type LiveState = {
@@ -17,8 +25,10 @@ export type LiveState = {
   folded: ReadonlySet<string>; tabs: Readonly<Record<string, number>>;
   /** Blocks picked as whole blocks (Esc, then Shift + arrows), to act on together. */
   picked: ReadonlySet<string>;
+  /** Open comments: the block each is about and the words it quotes, drawn as a highlight so a comment stays on its text. */
+  comments: { id: string; blockId: string; quote: string }[];
 };
-export const emptyLive = (): LiveState => ({ cursors: {}, others: {}, placeholders: {}, find: null, folded: new Set(), tabs: {}, picked: new Set() });
+export const emptyLive = (): LiveState => ({ cursors: {}, others: {}, placeholders: {}, find: null, folded: new Set(), tabs: {}, picked: new Set(), comments: [] });
 
 export const Doc = Node.create({ name: 'doc', topNode: true, content: 'title block+' });
 export const Text = Node.create({ name: 'text', group: 'inline' });
@@ -85,6 +95,15 @@ export const UniqueBlockIds = Extension.create({
 });
 
 const noMarks = new Set(['CODE', 'EQUATION', 'MERMAID']);
+/** How one styled range is drawn: classes for marks and colours, and the one style that has no class (an exact size). */
+function inlineAttrs(range: ReturnType<typeof inlineRanges>[number], active: boolean): Record<string, string> {
+  if (range.kind === 'mark') return { class: `md-mark${active ? ' md-mark--shown' : ''}` };
+  if (range.kind === 'colour') return { class: `md-colour md-c-${range.tone}` };
+  if (range.kind === 'font') return { class: `md-font-${range.value}` };
+  if (range.kind === 'size') return { class: 'md-size', style: `font-size:${range.value}px` };
+  return { class: `md-${range.kind}`, ...(range.href ? { 'data-href': range.href } : {}) };
+}
+
 export const liveKey = new PluginKey('avenDecorations');
 
 /** Formatting, list numbers, placeholders, other people's carets and who is where: all drawn over the text without changing it. */
@@ -123,7 +142,12 @@ export const Decorations = Extension.create<{ live: () => LiveState }>({
             } else counters.length = 0;
             if ((node.type.name === 'textBlock' || node.type.name === 'toggleBlock' || node.type.name === 'syncedBlock') && !noMarks.has(type)) {
               const active = here?.id === id;
-              for (const range of rangesOf(node)) out.push(Decoration.inline(offset + 1 + range.start, offset + 1 + range.end, { class: range.kind === 'mark' ? `md-mark${active ? ' md-mark--shown' : ''}` : range.kind === 'colour' ? `md-colour md-c-${range.tone}` : `md-${range.kind}`, ...(range.href ? { 'data-href': range.href } : {}) }));
+              for (const range of rangesOf(node)) out.push(Decoration.inline(offset + 1 + range.start, offset + 1 + range.end, inlineAttrs(range, active)));
+            }
+            for (const comment of live.comments) {
+              if (comment.blockId !== id || !comment.quote) continue;
+              const spot = findQuote(node.textContent, comment.quote); // the words, wherever they are now: edits before them move them, and a rewritten quote simply stops being marked
+              if (spot) out.push(Decoration.inline(offset + 1 + spot.start, offset + 1 + spot.end, { class: 'md-commented', 'data-comment': comment.id }));
             }
             for (const cursor of live.cursors[id] ?? []) {
               const at = offset + 1 + Math.min(cursor.end, node.content.size);

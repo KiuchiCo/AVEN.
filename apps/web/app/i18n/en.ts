@@ -2765,6 +2765,20 @@ export const en = {
   'ed.tb.highlightColour': "Highlight colour",
   'ed.tb.link': "Insert link",
   'ed.tb.sidePanel': "Document panel",
+  'tbl.bar': "Table controls",
+  'tbl.cellAt': "Row {r}, column {c}",
+  'tbl.rowAbove': "Insert row above",
+  'tbl.rowBelow': "Insert row below",
+  'tbl.rowDelete': "Delete row",
+  'tbl.colBefore': "Insert column before",
+  'tbl.colAfter': "Insert column after",
+  'tbl.colDelete': "Delete column",
+  'tbl.delete': "Delete table",
+  'tbl.pickCell': "Click a cell first, then choose a row or column action.",
+  'ed.saveFailedBody': "Your changes have not been saved yet. They are still in the editor and kept on this device. Retry to save them.",
+  'ed.deleteComment': "Delete",
+  'ed.deleteCommentConfirm': "Delete this comment and its replies?",
+  'ed.deleteReplyConfirm': "Delete this reply?",
 } as const;
 
 export type Key = keyof typeof en;

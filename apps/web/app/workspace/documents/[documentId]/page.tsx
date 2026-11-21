@@ -296,7 +296,7 @@ export default function DocumentEditorPage() {
       setOffline(reason instanceof OfflineError); // any answer from the server means the connection is back
       if (reason instanceof OfflineError) { /* kept on this device; retried when the connection returns */ }
       else if (reason instanceof ConflictError) { if (applyRemote(reason.current, t('ed.someone')) === 'conflict') setConflict(reason.current); }
-      else { setSaveFailed(true); setError(reason instanceof Error ? reason.message : 'Autosave failed.'); }
+      else { setSaveFailed(true); setError(`${t('ed.saveFailedBody')}${reason instanceof Error && reason.message ? ` (${reason.message})` : ''}`); }
       return false;
     }
     finally { setSaving(false); }
@@ -316,6 +316,24 @@ export default function DocumentEditorPage() {
     window.addEventListener('online', retry);
     return () => { window.clearInterval(timer); window.removeEventListener('online', retry); };
   }, [offline, saveDocument]);
+
+  // Printing shows the document alone, in the light theme whatever the app is set to (see the print rules in redesign.css). Ctrl/Cmd + P and the Print buttons both go through here.
+  useEffect(() => {
+    const root = window.document.documentElement; let theme: string | null | undefined;
+    const before = () => { theme = root.getAttribute('data-theme'); root.setAttribute('data-theme', 'light'); root.classList.add('print-doc'); };
+    const after = () => { root.classList.remove('print-doc'); if (theme === undefined) return; if (theme === null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', theme); theme = undefined; };
+    window.addEventListener('beforeprint', before); window.addEventListener('afterprint', after);
+    return () => { window.removeEventListener('beforeprint', before); window.removeEventListener('afterprint', after); after(); };
+  }, []);
+
+  // After a failed save the edits stay in the editor and on this device; try again when the connection returns and now and then, so a passing server error recovers by itself.
+  useEffect(() => {
+    if (!saveFailed || !dirty) return;
+    const retry = () => { void saveDocument(); };
+    const timer = window.setInterval(retry, 20_000);
+    window.addEventListener('online', retry);
+    return () => { window.clearInterval(timer); window.removeEventListener('online', retry); };
+  }, [dirty, saveDocument, saveFailed]);
 
   // Keep unsaved edits on this device until the server has them.
   useEffect(() => {
@@ -510,6 +528,16 @@ export default function DocumentEditorPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not post the comment.'); }
   }
 
+  async function deleteComment(comment: Comment) {
+    if (!window.confirm(t(comment.parentId ? 'ed.deleteReplyConfirm' : 'ed.deleteCommentConfirm'))) return;
+    try { await request(`/workspaces/${workspace.id}/documents/${documentId}/comments/${comment.id}`, { method: 'DELETE' }); await reloadCollaboration(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the comment.'); }
+  }
+  const canDeleteComment = (comment: Comment) => comment.createdBy.id === user.id || workspace.role === 'ADMINISTRATOR';
+  const [focusedComment, setFocusedComment] = useState<string | null>(null);
+  useEffect(() => { if (focusedComment) window.requestAnimationFrame(() => window.document.getElementById(`comment-${focusedComment}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })); }, [focusedComment, panelOpen]);
+  const commentMarks = useMemo(() => comments.filter((comment) => !comment.parentId && !comment.resolvedAt && comment.blockId && comment.quote).map((comment) => ({ id: comment.id, blockId: comment.blockId!, quote: comment.quote! })), [comments]);
+
   async function sendReply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!replyTo) return;
     try { await request(`/workspaces/${workspace.id}/documents/${documentId}/comments`, { method: 'POST', body: JSON.stringify({ body: replyTo.text, parentId: replyTo.id }) }); setReplyTo(null); await reloadCollaboration(); }
@@ -608,7 +636,7 @@ export default function DocumentEditorPage() {
         {!panelOpen && <button type="button" className="document-studio__reopen" title={t('ed.tb.showPanel')} aria-label={t('ed.tb.showPanel')} onClick={() => updatePanelOpen(true)}><EditorIcon name="panel" size={18} /><span>{t('ed.tb.sidePanel')}</span></button>}
         <main className="document-studio__paper">
           <p className="workspace-eyebrow">{t('ed.eyebrow', { where: document.project?.name ?? t('ed.personal') })}<span className="document-studio__meta"> · {t('ed.meta', { words: words.toLocaleString(), minutes: Math.max(1, Math.round(words / 220)) })}</span></p>
-          <DocEditor title={title} blocks={blocks} readOnly={readOnlyRole(workspace.role) || viewing} onFormatState={setFormat} floatingBar={toolbarCollapsed} onLinkRequest={() => { setToolbarCollapsed(false); setLinkRequest((n) => n + 1); }} env={editorEnv} cursors={editorCursors} others={editorOthers} onLocalChange={handleEditorChange} onSelection={handleSelection} onCreateTask={(block) => void createTaskFromBlock(block)} onComment={(block, quote) => { setCommentTarget({ blockId: block.id, quote }); setActivePanel('COMMENTS'); }} onMoveOut={(block) => void startMove(block)} onNotice={setSuccess} onAssist={aiReady ? assist : null} onError={setError} apiRef={editorApi} />
+          <DocEditor title={title} blocks={blocks} readOnly={readOnlyRole(workspace.role) || viewing} onFormatState={setFormat} floatingBar={toolbarCollapsed} onLinkRequest={() => { setToolbarCollapsed(false); setLinkRequest((n) => n + 1); }} env={editorEnv} cursors={editorCursors} others={editorOthers} onLocalChange={handleEditorChange} onSelection={handleSelection} onCreateTask={(block) => void createTaskFromBlock(block)} onComment={(block, quote) => { setCommentTarget({ blockId: block.id, quote: quote.slice(0, 300) }); setPanelOpen(true); setActivePanel('COMMENTS'); window.requestAnimationFrame(() => window.document.getElementById('aven-comment-field')?.focus()); }} commentMarks={commentMarks} onCommentClick={(id) => { setPanelOpen(true); setActivePanel('COMMENTS'); setFocusedComment(id); }} onMoveOut={(block) => void startMove(block)} onNotice={setSuccess} onAssist={aiReady ? assist : null} onError={setError} apiRef={editorApi} />
         </main>
         {panelOpen && <aside className="document-studio__sidebar"><div className="document-studio__panelbar"><span>{t('ed.tb.sidePanel')}</span><button type="button" className="rd-iconbtn" title={t('ed.tb.hidePanel')} aria-label={t('ed.tb.hidePanel')} onClick={() => updatePanelOpen(false)}><EditorIcon name="back" size={18} /></button></div><nav className="document-studio__tabs" aria-label={t('ed.toolsAria')}>{(local ? ['OUTLINE'] as const : ['OUTLINE', 'RELATED', 'COMMENTS', 'HISTORY', 'FILES', 'SHARE'] as const).map((tab) => <button type="button" key={tab} className={activePanel === tab ? 'is-active' : ''} onClick={() => setActivePanel(tab)}>{tab === 'OUTLINE' ? t('ed.tab.outline') : tab === 'RELATED' ? t('ed.tab.related') : tab === 'COMMENTS' ? `${t('ed.tab.comments')} ${comments.filter((item) => !item.resolvedAt).length || ''}` : tab === 'FILES' ? t('ed.tab.files') : tab === 'SHARE' ? t('ed.tab.share') : t('ed.tab.history')}</button>)}</nav>
           {activePanel === 'SHARE' && <SharePanel documentId={document.id} />}
@@ -618,20 +646,21 @@ export default function DocumentEditorPage() {
             <h3>{t('ed.recentlyEdited')}</h3><ul className="document-studio__related">{[...others].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 8).map((row) => <li key={row.id}><Link href={`/workspace/documents/${row.id}`}>{row.title || t('ed.document')}</Link><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(row.updatedAt))}</time></li>)}</ul></>}</section>}
           {activePanel === 'OUTLINE' && <section className="document-studio__panel"><h2><button type="button" className="document-studio__collapse" aria-expanded={outlineOpen} onClick={() => setOutlineOpen((open) => !open)}><span aria-hidden>{outlineOpen ? '▾' : '▸'}</span> {t('ed.onThisPage')}</button></h2>{!outlineOpen ? null : outline.length === 0 ? <p>{t('ed.outlineEmpty')}</p> : <nav aria-label={t('ed.onThisPage')}>{outline.map((block) => <a className={`${headingLevel(block) > 1 ? 'is-nested' : ''}${(outline.some((item) => item.id === activeHeading) ? activeHeading : outline[0]?.id) === block.id ? ' is-current' : ''}`} aria-current={(outline.some((item) => item.id === activeHeading) ? activeHeading : outline[0]?.id) === block.id ? 'location' : undefined} key={block.id} href={`#block-${block.id}`} onClick={(event) => { event.preventDefault(); document_scrollTo(block.id); window.history.replaceState(null, '', `#block-${block.id}`); }}>{block.text}</a>)}</nav>}</section>}
           {activePanel === 'COMMENTS' && <section className="document-studio__panel"><h2>{t('ed.tab.comments')}</h2>
-            <form className="document-studio__comment-form" onSubmit={addComment}>
+            {!readOnlyRole(workspace.role) && <form className="document-studio__comment-form" onSubmit={addComment}>
               {commentTarget && <p className="document-studio__comment-target">{t('ed.commentingOn', { quote: commentTarget.quote || '…' })} <button type="button" onClick={() => setCommentTarget(null)} aria-label={t('ed.clearTarget')} title={t('ed.clearTarget')}>×</button></p>}
-              <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={2000} required placeholder={t('ed.commentPh')} /><button type="submit">{t('ed.post')}</button>
-            </form>
-            <div className="document-studio__comments">{comments.length === 0 ? <p>{t('ed.commentsEmpty')}</p> : comments.filter((comment) => !comment.parentId).map((comment) => <article className={comment.resolvedAt ? 'is-resolved' : ''} key={comment.id}>
+              <textarea id="aven-comment-field" value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={2000} required placeholder={t('ed.commentPh')} aria-label={t('ed.commentPh')} /><button type="submit">{t('ed.post')}</button>
+            </form>}
+            <div className="document-studio__comments">{comments.length === 0 ? <p>{t('ed.commentsEmpty')}</p> : comments.filter((comment) => !comment.parentId).map((comment) => <article className={`${comment.resolvedAt ? 'is-resolved' : ''}${focusedComment === comment.id ? ' is-focused' : ''}`} id={`comment-${comment.id}`} key={comment.id}>
               <div><strong>{comment.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(comment.createdAt))}</time></div>
               {comment.quote && <blockquote className="document-studio__quote">{comment.quote}</blockquote>}
               <p>{comment.body}</p>
-              {comments.filter((reply) => reply.parentId === comment.id).slice().reverse().map((reply) => <div className="document-studio__reply" key={reply.id}><div><strong>{reply.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(reply.createdAt))}</time></div><p>{reply.body}</p></div>)}
+              {comments.filter((reply) => reply.parentId === comment.id).slice().reverse().map((reply) => <div className="document-studio__reply" key={reply.id}><div><strong>{reply.createdBy.displayName}</strong><time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(reply.createdAt))}</time></div><p>{reply.body}</p>{canDeleteComment(reply) && <button type="button" className="document-studio__reply-delete" onClick={() => void deleteComment(reply)}>{t('ed.deleteComment')}</button>}</div>)}
               {replyTo?.id === comment.id ? <form className="document-studio__reply-form" onSubmit={sendReply}><textarea autoFocus value={replyTo.text} onChange={(event) => setReplyTo({ id: comment.id, text: event.target.value })} maxLength={2000} required placeholder={t('ed.replyPh')} aria-label={t('ed.replyPh')} /><button type="submit">{t('ed.post')}</button></form> : null}
               <div className="document-studio__comment-actions">
                 {comment.blockId && blocks.some((block) => block.id === comment.blockId) && <button type="button" onClick={() => document_scrollTo(comment.blockId!)}>{t('ed.goToBlock')}</button>}
-                {replyTo?.id !== comment.id && <button type="button" onClick={() => setReplyTo({ id: comment.id, text: '' })}>{t('ed.reply')}</button>}
-                <button type="button" onClick={() => void toggleComment(comment)}>{comment.resolvedAt ? t('ed.reopen') : t('ed.resolve')}</button>
+                {replyTo?.id !== comment.id && !readOnlyRole(workspace.role) && <button type="button" onClick={() => setReplyTo({ id: comment.id, text: '' })}>{t('ed.reply')}</button>}
+                {!readOnlyRole(workspace.role) && <button type="button" onClick={() => void toggleComment(comment)}>{comment.resolvedAt ? t('ed.reopen') : t('ed.resolve')}</button>}
+                {canDeleteComment(comment) && <button type="button" className="is-danger" onClick={() => void deleteComment(comment)}>{t('ed.deleteComment')}</button>}
               </div>
             </article>)}</div></section>}
           {activePanel === 'HISTORY' && <section className="document-studio__panel"><h2>{t('ed.versionHistory')}</h2><form className="document-studio__version-form" onSubmit={saveVersion}><input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} maxLength={120} placeholder={t('ed.versionNotePh')} /><button type="submit">{t('ed.saveVersion')}</button></form><div className="document-studio__versions">{versions.length === 0 ? <p>{t('ed.versionsEmpty')}</p> : versions.map((version) => <article key={version.id}><strong>{version.label || version.title}</strong><small>{version.createdBy.displayName} · {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(version.createdAt))}</small><button type="button" onClick={() => void restoreVersion(version)}>{t('ed.restore')}</button></article>)}</div></section>}

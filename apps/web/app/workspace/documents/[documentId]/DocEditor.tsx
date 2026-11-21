@@ -11,16 +11,17 @@ import { useT } from '../../../i18n';
 import type { Key } from '../../../i18n/en';
 import { Doc, Text, Title, TextBlock, UniqueBlockIds, Decorations, emptyLive, liveKey, type LiveState } from './editor-extensions';
 import { AtomBlockView, EnvContext, SourceBlockView, SyncedBlockView, ToggleBlockView, type EditorEnv, type HostEnv } from './editor-nodeviews';
-import { blocksToDoc, nodeNameFor } from './editor-convert';
+import { applyCellOp, type CellOp } from './table-rules';
+import { blocksToDoc, hasInlineContent, nodeNameFor } from './editor-convert';
 import { findMatches, locateBlocks, readDoc, reconcile, sameBlocks, selectBlock, selectionInBlock } from './editor-sync';
 import type { BlockType, Align, FontFamily } from './editor-model';
-import { applySlash, blankBlock, contentOf, convertBlock, duplicateBlock, filterSlash, findSlash, indentBlock, keepsNewlines, makeLink, markdownShortcut, moveBlockBy, normalizeBlock, pasteLines, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, setColour, toggleMark, type Block, type Mark, activeMarks, activeTones, clearBlockFormatting, isFormattable, setLayout, isTextBlock } from './editor-model';
+import { commonStyle, clearStyle as clearRange, setFlag, setValue as setRangeValue, styleAt, wordAt, visibleSlice, type Flag } from './inline-style';
+import { applySlash, blankBlock, contentOf, convertBlock, duplicateBlock, filterSlash, findSlash, indentBlock, keepsNewlines, makeLink, markdownShortcut, moveBlockBy, normalizeBlock, pasteLines, pressBackspaceAtStart, pressDeleteAtEnd, pressEnter, reorderBlock, toggleMark, type Block, type Mark, clearBlockFormatting, isFormattable, setLayout, isTextBlock } from './editor-model';
 import { blockCatalog, catalogCategories, iconForBlock, type BlockCategory, type CatalogEntry } from './block-catalog';
 import { BlockIcon } from '../../block-icons';
 import { FormatBar, SlashMenu } from './editor-ui';
 import { readRecent, recordRecent } from './recent-blocks';
 import { FindBar } from './FindBar';
-import { addColumn, addRow, removeColumn, removeRow } from './table-rules';
 import { AiPanel, type AiRequest, type AiTarget } from './AiAssist';
 
 export type DocEditorApi = {
@@ -48,7 +49,7 @@ export type FormatState = {
 };
 export const noFormat: FormatState = { editable: false, ids: [], type: null, kind: 'none', marks: [], colour: null, background: null, align: null, spacing: null, font: null, size: null, hasSelection: false, canLayout: false, canIndent: false, canOutdent: false, canUndo: false, canRedo: false, half: false, rows: 0, columns: 0, find: false };
 export type LinkTarget = { id: string; start: number; end: number };
-export type TableOp = 'addRow' | 'addColumn' | 'removeRow' | 'removeColumn';
+export type TableOp = CellOp | 'deleteTable';
 export type BlockOp = 'duplicate' | 'delete' | 'up' | 'down';
 export type LocalChange = { title: string; blocks: Block[]; previous: Block[] };
 export type SelectionReport = { id: string | null; start: number; end: number; inline: boolean };
@@ -66,6 +67,8 @@ type Props = {
   floatingBar?: boolean;
   /** Cmd/Ctrl + K: the toolbar opens its link box. Without it the editor falls back to a prompt. */
   onLinkRequest?: () => void;
+  /** Open comments, drawn on the words they were made on; clicking one asks the page to show it. */
+  commentMarks?: LiveState['comments']; onCommentClick?: (id: string) => void;
   apiRef: Ref<DocEditorApi>;
 };
 
@@ -88,7 +91,7 @@ function Popover({ left, top, bar, children }: { left: number; top: number; bar?
 const uuid = () => crypto.randomUUID();
 const toolClass = 'aven-handle__menu';
 
-export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLocalChange, onSelection, onCreateTask, onComment, onMoveOut, onNotice, onError, onAssist, onFormatState, floatingBar = true, onLinkRequest, apiRef }: Props) {
+export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLocalChange, onSelection, onCreateTask, onComment, onMoveOut, onNotice, onError, onAssist, onFormatState, floatingBar = true, onLinkRequest, commentMarks, onCommentClick, apiRef }: Props) {
   const t = useT();
   const wrapper = useRef<HTMLDivElement>(null);
   const [live] = useState<LiveState>(emptyLive);
@@ -203,19 +206,65 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     if (result) commit(result.blocks, result.focus);
   }
 
+  /** The text each block holds inside the selection, one entry per block, so a change can act on a selection that spans paragraphs. A caret is an empty range. */
+  const textRanges = useCallback((): { id: string; start: number; end: number; text: string }[] => {
+    if (!editor || pickedRef.current) return [];
+    const { from, to } = editor.state.selection; const out: { id: string; start: number; end: number; text: string }[] = [];
+    for (const { node, pos, id } of locateBlocks(editor.state.doc)) {
+      const type = String(node.attrs.type);
+      if (!hasInlineContent(node.type.name) || type === 'CODE' || type === 'EQUATION' || type === 'MERMAID' || node.type.name === 'syncedBlock') continue;
+      const inner = pos + 1, size = node.content.size;
+      if (to < inner || from > inner + size) continue;
+      const start = Math.max(0, from - inner), end = Math.min(size, to - inner);
+      if (from !== to && start === end) continue;
+      out.push({ id, start, end, text: node.textContent });
+    }
+    return out;
+  }, [editor]);
+
+  /** Applies a change to every selected range (or, for a caret, the word it is in) and keeps the selection on the changed words. */
+  function changeRanges(change: (range: { id: string; start: number; end: number; text: string }) => { text: string; start: number; end: number } | null, caretWord = true) {
+    if (!editor) return false;
+    let ranges = textRanges(); if (!ranges.length) return false;
+    if (caretWord && ranges.length === 1 && ranges[0].start === ranges[0].end) {
+      const word = wordAt(ranges[0].text, ranges[0].start); if (!word) return false;
+      ranges = [{ ...ranges[0], start: word.start, end: word.end }];
+    }
+    const results = new Map<string, { text: string; start: number; end: number }>();
+    for (const range of ranges) { const made = range.start === range.end ? null : change(range); if (made) results.set(range.id, made); }
+    if (!results.size) return false;
+    const first = [...results][0];
+    commit(currentBlocks().map((block) => { const made = results.get(block.id); return made ? normalizeBlock({ ...block, text: made.text }) : block; }), { id: first[0], caret: first[1].start, end: first[1].end });
+    return true;
+  }
+
   function applyMark(mark: Mark) {
     if (!editor) return;
-    const sel = selectionInBlock(editor.state); if (!sel?.inline) return;
-    const next = toggleMark(sel.node.textContent, sel.start, sel.end, mark);
-    const blocks = currentBlocks().map((block) => (block.id === sel.id ? normalizeBlock({ ...block, text: next.text }) : block));
-    commit(blocks, { id: sel.id, caret: next.start, end: next.end });
+    const ranges = textRanges(); if (!ranges.length) return;
+    if (ranges.length === 1 && ranges[0].start === ranges[0].end) { // a caret: an empty pair of marks to type inside
+      const only = ranges[0]; const next = toggleMark(only.text, only.start, only.end, mark);
+      commit(currentBlocks().map((block) => (block.id === only.id ? normalizeBlock({ ...block, text: next.text }) : block)), { id: only.id, caret: next.start, end: next.end }); return;
+    }
+    const flag = ({ highlight: 'mark' } as Record<string, Flag>)[mark] ?? (mark as Flag);
+    const on = !ranges.every((range) => styleAt(range.text, range.start, range.end)[flag]);
+    changeRanges((range) => setFlag(range.text, range.start, range.end, flag, on), false);
   }
   function applyColour(tone: string | null) {
-    if (!editor) return;
-    const sel = selectionInBlock(editor.state); if (!sel?.inline) return;
-    const next = setColour(sel.node.textContent, sel.start, sel.end, tone);
-    const blocks = currentBlocks().map((block) => (block.id === sel.id ? normalizeBlock({ ...block, text: next.text }) : block));
-    commit(blocks, { id: sel.id, caret: next.start, end: next.end });
+    const kind = tone?.startsWith('bg-') ? 'bg' : 'tone'; const value = tone ? (kind === 'bg' ? tone.slice(3) : tone) : null;
+    const ranges = textRanges(); const same = value !== null && ranges.length > 0 && ranges.every((range) => styleAt(range.text, range.start, range.end)[kind] === value);
+    changeRanges((range) => {
+      if (value === null) { const plain = setRangeValue(range.text, range.start, range.end, 'tone', null); return plain && setRangeValue(plain.text, plain.start, plain.end, 'bg', null); }
+      return setRangeValue(range.text, range.start, range.end, kind, same ? null : value);
+    });
+  }
+  /** Font and size of the selected words (not the whole paragraph); null removes it. True when there was a text selection to apply it to. */
+  function applyInlineValue(key: 'font' | 'size', value: string | number | null): boolean {
+    const ranges = textRanges(); if (!ranges.some((range) => range.end > range.start)) return false;
+    return changeRanges((range) => setRangeValue(range.text, range.start, range.end, key, value), false);
+  }
+  function clearSelectionStyle() {
+    if (pickedRef.current) { changeSelected((block) => (isTextBlock(block.type) ? clearBlockFormatting(block) : block)); return; }
+    changeRanges((range) => clearRange(range.text, range.start, range.end));
   }
   function openAiOnSelection() {
     if (!editor) return;
@@ -255,23 +304,25 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     const report = latest.current.onFormatState; if (!editor || !report) return;
     const all = currentBlocks(); const ids = selectedIds();
     const chosen = ids.map((id) => all.find((block) => block.id === id)).filter((block): block is Block => Boolean(block));
-    const first = chosen[0]; const sel = selectionInBlock(editor.state);
-    const markable = Boolean(sel?.inline && first && first.type !== 'CODE' && first.type !== 'EQUATION' && first.type !== 'MERMAID');
-    const text = markable && sel ? sel.node.textContent : '';
-    const tones = markable && sel ? activeTones(text, sel.start, sel.end) : { colour: null, background: null };
+    const first = chosen[0];
+    const ranges = textRanges();
+    const common = commonStyle(ranges.map((range) => styleAt(range.text, range.start, range.end)));
+    const selectedText = ranges.some((range) => range.end > range.start);
     const kind: FormatState['kind'] = !first ? 'none' : first.type === 'TABLE' ? 'table' : first.type === 'IMAGE' ? 'image' : first.type === 'CODE' ? 'code' : isTextBlock(first.type) ? 'text' : 'atom';
     const shared = <K extends 'align' | 'spacing' | 'font' | 'size'>(key: K) => (chosen.length && chosen.every((block) => block[key] === first[key]) ? first[key] ?? null : null);
     const state: FormatState = {
       editable: !latest.current.readOnly, ids, type: first?.type ?? null, kind,
-      marks: markable && sel ? [...activeMarks(text, sel.start, sel.end)] : [], colour: tones.colour, background: tones.background,
-      align: shared('align') as Align | null, spacing: shared('spacing') as number | null, font: shared('font') as FontFamily | null, size: shared('size') as number | null,
-      hasSelection: Boolean(sel?.inline && sel.end > sel.start), canLayout: chosen.length > 0 && chosen.every((block) => isFormattable(block.type)),
+      marks: [common.bold && 'bold', common.italic && 'italic', common.strike && 'strike', common.underline && 'underline', common.mark && 'highlight', common.code && 'code', common.href && 'link'].filter(Boolean) as string[], colour: common.tone ?? null, background: common.bg ?? null,
+      align: shared('align') as Align | null, spacing: shared('spacing') as number | null,
+      // the words' own font and size win over the paragraph's, when words are selected
+      font: (selectedText ? common.font : undefined) ?? shared('font') as FontFamily | null, size: (selectedText ? common.size : undefined) ?? shared('size') as number | null,
+      hasSelection: selectedText, canLayout: chosen.length > 0 && chosen.every((block) => isFormattable(block.type)),
       canIndent: Boolean(first && indentBlock(all, first.id, 1)), canOutdent: Boolean(first && indentBlock(all, first.id, -1)),
       canUndo: editor.can().undo(), canRedo: editor.can().redo(), half: first?.span === 'half', rows: first?.rows?.length ?? 0, columns: first?.rows?.[0]?.length ?? 0, find: findOpen.current,
     };
     const key = JSON.stringify(state); if (key === lastFormat.current) return;
     lastFormat.current = key; report(state);
-  }, [editor, currentBlocks, selectedIds]);
+  }, [editor, currentBlocks, selectedIds, textRanges]);
   useEffect(() => { pushFormat(); }, [pushFormat, picked, find, readOnly, blocks]);
 
   function changeSelected(change: (block: Block) => Block) {
@@ -302,7 +353,7 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     if (!editor) return;
     const sel = selectionInBlock(editor.state); const block = sel ? currentBlocks().find((item) => item.id === sel.id) : currentBlocks().find((item) => item.id === selectedIds()[0]);
     if (!block) return;
-    onComment(block, sel && sel.end > sel.start ? block.text.slice(sel.start, sel.end) : block.text);
+    onComment(block, sel && sel.end > sel.start ? visibleSlice(block.text, sel.start, sel.end) : visibleSlice(block.text, 0, block.text.length));
   }
   function linkTarget(): LinkTarget | null { const sel = editor ? selectionInBlock(editor.state) : null; return sel?.inline ? { id: sel.id, start: sel.start, end: sel.end } : null; }
   function applyLinkTo(url: string, target: LinkTarget): boolean {
@@ -316,12 +367,18 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     const created = blankBlock(uuid(), type, patch);
     commit([...all.slice(0, at + 1), created, ...all.slice(at + 1)], { id: created.id, caret: 0 });
   }
+  /** Where the caret last was inside a table; table operations act on that row and column. */
+  const tableCell = useRef<{ id: string; row: number; col: number } | null>(null);
   function tableOp(op: TableOp) {
-    const id = selectedIds()[0]; const block = currentBlocks().find((item) => item.id === id); if (!block || block.type !== 'TABLE' || !block.rows) return;
-    const rows = block.rows;
-    const next = op === 'addRow' ? addRow(rows) : op === 'addColumn' ? addColumn(rows) : op === 'removeRow' ? removeRow(rows, rows.length - 1) : removeColumn(rows, (rows[0]?.length ?? 1) - 1);
-    if (next === rows) { onNotice(latest.current.t('ed.tableLimit')); return; }
-    commit(currentBlocks().map((item) => (item.id === id ? normalizeBlock({ ...item, rows: next }) : item)));
+    const spot = tableCell.current; const picked = selectedIds()[0];
+    const id = spot && currentBlocks().some((item) => item.id === spot.id) ? spot.id : picked;
+    const block = currentBlocks().find((item) => item.id === id); if (!block || block.type !== 'TABLE' || !block.rows) return;
+    if (op === 'deleteTable') { setPicked(null); tableCell.current = null; const rest = currentBlocks().filter((item) => item.id !== id); commit(rest.length ? rest : [blankBlock(uuid())]); return; }
+    if (!spot || spot.id !== id) { onNotice(latest.current.t('tbl.pickCell')); return; }
+    const done = applyCellOp(block.rows, op, spot.row, spot.col);
+    if (done.rows === block.rows) { onNotice(latest.current.t('ed.tableLimit')); return; }
+    tableCell.current = { id, row: done.row, col: done.col };
+    commit(currentBlocks().map((item) => (item.id === id ? normalizeBlock({ ...item, rows: done.rows }) : item)));
   }
   function blockOp(op: BlockOp) {
     const all = currentBlocks(); const ids = selectedIds(); const id = ids[0]; if (!id) return;
@@ -501,6 +558,11 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     editor.view.dispatch(editor.state.tr.setMeta(liveKey, 'refresh').setMeta('addToHistory', false).setMeta('aven-external', true));
   }, [cursors, others, editor, live]);
 
+  useEffect(() => {
+    if (!editor) return;
+    share(live, { comments: commentMarks ?? [] });
+    editor.view.dispatch(editor.state.tr.setMeta(liveKey, 'refresh').setMeta('addToHistory', false).setMeta('aven-external', true));
+  }, [commentMarks, editor, live]);
   useEffect(() => { findOpen.current = find !== null; }, [find]);
   // Find in document: the highlighted matches are decorations, so they follow edits; the current one is picked by `find.index`.
   const matches = useMemo(() => (editor && find?.query ? findMatches(editor.state.doc, find.query) : []), [editor, find?.query, docVersion]); // eslint-disable-line react-hooks/exhaustive-deps -- docVersion stands for "the document changed"
@@ -545,8 +607,12 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     openFind: () => { if (!editor) return; const picked = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to); setFind((current) => ({ query: picked && !picked.includes('\n') ? picked : current?.query ?? '', replace: current?.replace ?? '', index: 0 })); },
     toggleMark: (mark) => applyMark(mark), setTone: (tone) => applyColour(tone),
     linkTarget, applyLink: applyLinkTo, setBlockType, toggleList,
-    setLayout: (patch) => { const ids = selectedIds(); const next = setLayout(currentBlocks(), ids, patch); if (next !== currentBlocks()) commit(next); },
-    indent: indentSelected, clearFormatting: () => changeSelected((block) => (isTextBlock(block.type) ? clearBlockFormatting(block) : block)),
+    setLayout: (patch) => {
+      // font and size belong to the selected words; with nothing selected they set the paragraph's
+      if (('font' in patch || 'size' in patch) && !pickedRef.current) { const key = 'font' in patch ? 'font' : 'size'; if (applyInlineValue(key, (patch[key] as string | number | undefined) ?? null)) return; }
+      const ids = selectedIds(); const next = setLayout(currentBlocks(), ids, patch); if (next !== currentBlocks()) commit(next);
+    },
+    indent: indentSelected, clearFormatting: clearSelectionStyle,
     commentSelection: commentOnSelection, insertBlock, tableOp, blockOp,
     setHalf: (half) => changeSelected((block) => normalizeBlock({ ...block, span: half ? 'half' : undefined })),
     setTitle: (next) => { if (!editor) return; const tr = reconcile(editor.state.tr, currentBlocks(), next); editor.view.dispatch(tr); },
@@ -586,6 +652,7 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
 
   const full: EditorEnv = useMemo(() => ({
     ...env, placeholders, folded, activeTabs,
+    onTableCell: (id: string, row: number, col: number) => { tableCell.current = { id, row, col }; },
     onFold: (id: string) => setFolded((current) => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; }),
     onTab: (id: string, index: number) => setActiveTabs((current) => ({ ...current, [id]: index })),
     appendLines: (parentId: string, lines: string[], type: BlockType = 'PARAGRAPH') => {
@@ -612,7 +679,7 @@ export function DocEditor({ title, blocks, readOnly, env, cursors, others, onLoc
     editor.view.dispatch(editor.state.tr.setMeta(liveKey, 'refresh').setMeta('addToHistory', false).setMeta('aven-external', true));
   }, [folded, activeTabs, editor, live]);
   return <EnvContext.Provider value={full}>
-    <div className="aven-editor" ref={wrapper} onMouseMove={onMove} onMouseLeave={() => { if (!dragRef.current) setHover(null); }} onDragOver={overBlock} onDrop={drop}>
+    <div className="aven-editor" ref={wrapper} onClick={(event) => { const mark = (event.target as HTMLElement).closest?.<HTMLElement>('.md-commented'); if (mark && onCommentClick && window.getSelection()?.isCollapsed !== false) onCommentClick(mark.dataset.comment ?? ''); }} onMouseMove={onMove} onMouseLeave={() => { if (!dragRef.current) setHover(null); }} onDragOver={overBlock} onDrop={drop}>
       {ai && onAssist && <AiPanel target={ai} run={onAssist} onReplace={aiReplace} onInsert={aiInsert} onTasks={(titles) => env.createTasks(ai.kind === 'selection' ? ai.blockId : currentBlocks()[0]?.id ?? '', titles)} onClose={() => { setAi(null); editor?.view.focus(); }} />}
       {find && <FindBar query={find.query} replace={find.replace} count={matches.length} current={currentMatch} readOnly={readOnly} onQuery={(query) => setFind({ ...find, query, index: 0 })} onReplaceText={(replace) => setFind({ ...find, replace })} onStep={(step) => setFind({ ...find, index: currentMatch + step })} onReplace={replaceMatches} onClose={closeFind} />}
       {picked && <p className="sr-only" role="status">{t('ed.pickedCount', { n: picked.ids.length })}</p>}

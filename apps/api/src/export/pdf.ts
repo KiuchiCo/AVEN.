@@ -24,9 +24,13 @@ function printable(doc: Doc, value: string): string {
   return out;
 }
 
+/** Editor sizes are in screen pixels; paper wants points. */
+const pointsOf = (px: number) => px * 0.75;
+
 const familyFor = (run: Run, base: { bold?: boolean; italic?: boolean; font?: string }) => {
-  if (run.code) return 'Mono';
-  if (base.font) return base.font;
+  if (run.code || run.font === 'mono') return 'Mono';
+  if (run.font === 'serif') return 'Playfair';
+  if (!run.font && base.font) return base.font;
   const bold = run.bold || base.bold, italic = run.italic || base.italic;
   return bold && italic ? 'Inter-BoldItalic' : bold ? 'Inter-Bold' : italic ? 'Inter-Italic' : 'Inter';
 };
@@ -37,7 +41,7 @@ function drawRuns(doc: Doc, runs: Run[], options: { x: number; width: number; si
   const shown = runs.filter((run) => run.text);
   if (!shown.length) { doc.moveDown(0.2); return; }
   shown.forEach((run, index) => {
-    doc.font(familyFor(run, options)).fontSize(run.code ? options.size * 0.92 : options.size).fillColor(run.href ? LINK : run.colour ? `#${run.colour}` : options.color ?? INK);
+    doc.font(familyFor(run, options)).fontSize(run.code ? (run.size ? pointsOf(run.size) : options.size) * 0.92 : run.size ? pointsOf(run.size) : options.size).fillColor(run.href ? LINK : run.colour ? `#${run.colour}` : options.color ?? INK);
     const last = index === shown.length - 1;
     const text = printable(doc, run.text);
     // explicit values everywhere: PDFKit makes a continued run inherit any option that is left undefined
@@ -77,7 +81,7 @@ function drawTable(doc: Doc, rows: string[][], caption: string | undefined) {
 
 /** The author's alignment, font and size for a text block, as drawing options. Spacing widens or tightens the gap between lines. */
 function laidOut(base: { size: number; lineGap: number; font?: string }, layout?: { align?: 'center' | 'right' | 'justify'; spacing?: number; font?: 'sans' | 'serif' | 'mono'; size?: number }) {
-  const size = layout?.size ?? base.size;
+  const size = layout?.size ? pointsOf(layout.size) : base.size;
   return { size, lineGap: layout?.spacing ? Math.max(1, size * (layout.spacing - 1) * 0.9) : base.lineGap, align: layout?.align, font: layout?.font === 'serif' ? 'Playfair' : layout?.font === 'mono' ? 'Mono' : base.font };
 }
 
@@ -85,7 +89,7 @@ function drawNode(doc: Doc, node: ExportNode) {
   const left = PAGE.margin.left; const width = doc.page.width - PAGE.margin.left - PAGE.margin.right;
   switch (node.kind) {
     case 'heading': {
-      const size = node.layout?.size ?? [22, 17, 14, 12][node.level - 1]; const font = node.layout?.font === 'serif' ? 'Playfair' : node.layout?.font === 'mono' ? 'Mono' : node.layout?.font === 'sans' ? 'Inter-Bold' : node.level <= 2 ? 'Playfair' : node.level === 3 ? 'Inter-Bold' : 'Inter-BoldItalic';
+      const size = node.layout?.size ? pointsOf(node.layout.size) : [22, 17, 14, 12][node.level - 1]; const font = node.layout?.font === 'serif' ? 'Playfair' : node.layout?.font === 'mono' ? 'Mono' : node.layout?.font === 'sans' ? 'Inter-Bold' : node.level <= 2 ? 'Playfair' : node.level === 3 ? 'Inter-Bold' : 'Inter-BoldItalic';
       ensure(doc, size * 1.4 + 70); // a heading is never left alone at the bottom of a page
       doc.moveDown(node.level === 1 ? 0.9 : 0.6); drawRuns(doc, node.runs.map((run) => ({ ...run, bold: undefined })), { x: left, width, size, font, align: node.layout?.align }); doc.moveDown(0.25); break;
     }

@@ -4,6 +4,9 @@
 // which keeps the live text engine, version history, search and exports working on plain strings.
 
 import { blockCatalog, type CatalogEntry } from './block-catalog.ts';
+import { clearStyle, safeHref, scan, setValue, styleAt, styledRuns, toggleFlag, tones, visibleText, wordAt, type Flag, type Style } from './inline-style.ts';
+export { safeHref, tones };
+export type { Tone } from './inline-style.ts';
 
 export type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'HEADING_3' | 'HEADING_4' | 'BULLET' | 'NUMBERED' | 'TODO' | 'QUOTE' | 'CODE' | 'CALLOUT' | 'TOGGLE'
   | 'DIVIDER' | 'TABLE' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'BOOKMARK' | 'PAGE_LINK' | 'DATABASE' | 'DATABASE_LINK' | 'TOC' | 'BREADCRUMB' | 'BUTTON'
@@ -11,7 +14,8 @@ export type BlockType = 'PARAGRAPH' | 'HEADING_1' | 'HEADING_2' | 'HEADING_3' | 
 export type DatabaseView = 'TABLE' | 'BOARD' | 'GALLERY' | 'LIST' | 'BAR_V' | 'BAR_H' | 'DONUT' | 'NUMBER' | 'CALENDAR' | 'TIMELINE' | 'FEED' | 'DASHBOARD' | 'LINE' | 'MAP';
 export type TabPane = { title: string; body: string };
 export type Align = 'center' | 'right' | 'justify'; // left is the default and is not stored
-export type FontFamily = 'sans' | 'serif' | 'mono';
+export type { FontFamily } from './inline-style.ts';
+import type { FontFamily } from './inline-style.ts';
 /** `text` is the block's main text (a caption for media, the title of a toggle, the label of a button). Other fields belong to specific block types. */
 export type Block = {
   id: string; type: BlockType; text: string; checked?: boolean;
@@ -219,41 +223,28 @@ export function applySlash(blocks: Block[], id: string, slash: { start: number; 
 export type Mark = 'bold' | 'italic' | 'code' | 'strike' | 'underline' | 'highlight';
 const markers: Record<Mark, string> = { bold: '**', italic: '*', code: '`', strike: '~~', underline: '++', highlight: '==' };
 
-/** Wraps the selection in a mark, or removes it when the selection is already wrapped. Returns the new text and selection. */
+/** Wraps the selection in a mark, or removes it when the whole selection already has it. Every other style on the selected words (colour, size, other marks) is kept. */
 export function toggleMark(text: string, start: number, end: number, mark: Mark): { text: string; start: number; end: number } {
   const open = markers[mark];
   const a = Math.min(start, end), b = Math.max(start, end);
   if (a === b) return { text: text.slice(0, a) + open + open + text.slice(b), start: a + open.length, end: a + open.length };
-  const selected = text.slice(a, b);
-  if (selected.startsWith(open) && selected.endsWith(open) && selected.length >= open.length * 2) {
-    const inner = selected.slice(open.length, selected.length - open.length);
-    return { text: text.slice(0, a) + inner + text.slice(b), start: a, end: a + inner.length };
-  }
-  if (mark === 'italic' && text.slice(a - 3, a) === '***' && text.slice(b, b + 3) === '***') return { text: text.slice(0, a - 1) + selected + text.slice(b + 1), start: a - 1, end: b - 1 }; // bold + italic: take away the italic only
-  if (text.slice(a - open.length, a) === open && text.slice(b, b + open.length) === open && !(mark === 'italic' && (text[a - 2] === '*' || text[b + 1] === '*'))) {
-    return { text: text.slice(0, a - open.length) + selected + text.slice(b + open.length), start: a - open.length, end: b - open.length };
-  }
-  return { text: text.slice(0, a) + open + selected + open + text.slice(b), start: a + open.length, end: b + open.length };
+  return toggleFlag(text, a, b, flagOf[mark]) ?? { text, start: a, end: b };
 }
+const flagOf: Record<Mark, Flag> = { bold: 'bold', italic: 'italic', code: 'code', strike: 'strike', underline: 'underline', highlight: 'mark' };
 
 /**
- * Colours the selection (`tone` like "red" or "bg-green"), recolours it when it is already coloured, or removes the colour when `tone` is null
- * or the same one is applied again. Returns the new text and selection.
+ * Colours the selection (`tone` like "red" or "bg-green"), or removes the colour when `tone` is null or the same one is applied again. Bold, italic, size and the
+ * rest are untouched. Returns the new text and selection.
  */
 export function setColour(text: string, start: number, end: number, tone: string | null): { text: string; start: number; end: number } {
   const a = Math.min(start, end), b = Math.max(start, end);
-  const kind = tone?.startsWith('bg-') ? 'bg-' : '';
-  const open = /\{((?:bg-)?(?:brown|red|orange|green|blue|purple|gray)):$/.exec(text.slice(0, a));
-  // selection sits inside an existing colour: `{tone:` before it and `}` right after it
-  if (open && text[b] === '}') {
-    const from = a - open[0].length; const sameKind = open[1].startsWith('bg-') === (kind === 'bg-');
-    const inner = text.slice(a, b);
-    if (!tone || (sameKind && open[1] === tone)) return { text: text.slice(0, from) + inner + text.slice(b + 1), start: from, end: from + inner.length };
-    if (sameKind) return { text: `${text.slice(0, from)}{${tone}:${inner}}${text.slice(b + 1)}`, start: from + tone.length + 2, end: from + tone.length + 2 + inner.length };
-  }
-  if (!tone || a === b) return { text, start: a, end: b };
-  const selected = text.slice(a, b).replace(/\{(?:bg-)?(?:brown|red|orange|green|blue|purple|gray):|\}/g, '');
-  return { text: `${text.slice(0, a)}{${tone}:${selected}}${text.slice(b)}`, start: a + tone.length + 2, end: a + tone.length + 2 + selected.length };
+  if (a === b) return { text, start: a, end: b };
+  const kind = tone?.startsWith('bg-') ? 'bg' : 'tone';
+  const value = tone ? (kind === 'bg' ? tone.slice(3) : tone) : null;
+  const current = styleAt(text, a, b);
+  if (value === null) { const plain = setValue(text, a, b, 'tone', null); return (plain && setValue(plain.text, plain.start, plain.end, 'bg', null)) ?? { text, start: a, end: b }; }
+  const same = current[kind] === value;
+  return setValue(text, a, b, kind, same ? null : value) ?? { text, start: a, end: b };
 }
 
 /** Turns the selection into a link. The address is checked: only http, https and mailto are kept. */
@@ -265,48 +256,25 @@ export function makeLink(text: string, start: number, end: number, url: string):
   return { text: text.slice(0, a) + replacement + text.slice(b), start: a + 1, end: a + 1 + label.length };
 }
 
-export function safeHref(url: string): string | null {
-  const value = url.trim();
-  if (/^(https?:\/\/|mailto:)[^\s<>"']+$/i.test(value)) return value;
-  if (/^[\w.-]+\.[a-z]{2,}(\/[^\s<>"']*)?$/i.test(value)) return `https://${value}`;
-  return null;
-}
-
-/** Underline and highlight only start at the beginning of a word, so "C++ and C++" or "a==b==c" stay plain text. */
-const isEdge = (text: string, at: number) => at === 0 || !/[\p{L}\p{N}+=]/u.test(text[at - 1]);
-
-/** Colours for text (`{red:words}`) and for a highlighter (`{bg-red:words}`). */
-export const tones = ['brown', 'red', 'orange', 'green', 'blue', 'purple', 'gray'] as const;
-export type Tone = (typeof tones)[number];
-const colourPattern = new RegExp(`^\\{((?:bg-)?(?:${tones.join('|')})):([^{}\\n]+?)\\}`);
 export type Inline = { kind: 'text' | 'bold' | 'bolditalic' | 'italic' | 'code' | 'strike' | 'underline' | 'highlight' | 'colour' | 'link'; text: string; href?: string; tone?: string };
 
-/** Splits text into plain and formatted runs. Unmatched marks stay as literal characters; nothing is ever treated as HTML. */
+/** The legacy flat view of the text: one kind per run (the first that applies). New code reads `styledRuns`, which keeps every style a run has. */
 export function parseInline(text: string): Inline[] {
-  const out: Inline[] = [];
-  let plain = '';
-  const flush = () => { if (plain) { out.push({ kind: 'text', text: plain }); plain = ''; } };
-  let i = 0;
-  while (i < text.length) {
-    const rest = text.slice(i);
-    let m: RegExpExecArray | null;
-    if ((m = /^`([^`\n]+)`/.exec(rest))) { flush(); out.push({ kind: 'code', text: m[1] }); i += m[0].length; continue; }
-    if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { flush(); out.push({ kind: 'link', text: m[1], href }); i += m[0].length; continue; } }
-    if ((m = /^\*\*\*([^*\n]+?)\*\*\*/.exec(rest))) { flush(); out.push({ kind: 'bolditalic', text: m[1] }); i += m[0].length; continue; }
-    if ((m = /^\*\*([^*\n]+?)\*\*/.exec(rest))) { flush(); out.push({ kind: 'bold', text: m[1] }); i += m[0].length; continue; }
-    if ((m = /^~~([^~\n]+?)~~/.exec(rest))) { flush(); out.push({ kind: 'strike', text: m[1] }); i += m[0].length; continue; }
-    if (isEdge(text, i) && (m = /^\+\+(\S(?:[^+\n]*?\S)?)\+\+/.exec(rest))) { flush(); out.push({ kind: 'underline', text: m[1] }); i += m[0].length; continue; }
-    if (isEdge(text, i) && (m = /^==(\S(?:[^=\n]*?\S)?)==/.exec(rest))) { flush(); out.push({ kind: 'highlight', text: m[1] }); i += m[0].length; continue; }
-    if ((m = colourPattern.exec(rest))) { flush(); out.push({ kind: 'colour', text: m[2], tone: m[1] }); i += m[0].length; continue; }
-    const startsWord = i === 0 || !/[\p{L}\p{N}_]/u.test(text[i - 1]); // snake_case and __dunder__ names are never italics
-    if ((m = /^\*([^*\s][^*\n]*?)\*/.exec(rest)) || (startsWord && (m = /^_([^_\s][^_\n]*?)_(?![\p{L}\p{N}_])/u.exec(rest)))) { flush(); out.push({ kind: 'italic', text: m[1] }); i += m[0].length; continue; }
-    plain += text[i]; i += 1;
-  }
-  flush();
-  return out;
+  return styledRuns(text).map(({ text: words, style }): Inline => {
+    if (style.code) return { kind: 'code', text: words };
+    if (style.href) return { kind: 'link', text: words, href: style.href };
+    if (style.bold && style.italic) return { kind: 'bolditalic', text: words };
+    if (style.bold) return { kind: 'bold', text: words };
+    if (style.strike) return { kind: 'strike', text: words };
+    if (style.underline) return { kind: 'underline', text: words };
+    if (style.mark) return { kind: 'highlight', text: words };
+    if (style.tone || style.bg) return { kind: 'colour', text: words, tone: style.tone ?? `bg-${style.bg}` };
+    if (style.italic) return { kind: 'italic', text: words };
+    return { kind: 'text', text: words };
+  });
 }
 
-export const hasInlineMarks = (text: string) => parseInline(text).some((run) => run.kind !== 'text');
+export const hasInlineMarks = (text: string) => styledRuns(text).some((run) => Object.keys(run.style).length > 0);
 
 // ---- The canonical block ------------------------------------------------------------------------------------------------------
 
@@ -403,27 +371,20 @@ export function liftBodies(blocks: Block[]): Block[] {
 }
 
 /** Where inline formatting sits inside a block's text: styled ranges and the marker characters around them (hidden unless the block is being edited). */
-export type InlineRange = { start: number; end: number; kind: 'bold' | 'italic' | 'code' | 'strike' | 'underline' | 'highlight' | 'colour' | 'link' | 'mark'; href?: string; tone?: string };
+export type InlineRange = { start: number; end: number; kind: 'bold' | 'italic' | 'code' | 'strike' | 'underline' | 'highlight' | 'colour' | 'link' | 'mark' | 'font' | 'size'; href?: string; tone?: string; value?: string | number };
 export function inlineRanges(text: string): InlineRange[] {
   const out: InlineRange[] = [];
-  let i = 0;
-  while (i < text.length) {
-    const rest = text.slice(i);
-    let m: RegExpExecArray | null;
-    const wrap = (kind: InlineRange['kind'], open: number, close: number, length: number) => { out.push({ start: i, end: i + open, kind: 'mark' }, { start: i + open, end: i + length - close, kind }, { start: i + length - close, end: i + length, kind: 'mark' }); i += length; };
-    if ((m = /^`([^`\n]+)`/.exec(rest))) { wrap('code', 1, 1, m[0].length); continue; }
-    if ((m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(rest))) { const href = safeHref(m[2]); if (href) { const label = m[1].length; out.push({ start: i, end: i + 1, kind: 'mark' }, { start: i + 1, end: i + 1 + label, kind: 'link', href }, { start: i + 1 + label, end: i + m[0].length, kind: 'mark' }); i += m[0].length; continue; } }
-    if ((m = /^\*\*\*([^*\n]+?)\*\*\*/.exec(rest))) { out.push({ start: i, end: i + 3, kind: 'mark' }, { start: i + 3, end: i + m[0].length - 3, kind: 'bold' }, { start: i + 3, end: i + m[0].length - 3, kind: 'italic' }, { start: i + m[0].length - 3, end: i + m[0].length, kind: 'mark' }); i += m[0].length; continue; }
-    if ((m = /^\*\*([^*\n]+?)\*\*/.exec(rest))) { wrap('bold', 2, 2, m[0].length); continue; }
-    if ((m = /^~~([^~\n]+?)~~/.exec(rest))) { wrap('strike', 2, 2, m[0].length); continue; }
-    if (isEdge(text, i) && (m = /^\+\+(\S(?:[^+\n]*?\S)?)\+\+/.exec(rest))) { wrap('underline', 2, 2, m[0].length); continue; }
-    if (isEdge(text, i) && (m = /^==(\S(?:[^=\n]*?\S)?)==/.exec(rest))) { wrap('highlight', 2, 2, m[0].length); continue; }
-    if ((m = colourPattern.exec(rest))) { out.push({ start: i, end: i + m[1].length + 2, kind: 'mark' }, { start: i + m[1].length + 2, end: i + m[0].length - 1, kind: 'colour', tone: m[1] }, { start: i + m[0].length - 1, end: i + m[0].length, kind: 'mark' }); i += m[0].length; continue; }
-    const startsWord = i === 0 || !/[\p{L}\p{N}_]/u.test(text[i - 1]);
-    if ((m = /^\*([^*\s][^*\n]*?)\*/.exec(rest)) || (startsWord && (m = /^_([^_\s][^_\n]*?)_(?![\p{L}\p{N}_])/u.exec(rest)))) { wrap('italic', 1, 1, m[0].length); continue; }
-    i += 1;
-  }
-  return out;
+  scan(text, 0, text.length, {}, {
+    char: () => {},
+    mark: (start, end) => { out.push({ start, end, kind: 'mark' }); },
+    style: (start, end, kind, value) => {
+      if (kind === 'link') out.push({ start, end, kind: 'link', href: String(value) });
+      else if (kind === 'colour') out.push({ start, end, kind: 'colour', tone: String(value) });
+      else if (kind === 'font' || kind === 'size') out.push({ start, end, kind, value });
+      else out.push({ start, end, kind: kind === 'mark' ? 'highlight' : (kind as 'bold') });
+    },
+  });
+  return out.sort((x, y) => x.start - y.start || x.end - y.end);
 }
 
 /** Pasted text, one line at a time: "- x", "1. x", "# x", "[ ] x", "> x" become the block they describe; anything else is a paragraph. */
@@ -474,39 +435,28 @@ export function stepSize(current: number | undefined, direction: 1 | -1): number
 }
 export const clampSize = (value: number) => Math.max(MIN_SIZE, Math.min(MAX_SIZE, Math.round(value)));
 
-/** Which marks the selection (or the caret) sits inside, so the toolbar can show them as active. */
+/** Which marks the whole selection (or, for a caret, the character before it) has, so the toolbar can show them as active. */
 export function activeMarks(text: string, start: number, end: number): Set<Mark | 'link'> {
-  const a = Math.min(start, end), b = Math.max(start, end); const found = new Set<Mark | 'link'>();
-  const ranges = inlineRanges(text);
-  for (const range of ranges) {
-    if (range.kind === 'mark' || range.kind === 'colour') continue;
-    // the formatted words and the marker characters around them count together, so selecting a whole formatted word (markers and all) still reads as formatted
-    const open = ranges.find((other) => other.kind === 'mark' && other.end === range.start); const close = ranges.find((other) => other.kind === 'mark' && other.start === range.end);
-    const from = open?.start ?? range.start; const to = close?.end ?? range.end;
-    const inside = a === b ? a > range.start && a <= range.end : a >= from && b <= to;
-    if (inside) found.add(range.kind);
-  }
+  const style = styleAt(text, start, end); const found = new Set<Mark | 'link'>();
+  if (style.bold) found.add('bold'); if (style.italic) found.add('italic'); if (style.strike) found.add('strike'); if (style.underline) found.add('underline');
+  if (style.mark) found.add('highlight'); if (style.code) found.add('code'); if (style.href) found.add('link');
   return found;
 }
 /** The text colour and the highlight colour at the selection, if any. */
 export function activeTones(text: string, start: number, end: number): { colour: string | null; background: string | null } {
-  const a = Math.min(start, end), b = Math.max(start, end); const out = { colour: null as string | null, background: null as string | null };
-  const ranges = inlineRanges(text);
-  for (const range of ranges) {
-    if (range.kind !== 'colour' || !range.tone) continue;
-    const open = ranges.find((other) => other.kind === 'mark' && other.end === range.start); const close = ranges.find((other) => other.kind === 'mark' && other.start === range.end);
-    const inside = a === b ? a > range.start && a <= range.end : a >= (open?.start ?? range.start) && b <= (close?.end ?? range.end);
-    if (!inside) continue;
-    if (range.tone.startsWith('bg-')) out.background = range.tone.slice(3); else out.colour = range.tone;
-  }
-  return out;
+  const style = styleAt(text, start, end);
+  return { colour: style.tone ?? null, background: style.bg ?? null };
 }
+/** Everything the toolbar shows about the words at the selection: marks, colours, and the font and size set on the words themselves. */
+export function activeStyle(text: string, start: number, end: number): Style { return styleAt(text, start, end); }
 /** The words of a block with every mark and colour removed (a link keeps its label). */
-export function plainFormat(text: string): string {
-  // marks can sit inside a colour, so strip until nothing more changes
-  let current = text;
-  for (let pass = 0; pass < 5; pass += 1) { const next = parseInline(current).map((run) => run.text).join(''); if (next === current) break; current = next; }
-  return current;
+export const plainFormat = visibleText;
+/** Clears the formatting inside a text selection only: marks, colours, font and size. The block's alignment and spacing are not touched. */
+export function clearSelectionFormatting(text: string, start: number, end: number): { text: string; start: number; end: number } | null {
+  const a = Math.min(start, end), b = Math.max(start, end);
+  if (a !== b) return clearStyle(text, a, b);
+  const word = wordAt(text, a); // a caret alone clears the word it is in
+  return word ? clearStyle(text, word.start, word.end) : null;
 }
 /** Clears the formatting of a block: marks, colours and its alignment, spacing, font and size. */
 export function clearBlockFormatting(block: Block): Block {

@@ -15,7 +15,7 @@ import { BASE_SIZE, MAX_SIZE, MIN_SIZE, clampSize, fontSizes, lineSpacings, step
 
 /** How much of the toolbar fits: `full` shows every control; `medium`, `compact` and `phone` move the less used ones into "More". */
 type Tier = 0 | 1 | 2 | 3;
-const tierFor = (width: number): Tier => (width >= 1500 ? 3 : width >= 1060 ? 2 : width >= 900 ? 1 : 0);
+const tierFor = (width: number): Tier => (width >= 1300 ? 3 : width >= 900 ? 2 : width >= 600 ? 1 : 0);
 
 const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const shortcut = (keys: string) => (isMac() ? keys.replace('Ctrl', '⌘').replace('Shift', '⇧').replace('Alt', '⌥').replaceAll('+', '') : keys);
@@ -130,8 +130,8 @@ export function EditorToolbar({ api, format, onPrint, onBrowseBlocks, viewing, o
   const textGroups: { id: string; controls: Control[] }[] = [
     { id: 'style', controls: [
       { id: 'style', min: 0, show: true, node: <Menu label={t('ed.tb.paragraphStyle')} className="et-btn--wide" trigger={<><span className="et-value">{style ? t(style.key) : t('ed.tb.normal')}</span><EditorIcon name="chevron" size={14} /></>}>{(close) => <>{styleOptions.map((option) => <Item key={option.id} active={format.type === option.type} onPick={() => { close(); a()?.setBlockType({ type: option.type }); }} className={`et-style ${option.className}`}>{t(option.key)}</Item>)}</>}</Menu> },
-      { id: 'font', min: 3, show: text, node: <Menu label={t('ed.tb.fontFamily')} disabled={!marked || !format.canLayout} className="et-btn--wide" trigger={<><span className="et-value" style={{ fontFamily: fontOptions.find((option) => option.id === format.font)?.css }}>{t(fontOptions.find((option) => option.id === format.font)?.key ?? 'ed.tb.fontDefault')}</span><EditorIcon name="chevron" size={14} /></>}>{(close) => <>{fontOptions.map((option) => <Item key={option.id ?? 'default'} active={format.font === option.id} onPick={() => { close(); a()?.setLayout({ font: option.id ?? undefined }); }}><span style={{ fontFamily: option.css }}>{t(option.key)}</span></Item>)}</>}</Menu> },
-      { id: 'size', min: 3, show: text, node: <span className="et-size" role="group" aria-label={t('ed.tb.fontSize')}>
+      { id: 'font', min: 2, show: text, node: <Menu label={t('ed.tb.fontFamily')} disabled={!marked || !format.canLayout} className="et-btn--wide" trigger={<><span className="et-value" style={{ fontFamily: fontOptions.find((option) => option.id === format.font)?.css }}>{t(fontOptions.find((option) => option.id === format.font)?.key ?? 'ed.tb.fontDefault')}</span><EditorIcon name="chevron" size={14} /></>}>{(close) => <>{fontOptions.map((option) => <Item key={option.id ?? 'default'} active={format.font === option.id} onPick={() => { close(); a()?.setLayout({ font: option.id ?? undefined }); }}><span style={{ fontFamily: option.css }}>{t(option.key)}</span></Item>)}</>}</Menu> },
+      { id: 'size', min: 0, show: text, node: <span className="et-size" role="group" aria-label={t('ed.tb.fontSize')}>
         <ToolButton icon="minus" label={t('ed.tb.smaller')} disabled={!marked || !format.canLayout || size <= MIN_SIZE} onPress={() => a()?.setLayout({ size: stepSize(format.size ?? undefined, -1) })} />
         <Menu label={t('ed.tb.fontSize')} disabled={!marked || !format.canLayout} className="et-btn--size" trigger={<span className="et-value">{size}</span>}>{(close) => <>{fontSizes.map((value) => <Item key={value} active={size === value} onPick={() => { close(); a()?.setLayout({ size: value }); }}>{value}</Item>)}<Item onPick={() => { close(); a()?.setLayout({ size: undefined }); }}>{t('ed.tb.sizeDefault')}</Item></>}</Menu>
         <ToolButton icon="plus" label={t('ed.tb.larger')} disabled={!marked || !format.canLayout || size >= MAX_SIZE} onPress={() => a()?.setLayout({ size: clampSize(stepSize(format.size ?? undefined, 1)) })} />
@@ -140,27 +140,27 @@ export function EditorToolbar({ api, format, onPrint, onBrowseBlocks, viewing, o
     { id: 'marks', controls: [
       { id: 'bold', min: 0, show: text, node: <ToolButton label={t('ed.tb.bold')} keys="Ctrl+B" active={has('bold')} disabled={!marked} onPress={() => a()?.toggleMark('bold')}><b>B</b></ToolButton> },
       { id: 'italic', min: 0, show: text, node: <ToolButton label={t('ed.tb.italic')} keys="Ctrl+I" active={has('italic')} disabled={!marked} onPress={() => a()?.toggleMark('italic')}><i>I</i></ToolButton> },
-      { id: 'underline', min: 1, show: text, node: <ToolButton label={t('ed.tb.underline')} keys="Ctrl+U" active={has('underline')} disabled={!marked} onPress={() => a()?.toggleMark('underline')}><u>U</u></ToolButton> },
+      { id: 'underline', min: 0, show: text, node: <ToolButton label={t('ed.tb.underline')} keys="Ctrl+U" active={has('underline')} disabled={!marked} onPress={() => a()?.toggleMark('underline')}><u>U</u></ToolButton> },
       { id: 'strike', min: 2, show: text, node: <ToolButton label={t('ed.tb.strike')} keys="Ctrl+Shift+X" active={has('strike')} disabled={!marked} onPress={() => a()?.toggleMark('strike')}><s>S</s></ToolButton> },
       { id: 'code', min: 3, show: text, node: <ToolButton label={t('ed.tb.code')} keys="Ctrl+E" active={has('code')} disabled={!marked} onPress={() => a()?.toggleMark('code')}><code>{'</>'}</code></ToolButton> },
-      { id: 'colour', min: 2, show: text, node: <Menu label={t('ed.tb.textColour')} disabled={!marked} active={Boolean(format.colour)} className="et-btn--colour" trigger={<><span className={`et-colour${format.colour ? ` md-c-${format.colour}` : ''}`}><EditorIcon name="colour" /></span><EditorIcon name="chevron" size={14} /></>}>{(close) => <Palette prefix="" current={format.colour} none={t('ed.fmt.noColour')} onPick={(tone) => { close(); a()?.setTone(tone); }} />}</Menu> },
+      { id: 'colour', min: 0, show: text, node: <Menu label={t('ed.tb.textColour')} disabled={!marked} active={Boolean(format.colour)} className="et-btn--colour" trigger={<><span className={`et-colour${format.colour ? ` md-c-${format.colour}` : ''}`}><EditorIcon name="colour" /></span><EditorIcon name="chevron" size={14} /></>}>{(close) => <Palette prefix="" current={format.colour} none={t('ed.fmt.noColour')} onPick={(tone) => { close(); a()?.setTone(tone); }} />}</Menu> },
       { id: 'highlight', min: 2, show: text, node: <Menu label={t('ed.tb.highlightColour')} disabled={!marked} active={Boolean(format.background) || has('highlight')} className="et-btn--colour" trigger={<><span className="et-colour"><EditorIcon name="highlight" /><i className={format.background ? `md-c-bg-${format.background}` : 'is-none'} /></span><EditorIcon name="chevron" size={14} /></>}>{(close) => <><Item active={has('highlight')} onPick={() => { close(); a()?.toggleMark('highlight'); }}>{t('ed.tb.markHighlight')}</Item><Palette prefix="bg-" current={format.background} none={t('ed.fmt.noColour')} onPick={(tone) => { close(); a()?.setTone(tone); }} /></>}</Menu> },
     ] },
     { id: 'insertions', controls: [
       { id: 'link', min: 0, show: text, node: <Popover keepFocus align="start" label={t('ed.tb.link')} buttonLabel={t('ed.tb.link')} buttonTitle={`${t('ed.tb.link')} (${shortcut('Ctrl+K')})`} disabled={!marked || !format.hasSelection} className="et-menu et-menu--link" buttonClass={`et-btn${has('link') ? ' is-active' : ''}`} buttonContent={<EditorIcon name="link" />}>{(close) => <LinkBox api={api.current as DocEditorApi} onClose={close} requested={false} />}</Popover> },
-      { id: 'comment', min: 2, show: text || format.kind === 'code', node: <ToolButton icon="comment" label={t('ed.tb.comment')} disabled={!editable} onPress={() => a()?.commentSelection()} /> },
+      { id: 'comment', min: 1, show: text || format.kind === 'code', node: <ToolButton icon="comment" label={t('ed.tb.comment')} disabled={!editable} onPress={() => a()?.commentSelection()} /> },
       { id: 'image', min: 1, show: canEdit && !viewing, node: <ToolButton icon="image" label={t('ed.tb.image')} disabled={!editable} onPress={() => imageInput.current?.click()} /> },
       { id: 'table', min: 1, show: canEdit && !viewing, node: <ToolButton icon="table" label={t('ed.tb.table')} disabled={!editable} onPress={() => a()?.insertBlock('TABLE')} /> },
     ] },
     { id: 'paragraph', controls: [
-      { id: 'align', min: 3, show: text, node: <Menu label={t('ed.tb.align')} disabled={!marked || !format.canLayout} active={format.align !== null} trigger={<><EditorIcon name={alignActive.icon} /><EditorIcon name="chevron" size={14} /></>}>{(close) => <div className="et-row">{alignOptions.map((option) => <ToolButton key={option.id ?? 'left'} icon={option.icon} label={t(option.key)} active={format.align === option.id} onPress={() => { close(); a()?.setLayout({ align: option.id ?? undefined }); }} />)}</div>}</Menu> },
-      { id: 'spacing', min: 3, show: text, node: <Menu label={t('ed.tb.lineSpacing')} disabled={!marked || !format.canLayout} active={format.spacing !== null} trigger={<><EditorIcon name="spacing" /><EditorIcon name="chevron" size={14} /></>}>{(close) => <>{lineSpacings.map((value) => <Item key={value} active={(format.spacing ?? 1.15) === value || (format.spacing === null && value === 1.15)} onPick={() => { close(); a()?.setLayout({ spacing: value === 1.15 ? undefined : value }); }}>{value === 1.15 ? t('ed.tb.spacingDefault') : value}</Item>)}</>}</Menu> },
+      { id: 'align', min: 0, show: text, node: <Menu label={t('ed.tb.align')} disabled={!marked || !format.canLayout} active={format.align !== null} trigger={<><EditorIcon name={alignActive.icon} /><EditorIcon name="chevron" size={14} /></>}>{(close) => <div className="et-row">{alignOptions.map((option) => <ToolButton key={option.id ?? 'left'} icon={option.icon} label={t(option.key)} active={format.align === option.id} onPress={() => { close(); a()?.setLayout({ align: option.id ?? undefined }); }} />)}</div>}</Menu> },
+      { id: 'spacing', min: 2, show: text, node: <Menu label={t('ed.tb.lineSpacing')} disabled={!marked || !format.canLayout} active={format.spacing !== null} trigger={<><EditorIcon name="spacing" /><EditorIcon name="chevron" size={14} /></>}>{(close) => <>{lineSpacings.map((value) => <Item key={value} active={(format.spacing ?? 1.15) === value || (format.spacing === null && value === 1.15)} onPick={() => { close(); a()?.setLayout({ spacing: value === 1.15 ? undefined : value }); }}>{value === 1.15 ? t('ed.tb.spacingDefault') : value}</Item>)}</>}</Menu> },
       { id: 'todo', min: 1, show: text, node: <ToolButton icon="checklist" label={t('blk.todo-list')} active={list === 'TODO'} disabled={!marked} onPress={() => a()?.toggleList('TODO')} /> },
       { id: 'bullet', min: 0, show: text, node: <ToolButton icon="bullets" label={t('blk.bulleted-list')} active={list === 'BULLET'} disabled={!marked} onPress={() => a()?.toggleList('BULLET')} /> },
       { id: 'numbered', min: 1, show: text, node: <ToolButton icon="numbered" label={t('blk.numbered-list')} active={list === 'NUMBERED'} disabled={!marked} onPress={() => a()?.toggleList('NUMBERED')} /> },
-      { id: 'outdent', min: 3, show: text, node: <ToolButton icon="indentOut" label={t('ed.tb.outdent')} keys="Shift+Tab" disabled={!marked || !format.canOutdent} onPress={() => a()?.indent(-1)} /> },
-      { id: 'indent', min: 3, show: text, node: <ToolButton icon="indentIn" label={t('ed.tb.indent')} keys="Tab" disabled={!marked || !format.canIndent} onPress={() => a()?.indent(1)} /> },
-      { id: 'clear', min: 3, show: text, node: <ToolButton icon="clear" label={t('ed.tb.clear')} disabled={!marked} onPress={() => a()?.clearFormatting()} /> },
+      { id: 'outdent', min: 2, show: text, node: <ToolButton icon="indentOut" label={t('ed.tb.outdent')} keys="Shift+Tab" disabled={!marked || !format.canOutdent} onPress={() => a()?.indent(-1)} /> },
+      { id: 'indent', min: 2, show: text, node: <ToolButton icon="indentIn" label={t('ed.tb.indent')} keys="Tab" disabled={!marked || !format.canIndent} onPress={() => a()?.indent(1)} /> },
+      { id: 'clear', min: 1, show: text, node: <ToolButton icon="clear" label={t('ed.tb.clear')} disabled={!marked} onPress={() => a()?.clearFormatting()} /> },
     ] },
   ];
   // Controls for the selected block when it is not text: an image, a table, or any other block.
@@ -172,10 +172,13 @@ export function EditorToolbar({ api, format, onPrint, onBrowseBlocks, viewing, o
     ] },
   ] : format.kind === 'table' ? [
     { id: 'table-tools', controls: [
-      { id: 'addRow', min: 0, show: true, node: <ToolButton icon="rowAdd" label={t('ed.tb.addRow')} disabled={!editable} onPress={() => a()?.tableOp('addRow')} /> },
-      { id: 'addCol', min: 0, show: true, node: <ToolButton icon="colAdd" label={t('ed.tb.addColumn')} disabled={!editable} onPress={() => a()?.tableOp('addColumn')} /> },
-      { id: 'delRow', min: 0, show: true, node: <ToolButton icon="rowRemove" label={t('ed.tb.removeRow')} disabled={!editable || format.rows <= 1} onPress={() => a()?.tableOp('removeRow')} /> },
-      { id: 'delCol', min: 0, show: true, node: <ToolButton icon="colRemove" label={t('ed.tb.removeColumn')} disabled={!editable || format.columns <= 1} onPress={() => a()?.tableOp('removeColumn')} /> },
+      { id: 'rowAbove', min: 0, show: true, node: <ToolButton icon="rowAdd" label={t('tbl.rowAbove')} disabled={!editable || format.rows >= 30} onPress={() => a()?.tableOp('rowAbove')} /> },
+      { id: 'rowBelow', min: 0, show: true, node: <ToolButton icon="rowAdd" label={t('tbl.rowBelow')} disabled={!editable || format.rows >= 30} onPress={() => a()?.tableOp('rowBelow')} /> },
+      { id: 'delRow', min: 0, show: true, node: <ToolButton icon="rowRemove" label={t('tbl.rowDelete')} disabled={!editable || format.rows <= 1} onPress={() => a()?.tableOp('deleteRow')} /> },
+      { id: 'colBefore', min: 1, show: true, node: <ToolButton icon="colAdd" label={t('tbl.colBefore')} disabled={!editable || format.columns >= 8} onPress={() => a()?.tableOp('colBefore')} /> },
+      { id: 'colAfter', min: 1, show: true, node: <ToolButton icon="colAdd" label={t('tbl.colAfter')} disabled={!editable || format.columns >= 8} onPress={() => a()?.tableOp('colAfter')} /> },
+      { id: 'delCol', min: 1, show: true, node: <ToolButton icon="colRemove" label={t('tbl.colDelete')} disabled={!editable || format.columns <= 1} onPress={() => a()?.tableOp('deleteColumn')} /> },
+      { id: 'delTable', min: 1, show: true, node: <ToolButton icon="trash" label={t('tbl.delete')} disabled={!editable} onPress={() => a()?.tableOp('deleteTable')} className="et-btn--danger" /> },
     ] },
   ] : [];
   const blockActions: Control[] = format.kind === 'image' || format.kind === 'table' || format.kind === 'atom' ? [

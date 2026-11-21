@@ -21,3 +21,32 @@ test('stored data is cleaned into a rectangle of strings, or replaced when unusa
   assert.deepEqual(cleanRows('nope'), newTable()); assert.deepEqual(cleanRows([]), newTable());
   assert.equal(cleanRows(Array.from({ length: 99 }, () => ['x'])).length, tableLimits.rows);
 });
+
+import { applyCellOp, insertColumn, insertRow } from '../app/workspace/documents/[documentId]/table-rules.ts';
+const grid = [['a1', 'b1', 'c1'], ['a2', 'b2', 'c2'], ['a3', 'b3', 'c3']];
+test('rows and columns are inserted and removed where the cell is, not at the end', () => {
+  assert.deepEqual(applyCellOp(grid, 'rowAbove', 1, 1), { rows: [grid[0], ['', '', ''], grid[1], grid[2]], row: 2, col: 1 });
+  assert.deepEqual(applyCellOp(grid, 'rowBelow', 1, 1).rows, [grid[0], grid[1], ['', '', ''], grid[2]]);
+  assert.deepEqual(applyCellOp(grid, 'rowBelow', 2, 0).rows.at(-1), ['', '', '']);
+  assert.deepEqual(applyCellOp(grid, 'deleteRow', 1, 2), { rows: [grid[0], grid[2]], row: 1, col: 2 });
+  assert.deepEqual(applyCellOp(grid, 'colBefore', 1, 1).rows, [['a1', '', 'b1', 'c1'], ['a2', '', 'b2', 'c2'], ['a3', '', 'b3', 'c3']]);
+  assert.deepEqual(applyCellOp(grid, 'colAfter', 1, 1).rows[2], ['a3', 'b3', '', 'c3']);
+  assert.deepEqual(applyCellOp(grid, 'deleteColumn', 0, 1), { rows: [['a1', 'c1'], ['a2', 'c2'], ['a3', 'c3']], row: 0, col: 1 });
+  assert.deepEqual(applyCellOp(grid, 'deleteColumn', 0, 2).rows[0], ['a1', 'b1'], 'deleting the last column leaves the caret on the new last one');
+});
+test('operations never take a table below one row or column, or past the limits, and keep other content', () => {
+  const one = [['x']];
+  assert.deepEqual(applyCellOp(one, 'deleteRow', 0, 0).rows, one); assert.deepEqual(applyCellOp(one, 'deleteColumn', 0, 0).rows, one);
+  let big = newTable(tableLimits.rows, tableLimits.columns);
+  assert.equal(insertRow(big, 3), big); assert.equal(insertColumn(big, 3), big);
+  assert.deepEqual(applyCellOp(grid, 'rowAbove', 99, 99).rows.length, 4, 'an out-of-range cell is clamped');
+  assert.deepEqual(grid[0], ['a1', 'b1', 'c1'], 'the original is untouched');
+});
+test('tables of different sizes keep their content through a sequence of edits', () => {
+  for (const [rows, cols] of [[1, 1], [2, 5], [6, 2], [4, 4]]) {
+    let t = newTable(rows, cols).map((row, r) => row.map((_, c) => `r${r}c${c}`)); const original = t.map((row) => row.slice());
+    t = applyCellOp(t, 'rowBelow', 0, 0).rows; t = applyCellOp(t, 'colAfter', 0, 0).rows;
+    t = applyCellOp(t, 'deleteRow', 1, 0).rows; t = applyCellOp(t, 'deleteColumn', 0, 1).rows;
+    assert.deepEqual(t, original);
+  }
+});

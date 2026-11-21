@@ -1,21 +1,42 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useT } from '../../../i18n';
 import { useWorkspaceSession } from '../../workspace-shell';
 import { useFilesApi } from '../../files/use-files-api';
 import type { FileRecord } from '../../files/types';
-import { addColumn, addRow, cleanRows, removeColumn, removeRow, setCell, type Rows } from './table-rules';
+import { addColumn, addRow, applyCellOp, cleanRows, removeColumn, removeRow, setCell, tableLimits, type CellOp, type Rows } from './table-rules';
+import { EditorIcon } from './editor-icons';
+import type { Key } from '../../../i18n/en';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const imageTypes = /^image\/(png|jpeg|gif|webp)$/;
 
-export function TableBlock({ rows, readOnly, onChange }: { rows: unknown; readOnly: boolean; onChange: (rows: Rows) => void }) {
+export function TableBlock({ rows, readOnly, onChange, blockId, onCell }: { rows: unknown; readOnly: boolean; onChange: (rows: Rows) => void; blockId?: string; onCell?: (blockId: string, row: number, col: number) => void }) {
   const t = useT();
   const grid = cleanRows(rows);
-  return <div className="document-table">
-    <div className="document-table__scroll"><table><tbody>{grid.map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c}><input value={cell} readOnly={readOnly} aria-label={t('bl.row', { r: r + 1, c: c + 1 })} onChange={(event) => onChange(setCell(grid, r, c, event.target.value))} /></td>)}
+  const root = useRef<HTMLDivElement>(null);
+  const [cell, setCellAt] = useState<{ r: number; c: number } | null>(null);
+  const at = (r: number, c: number) => { setCellAt({ r, c }); if (blockId) onCell?.(blockId, r, c); };
+  /** Row and column actions apply to the cell the caret is in: above or below its row, before or after its column, or that row or column itself. */
+  function run(op: CellOp) {
+    if (!cell) return;
+    const done = applyCellOp(grid, op, cell.r, cell.c);
+    if (done.rows === grid) return;
+    onChange(done.rows); at(done.row, done.col);
+    window.requestAnimationFrame(() => root.current?.querySelector<HTMLInputElement>(`input[data-cell="${done.row}-${done.col}"]`)?.focus());
+  }
+  const actions: { op: CellOp; key: Key; icon: 'rowAdd' | 'rowRemove' | 'colAdd' | 'colRemove'; disabled?: boolean }[] = [
+    { op: 'rowAbove', key: 'tbl.rowAbove', icon: 'rowAdd', disabled: grid.length >= tableLimits.rows }, { op: 'rowBelow', key: 'tbl.rowBelow', icon: 'rowAdd', disabled: grid.length >= tableLimits.rows }, { op: 'deleteRow', key: 'tbl.rowDelete', icon: 'rowRemove', disabled: grid.length <= 1 },
+    { op: 'colBefore', key: 'tbl.colBefore', icon: 'colAdd', disabled: grid[0].length >= tableLimits.columns }, { op: 'colAfter', key: 'tbl.colAfter', icon: 'colAdd', disabled: grid[0].length >= tableLimits.columns }, { op: 'deleteColumn', key: 'tbl.colDelete', icon: 'colRemove', disabled: grid[0].length <= 1 },
+  ];
+  return <div className="document-table" ref={root} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setCellAt(null); }}>
+    {!readOnly && cell && <div className="document-table__bar" role="toolbar" aria-label={t('tbl.bar')} onMouseDown={(event) => { if ((event.target as HTMLElement).tagName !== 'INPUT') event.preventDefault(); }}>
+      <span className="document-table__where">{t('tbl.cellAt', { r: cell.r + 1, c: cell.c + 1 })}</span>
+      {actions.map((action) => <button type="button" key={action.op} disabled={action.disabled} title={t(action.key)} aria-label={t(action.key)} onClick={() => run(action.op)}><EditorIcon name={action.icon} size={16} /><span>{t(action.key)}</span></button>)}
+    </div>}
+    <div className="document-table__scroll"><table><tbody>{grid.map((row, r) => <tr key={r}>{row.map((value, c) => <td key={c} className={cell && (cell.r === r || cell.c === c) ? (cell.r === r && cell.c === c ? 'is-cell' : 'is-line') : undefined}><span className="document-table__print" aria-hidden="true">{value}</span><input data-cell={`${r}-${c}`} value={value} readOnly={readOnly} aria-label={t('bl.row', { r: r + 1, c: c + 1 })} onFocus={() => at(r, c)} onChange={(event) => onChange(setCell(grid, r, c, event.target.value))} /></td>)}
       {!readOnly && <td className="document-table__edge"><button type="button" onClick={() => onChange(removeRow(grid, r))} disabled={grid.length <= 1} aria-label={t('bl.removeRow', { n: r + 1 })}>×</button></td>}</tr>)}
       {!readOnly && <tr className="document-table__edge">{grid[0].map((_, c) => <td key={c}><button type="button" onClick={() => onChange(removeColumn(grid, c))} disabled={grid[0].length <= 1} aria-label={t('bl.removeCol', { n: c + 1 })}>×</button></td>)}<td /></tr>}
     </tbody></table></div>

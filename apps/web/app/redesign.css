@@ -1184,3 +1184,63 @@ button:hover > .block-icon, button.is-active > .block-icon, button[aria-selected
 .document-studio__reopen { position: absolute; left: -6px; top: 8px; z-index: 6; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 8px; border: 1px solid var(--m-border); border-radius: 0 var(--ds-radius-md) var(--ds-radius-md) 0; background: var(--m-card-solid); color: var(--m-accent-ink); font: 600 var(--ds-fs-small) var(--aven-interface-font); box-shadow: var(--m-shadow); cursor: pointer; } .document-studio__reopen:hover { background: var(--m-chip); } .document-studio__layout--solo { position: relative; } @media (max-width: 720px) { .document-studio__reopen span { display: none; } }
 .et-group--end { position: sticky; right: 0; padding-left: 4px; background: var(--m-card-solid); box-shadow: -10px 0 8px -6px var(--m-card-solid); }
 @media (max-width: 720px) { .et-btn--wide { min-width: 96px; } .et-value { max-width: 84px; } }
+
+/* inline fonts and sizes (set on selected words, they win over the paragraph's) */
+.md-font-sans { font-family: var(--aven-interface-font); } .md-font-serif { font-family: var(--aven-display-font); } .md-font-mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+.aven-doc .md-size { line-height: 1.25; }
+
+/* table: the cell the caret is in, and the row and column controls that act on it */
+.document-table__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid var(--aven-border); border-radius: 10px; background: var(--aven-surface, var(--m-surface, #fff)); }
+.document-table__where { padding: 0 8px; color: var(--m-muted, var(--aven-muted)); font-size: 12px; }
+.document-table__bar button { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 3px 9px; border-radius: 8px; font-size: 12px; }
+.document-table__bar button:disabled { opacity: .45; cursor: default; }
+.document-table td.is-line { background: color-mix(in srgb, var(--m-focus, #3b6fc4) 7%, transparent); }
+.document-table td.is-cell { background: color-mix(in srgb, var(--m-focus, #3b6fc4) 14%, transparent); outline: 2px solid var(--m-focus, #3b6fc4); outline-offset: -2px; }
+@media (max-width: 720px) { .document-table__bar button span { display: none; } .document-table__bar button { min-width: 40px; min-height: 40px; justify-content: center; } }
+
+/* comments: the words a comment is about stay marked in the text, and the comment you clicked is picked out in the panel */
+.aven-doc .md-commented { background: color-mix(in srgb, var(--m-focus, #e0b45a) 22%, transparent); border-bottom: 2px solid color-mix(in srgb, var(--m-focus, #e0b45a) 70%, transparent); cursor: pointer; border-radius: 2px; }
+.document-studio__comments article.is-focused { outline: 2px solid var(--m-focus, #3b6fc4); outline-offset: 2px; }
+.document-studio__comment-actions .is-danger, .document-studio__reply-delete { color: var(--m-danger, #b4372b); }
+.document-studio__reply-delete { margin-top: 4px; padding: 0; border: 0; background: none; font-size: 12px; cursor: pointer; text-decoration: underline; }
+
+/* ---- Print: the document alone, as a standalone white page ------------------------------------------------------------------------------
+   The editor page sets `print-doc` on <html> (and the light theme) just before printing. Everything that is not the document or one of its ancestors
+   is dropped, and the ancestors are put back into ordinary flow, so the text runs across as many pages as it needs. No component is listed by name. */
+.document-table__print { display: none; }
+@media print {
+  @page { size: auto; margin: 20mm 18mm 22mm; @bottom-center { content: counter(page); font: 9pt Inter, Arial, sans-serif; color: #77766e; } }
+  html.print-doc, html.print-doc body { background: #fff !important; color: #1d1c1a !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
+  html.print-doc :is(body, body *):has(.aven-doc) > :not(.aven-doc):not(:has(.aven-doc)) { display: none !important; }
+  html.print-doc :is(body, body *):has(.aven-doc) { display: block !important; position: static !important; overflow: visible !important; height: auto !important; min-height: 0 !important; max-height: none !important; width: auto !important; max-width: none !important; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: #fff !important; transform: none !important; float: none !important; contain: none !important; container-type: normal !important; inset: auto !important; filter: none !important; backdrop-filter: none !important; }
+  html.print-doc .aven-doc { display: block !important; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; background: #fff !important; color: #1d1c1a !important; font-size: 11pt; line-height: 1.5; overflow: visible !important; box-shadow: none !important; border: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html.print-doc .aven-doc * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html.print-doc .aven-doc :is(h1, h2, h3, h4, .aven-heading_1, .aven-heading_2, .aven-heading_3, .aven-heading_4) { break-after: avoid; page-break-after: avoid; }
+  html.print-doc .aven-doc :is(tr, img, figure, pre, blockquote, .aven-callout, .aven-image, .aven-divider) { break-inside: avoid; page-break-inside: avoid; }
+  html.print-doc .aven-doc p, html.print-doc .aven-doc .aven-content { orphans: 3; widows: 3; }
+  html.print-doc .aven-doc img { max-width: 100% !important; height: auto; }
+  /* what only helps editing: markers, placeholders, selections, other people, find, comments, table controls */
+  html.print-doc .aven-doc .md-mark { font-size: 0 !important; }
+  html.print-doc .aven-doc .is-empty::before, html.print-doc .aven-doc .aven-content.is-empty::before { content: none !important; }
+  html.print-doc .aven-doc :is(.aven-caret, .document-table__edge, .document-table__actions, .document-table__bar, .aven-handle, .document-image__actions, .document-image__choices) { display: none !important; }
+  html.print-doc .aven-doc .aven-find, html.print-doc .aven-doc .md-commented, html.print-doc .aven-doc .is-picked, html.print-doc .aven-doc .has-others { background: transparent !important; border-bottom: 0 !important; outline: 0 !important; box-shadow: none !important; }
+  html.print-doc .aven-doc .has-others::before, html.print-doc .aven-doc .has-others::after { content: none !important; }
+  html.print-doc .document-table td input { display: none !important; }
+  html.print-doc .document-table td { border: 1px solid #c9c5ba !important; }
+  html.print-doc .document-table__print { display: block; padding: 6px 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 10pt Inter, Arial, sans-serif; }
+  html.print-doc .document-table__scroll { overflow: visible !important; }
+}
+
+/* phone: the size menu alone (the − and + steps are in the menu's list), and every toolbar button is a comfortable touch target */
+@media (max-width: 720px) {
+  .et-size > :first-child, .et-size > :last-child { display: none; }
+  .et-bar .et-btn:not(.et-btn--wide):not(.et-btn--size):not(.et-btn--colour):not(.et-btn--mode) { min-width: 40px; }
+  .et-bar .et-btn { min-height: 40px; } .et-btn--wide { min-width: 78px; } .et-value { max-width: 64px; } .et-sep { margin: 0 2px; } .et-btn--mode .et-label { display: none; }
+  .et-menu { max-width: calc(100vw - 16px); max-height: min(70vh, 460px); overflow-y: auto; }
+}
+@media (max-width: 720px) {
+  /* a phone wraps the toolbar onto a second row instead of scrolling, so Bold, Italic, Underline, colour, lists and alignment are all in reach; the end group (mode, More, collapse) stays with the last row */
+  .et-row-main { flex-wrap: wrap; overflow: visible; row-gap: 2px; }
+  .et-group--end { position: static; margin-left: auto; box-shadow: none; }
+  .et-spacer { display: none; }
+}

@@ -227,4 +227,14 @@ export class DocumentsController {
   ) {
     return this.productivity.resolveDocumentComment(identity, workspaceId, documentId, commentId, body);
   }
+
+  @Delete(':documentId/comments/:commentId')
+  deleteComment(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Param('commentId', new ParseUUIDPipe()) commentId: string,
+  ) {
+    return this.productivity.deleteDocumentComment(identity, workspaceId, documentId, commentId);
+  }
 }

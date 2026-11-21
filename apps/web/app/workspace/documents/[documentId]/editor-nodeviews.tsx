@@ -13,6 +13,8 @@ import type { DatabaseView, TabPane } from './editor-model';
 import type { BlockType } from './editor-model.ts';
 
 export type EditorEnv = {
+  /** A table cell was entered: table operations (from the toolbar too) act on this row and column. */
+  onTableCell?: (blockId: string, row: number, col: number) => void;
   readOnly: boolean; documentId: string; projectId: string | undefined;
   headings: { id: string; text: string; level: number }[]; crumbs: string[]; creatingTask: string;
   runButton: (blockId: string, title: string) => void; createTasks: (blockId: string, titles: string[]) => void;
@@ -38,7 +40,7 @@ function AtomView({ node, updateAttributes }: NodeViewProps) {
   let body: ReactNode = null;
   switch (a.type) {
     case 'DIVIDER': body = <hr />; break;
-    case 'TABLE': body = <TableBlock rows={a.rows} readOnly={env.readOnly} onChange={(rows) => change({ rows })} />; break;
+    case 'TABLE': body = <TableBlock rows={a.rows} readOnly={env.readOnly} onChange={(rows) => change({ rows })} blockId={a.blockId} onCell={env.onTableCell} />; break;
     case 'IMAGE': body = <ImageBlock fileId={str('fileId') || undefined} caption={str('text')} readOnly={env.readOnly} onPick={(fileId) => change({ fileId })} onCaption={(text) => change({ text })} />; break;
     case 'VIDEO': case 'AUDIO': case 'FILE': body = <MediaBlock kind={a.type} fileId={str('fileId') || undefined} caption={str('text')} readOnly={env.readOnly} onPick={(file) => change({ fileId: file.id, ...(a.type === 'FILE' ? { text: file.name } : {}) })} onCaption={(text) => change({ text })} />; break;
     case 'BOOKMARK': body = <BookmarkBlock url={str('url')} title={str('text')} readOnly={env.readOnly} onChange={(update) => change(update)} />; break;

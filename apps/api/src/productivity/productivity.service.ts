@@ -1161,6 +1161,17 @@ export class ProductivityService {
     return comment;
   }
 
+  /** A comment (and the replies under it) can be removed by whoever wrote it, or by a workspace administrator. */
+  async deleteDocumentComment(identity: AuthenticatedIdentity, workspaceId: string, documentId: string, commentId: string) {
+    const actor = await this.projectActor(identity, workspaceId, true);
+    const comment = await this.prisma.documentComment.findFirst({ where: { id: commentId, documentId, workspaceId } });
+    if (!comment) throw new NotFoundException('Comment not found for this document.');
+    if (comment.createdById !== actor.userId && actor.role !== 'ADMINISTRATOR') throw new ForbiddenException('You can only delete your own comments.');
+    await this.prisma.documentComment.delete({ where: { id: comment.id } });
+    await this.recordActivity(workspaceId, actor.userId, 'DOCUMENT', documentId, 'deleted a comment');
+    return { id: comment.id, deleted: true };
+  }
+
   private async requireDocument(workspaceId: string, documentId: string) {
     const document = await this.prisma.document.findFirst({ where: { id: documentId, workspaceId } });
     if (!document) throw new NotFoundException('Document not found in this workspace.');

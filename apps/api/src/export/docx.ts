@@ -6,11 +6,14 @@ const BODY = 'Calibri'; const DISPLAY = 'Georgia'; const MONO = 'Consolas';
 const INK = '2B2A27'; const MUTED = '77766E'; const SAND = 'F1EDE6'; const BORDER = 'DCD9D0'; const BRONZE = 'A48766';
 const HALF_POINTS = 22; // 11 pt body
 
+/** Editor sizes are screen pixels; Word counts half-points (px × 0.75 pt × 2). */
+const pxToHalfPoints = (px: number) => Math.round(px * 1.5);
+
 function runsToChildren(runs: Run[], base: { size?: number; bold?: boolean; italics?: boolean; font?: string; color?: string } = {}) {
   return runs.map((run) => {
     const text = new TextRun({
       text: run.text, bold: run.bold || base.bold, italics: run.italic || base.italics, strike: run.strike, underline: run.underline || run.href ? {} : undefined,
-      font: run.code ? MONO : base.font, size: run.code ? Math.round((base.size ?? HALF_POINTS) * 0.9) : base.size, color: run.href ? '3B6FC4' : run.colour ?? base.color,
+      font: run.code || run.font === 'mono' ? MONO : run.font === 'serif' ? DISPLAY : run.font === 'sans' ? BODY : base.font, size: run.size ? pxToHalfPoints(run.size) * (run.code ? 0.9 : 1) : run.code ? Math.round((base.size ?? HALF_POINTS) * 0.9) : base.size, color: run.href ? '3B6FC4' : run.colour ?? base.color,
       shading: run.highlight ? { type: ShadingType.CLEAR, fill: run.highlight, color: 'auto' } : run.code ? { type: ShadingType.CLEAR, fill: SAND, color: 'auto' } : undefined,
     });
     return run.href ? new ExternalHyperlink({ link: run.href, children: [text] }) : text;
@@ -39,7 +42,7 @@ function table(rows: string[][], caption: string | undefined): (Paragraph | Tabl
 const alignOf = (layout?: { align?: string }) => (layout?.align === 'center' ? AlignmentType.CENTER : layout?.align === 'right' ? AlignmentType.RIGHT : layout?.align === 'justify' ? AlignmentType.JUSTIFIED : undefined);
 const fontOf = (layout?: { font?: string }) => (layout?.font === 'serif' ? DISPLAY : layout?.font === 'mono' ? MONO : layout?.font === 'sans' ? BODY : undefined);
 /** Run options for the font and size an author chose; empty when they chose none, so Word styles still apply. */
-const runLayout = (layout?: { font?: string; size?: number }, extra: Record<string, unknown> = {}) => ({ ...extra, ...(fontOf(layout) ? { font: fontOf(layout) } : {}), ...(layout?.size ? { size: layout.size * 2 } : {}) });
+const runLayout = (layout?: { font?: string; size?: number }, extra: Record<string, unknown> = {}) => ({ ...extra, ...(fontOf(layout) ? { font: fontOf(layout) } : {}), ...(layout?.size ? { size: pxToHalfPoints(layout.size) } : {}) });
 const lineOf = (layout?: { spacing?: number }, fallback = 300) => (layout?.spacing ? Math.round(layout.spacing * 240) : fallback);
 
 function convert(node: ExportNode, state: { numbering: number }): (Paragraph | Table)[] {

@@ -77,7 +77,7 @@ test('the Word file is a real .docx: valid package, real styles, lists, a table,
   const xml = strFromU8(zip['word/document.xml']);
   assert.ok(xml.includes('w:pStyle w:val="Heading1"') && xml.includes('Launch &amp; &lt;plan&gt;'), 'heading style, text escaped');
   assert.ok(xml.includes('<w:hyperlink') && xml.includes('<w:numPr>') && xml.includes('<w:tbl>') && xml.includes('<w:drawing>'));
-  assert.ok(xml.includes('w:val="Consolas"') || strFromU8(zip['word/styles.xml']).length > 0);
+  assert.ok(xml.includes('w:ascii="Consolas"') || strFromU8(zip['word/styles.xml']).length > 0);
   assert.ok(xml.includes('>bold<') && xml.includes('<w:b/>'));
   assert.ok(strFromU8(zip['word/_rels/document.xml.rels']).includes('https://example.com'));
 });
@@ -111,9 +111,28 @@ test('bold and italic together, and the layout an author set, reach the Word fil
   assert.deepEqual(doc.nodes[0].layout, { align: 'center', spacing: 2, font: 'serif', size: 20 }); assert.deepEqual(doc.nodes[1].layout, { align: 'right' }); assert.equal(doc.nodes[2].layout, undefined, 'unusable values are dropped');
   const xml = strFromU8(unzipSync(new Uint8Array(await renderDocx(doc)))['word/document.xml']);
   assert.ok(xml.includes('<w:jc w:val="center"/>') && xml.includes('<w:jc w:val="right"/>'), 'alignment');
-  assert.ok(xml.includes('w:line="480"') && xml.includes('<w:sz w:val="40"/>'), 'line spacing and size in half points');
+  assert.ok(xml.includes('w:line="480"') && xml.includes('<w:sz w:val="30"/>'), 'line spacing, and the editor\'s 20px as 15pt in half points');
   assert.ok(xml.includes('Georgia') && xml.includes('<w:b/>') && xml.includes('<w:i/>'));
   const pdf = await renderPdf(doc); assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
   const shown = publicBlocks(JSON.stringify({ format: 'aven-doc-v1', blocks: [{ type: 'PARAGRAPH', text: 'a', align: 'center', size: 18 }, { type: 'CODE', text: 'c', align: 'center' }] }), () => '');
   assert.deepEqual(shown[0].layout, { align: 'center', size: 18 }); assert.equal(shown[1].layout, undefined, 'code keeps its own look');
+});
+
+test('inline styles nest: bold + colour + font + size in one run, and mixed fonts and sizes within one paragraph', () => {
+  const runs = parseRuns('{font-serif,size-30:Welcome to AVEN}. Your **{red:entire}** world, {size-12:organised}.');
+  assert.deepEqual(runs.map((run) => run.text), ['Welcome to AVEN', '. Your ', 'entire', ' world, ', 'organised', '.']);
+  assert.deepEqual([runs[0].font, runs[0].size], ['serif', 30]);
+  assert.ok(runs[2].bold && runs[2].colour === 'C0392B');
+  assert.equal(runs[4].size, 12);
+  assert.equal(parseRuns('{size-3:x}')[0].text, '{size-3:x}');
+});
+
+test('Word and PDF keep inline fonts, sizes and combined marks from the same text', async () => {
+  const blocks = [b('PARAGRAPH', '{font-serif,size-32:Big serif} then **{red:bold red}** and {font-mono,size-10:small mono}')];
+  const doc = await build(blocks);
+  const xml = strFromU8(unzipSync(new Uint8Array(await renderDocx(doc)))['word/document.xml']);
+  assert.ok(xml.includes('w:ascii="Georgia"') && xml.includes('<w:sz w:val="48"/>'), 'serif at 32px is 24pt');
+  assert.ok(/<w:b\/>[\s\S]*?<w:color w:val="C0392B"\/>|<w:color w:val="C0392B"\/>[\s\S]*?<w:b\/>/.test(xml), 'bold and colour on the same run');
+  assert.ok(xml.includes('w:ascii="Consolas"') && xml.includes('<w:sz w:val="15"/>'));
+  assert.ok((await renderPdf(doc)).subarray(0, 5).toString() === '%PDF-');
 });

@@ -46,4 +46,20 @@ describe('document comment threads', { skip }, () => {
     assert.ok(list.find((c) => c.id === top.id).resolvedAt);
     assert.ok(list.some((c) => c.parentId === top.id));
   });
+
+  test('a comment can be reopened after resolving, and deleted by its author or an admin but not by another member', async () => {
+    const top = (await t.call('cal', 'POST', base(), { body: 'Mine', blockId: 'b3', quote: 'words' })).body;
+    await t.call('cora', 'PATCH', `${base()}/${top.id}`, { resolved: true });
+    const reopened = await t.call('cal', 'PATCH', `${base()}/${top.id}`, { resolved: false });
+    assert.equal(reopened.status, 200); assert.equal(reopened.body.resolvedAt, null);
+    const reply = (await t.call('cora', 'POST', base(), { body: 'Reply', parentId: top.id })).body;
+    assert.equal((await t.call('gus', 'DELETE', `${base()}/${top.id}`)).status, 403, 'a guest cannot delete');
+    const other = (await t.call('cora', 'POST', base(), { body: 'Cora only' })).body;
+    assert.equal((await t.call('cal', 'DELETE', `${base()}/${other.id}`)).status, 403, 'a member cannot delete someone else’s comment');
+    assert.equal((await t.call('cal', 'DELETE', `${base()}/${top.id}`)).status, 200);
+    const list = (await t.call('cora', 'GET', base())).body;
+    assert.ok(!list.some((c) => c.id === top.id || c.id === reply.id), 'the replies go with it');
+    assert.equal((await t.call('cora', 'DELETE', `${base()}/${other.id}`)).status, 200);
+    assert.equal((await t.call('cora', 'DELETE', `${base()}/${other.id}`)).status, 404);
+  });
 });

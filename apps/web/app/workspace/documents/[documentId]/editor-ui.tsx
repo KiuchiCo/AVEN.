@@ -4,25 +4,27 @@ import { Fragment, useState, type ReactNode } from 'react';
 import { useT } from '../../../i18n';
 import { Icon } from '../../home-icons';
 import type { Key } from '../../../i18n/en';
-import { filterSlash, parseInline, tones, type Mark } from './editor-model';
+import { filterSlash, tones, type Mark } from './editor-model';
+import { styledRuns } from './inline-style';
 import { BlockIcon } from '../../block-icons';
 import { readRecent } from './recent-blocks';
 import { catalogCategories, type BlockCategory, type CatalogEntry } from './block-catalog';
 
-/** Shows a block's text with its inline marks applied. Everything is rendered as React nodes, never as HTML. */
+/** Shows a block's text with its inline styles applied (they combine: a run can be bold, red, serif and 24px at once). Everything is rendered as React nodes, never as HTML. */
 export function RichText({ text }: { text: string }) {
-  return <>{parseInline(text).map((run, index) => {
-    const key = `${index}-${run.kind}`;
-    if (run.kind === 'bold') return <strong key={key}>{run.text}</strong>;
-    if (run.kind === 'bolditalic') return <strong key={key}><em>{run.text}</em></strong>;
-    if (run.kind === 'italic') return <em key={key}>{run.text}</em>;
-    if (run.kind === 'strike') return <s key={key}>{run.text}</s>;
-    if (run.kind === 'underline') return <u key={key}>{run.text}</u>;
-    if (run.kind === 'highlight') return <mark key={key}>{run.text}</mark>;
-    if (run.kind === 'colour') return <span key={key} className={`md-colour md-c-${run.tone}`}>{run.text}</span>;
-    if (run.kind === 'code') return <code key={key}>{run.text}</code>;
-    if (run.kind === 'link') return <a key={key} href={run.href} target="_blank" rel="noopener noreferrer">{run.text}</a>;
-    return <Fragment key={key}>{run.text}</Fragment>;
+  return <>{styledRuns(text).map(({ text: words, style }, index) => {
+    if (!Object.keys(style).length) return <Fragment key={index}>{words}</Fragment>;
+    const classes = [style.tone ? `md-colour md-c-${style.tone}` : '', style.bg ? `md-colour md-c-bg-${style.bg}` : '', style.font ? `md-font-${style.font}` : ''].filter(Boolean).join(' ');
+    let node: ReactNode = words;
+    if (style.code) node = <code>{node}</code>;
+    if (style.italic) node = <em>{node}</em>;
+    if (style.bold) node = <strong>{node}</strong>;
+    if (style.mark) node = <mark>{node}</mark>;
+    if (style.underline) node = <u>{node}</u>;
+    if (style.strike) node = <s>{node}</s>;
+    if (classes || style.size) node = <span className={classes || undefined} style={style.size ? { fontSize: `${style.size}px` } : undefined}>{node}</span>;
+    if (style.href) node = <a href={style.href} target="_blank" rel="noopener noreferrer">{node}</a>;
+    return <Fragment key={index}>{node}</Fragment>;
   })}</>;
 }
 
