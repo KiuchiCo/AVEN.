@@ -95,6 +95,7 @@ model User {
   notifyTeamActivity          Boolean             @default(true)
   notifyTaskUpdates           Boolean             @default(true)
   pushSubscriptions           PushSubscription[]
+  nativePushDevices           NativePushDevice[]
   dashboardHiddenWidgets      String[]            @default([])
   emailNotifications          Boolean             @default(false)
   /// IANA name such as Australia/Sydney. Null means "use the device's own time zone".
@@ -1333,4 +1334,19 @@ model RateLimitBucket {
 
   @@index([resetAt])
   @@map("rate_limit_buckets")
+}
+
+/// One iPhone or iPad running the AVEN. app that agreed to receive notifications. The token is Apple's address for the device (APNs).
+model NativePushDevice {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  token       String   @unique @db.VarChar(200)
+  /// development builds talk to Apple's sandbox, release builds to production.
+  environment String   @db.VarChar(12)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("native_push_devices")
 }

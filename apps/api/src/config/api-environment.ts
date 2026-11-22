@@ -28,6 +28,8 @@ export type ApiEnvironment = {
   aiApiKey?: string;
   /** Browser push (VAPID). Absent means push is off. */
   push?: { publicKey: string; privateKey: string; subject: string };
+  /** Apple Push Notification service, for the iPhone and iPad app. Absent means native push is off. `baseUrl` exists for tests (a local stand-in). */
+  apns?: { keyId: string; teamId: string; privateKey: string; bundleId: string; baseUrl?: string };
   /** Optional web search for AVEN Intelligence (Brave Search API). */
   webSearch?: { apiKey: string; baseUrl: string };
   /** Optional embeddings for semantic search, from any OpenAI-compatible /embeddings endpoint. */
@@ -101,6 +103,16 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   const trustRaw = source.TRUST_PROXY?.trim().toLowerCase() || 'false';
   const trustProxy = parseTrustProxy(trustRaw, errors);
   if (trustProxy === true && source.NODE_ENV === 'production') errors.push('TRUST_PROXY=true makes the API believe any client\u2019s X-Forwarded-For header; use the number of proxies in front of it, or the addresses they connect from');
+  const apnsValues = [source.APNS_KEY_ID, source.APNS_TEAM_ID, source.APNS_PRIVATE_KEY].map((value) => value?.trim() || undefined);
+  let apns: ApiEnvironment['apns'];
+  if (apnsValues.some(Boolean)) {
+    const [keyId, teamId, privateKey] = apnsValues;
+    const pem = privateKey?.replaceAll('\\n', '\n');
+    if (!keyId || !teamId || !pem) errors.push('APNS_KEY_ID, APNS_TEAM_ID and APNS_PRIVATE_KEY must be set together');
+    else if (!/^[A-Z0-9]{10}$/.test(keyId) || !/^[A-Z0-9]{10}$/.test(teamId)) errors.push('APNS_KEY_ID and APNS_TEAM_ID are 10 letters or digits (from your Apple Developer account)');
+    else if (!pem.startsWith('-----BEGIN PRIVATE KEY-----')) errors.push('APNS_PRIVATE_KEY must be the contents of the .p8 key file');
+    else apns = { keyId, teamId, privateKey: pem, bundleId: source.APNS_BUNDLE_ID?.trim() || 'app.aven.mobile', ...(source.APNS_BASE_URL?.trim() ? { baseUrl: source.APNS_BASE_URL.trim() } : {}) };
+  }
   const rateLimitRaw = source.RATE_LIMIT_STORE?.trim().toLowerCase() || 'memory';
   if (rateLimitRaw !== 'memory' && rateLimitRaw !== 'postgres') errors.push('RATE_LIMIT_STORE must be memory or postgres');
   const realtimeRaw = source.REALTIME_BUS?.trim().toLowerCase() || 'memory';
@@ -224,5 +236,5 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, rateLimitStore: rateLimitRaw === 'postgres' ? 'postgres' : 'memory', realtimeBus: realtimeRaw === 'postgres' ? 'postgres' : 'memory', monitoring: { errorTrackingDsn, errorTrackingEnvironment: source.ERROR_TRACKING_ENVIRONMENT?.trim() || source.NODE_ENV || 'production', release: source.APP_RELEASE?.trim() || undefined, metricsToken }, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, embeddings, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, apns, rateLimitStore: rateLimitRaw === 'postgres' ? 'postgres' : 'memory', realtimeBus: realtimeRaw === 'postgres' ? 'postgres' : 'memory', monitoring: { errorTrackingDsn, errorTrackingEnvironment: source.ERROR_TRACKING_ENVIRONMENT?.trim() || source.NODE_ENV || 'production', release: source.APP_RELEASE?.trim() || undefined, metricsToken }, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, embeddings, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
 }

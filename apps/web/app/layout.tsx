@@ -22,7 +22,8 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: 'AVEN.', statusBarStyle: 'default' },
 };
 
-export const viewport: Viewport = { themeColor: '#F8F6F1' };
+// viewportFit: cover lets the page use the whole screen of a phone; the layout then keeps clear of the notch and home indicator with the safe-area insets.
+export const viewport: Viewport = { themeColor: [{ media: '(prefers-color-scheme: light)', color: '#F8F6F1' }, { media: '(prefers-color-scheme: dark)', color: '#2B2A27' }], viewportFit: 'cover' };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const nonce = (await headers()).get('x-nonce') ?? undefined; // reading the request makes every page render per request, which a script nonce needs

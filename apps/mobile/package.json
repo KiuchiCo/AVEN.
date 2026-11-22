@@ -5,8 +5,13 @@
   "description": "AVEN. for iPhone and iPad: the web app in a native shell (Capacitor).",
   "scripts": {
     "sync": "cap sync ios",
-    "build:ios": "cap sync ios && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build",
-    "test": "node --experimental-strip-types --test test/*.test.mjs"
+    "build:ios": "node scripts/build-ios.mjs development",
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
+    "sync:staging": "AVEN_ENV=staging cap sync ios",
+    "sync:production": "AVEN_ENV=production cap sync ios",
+    "build:ios:staging": "node scripts/build-ios.mjs staging",
+    "build:ios:production": "node scripts/build-ios.mjs production",
+    "icons": "node assets/make-icon.mjs"
   },
   "dependencies": {
     "@capacitor/core": "8.6.2",

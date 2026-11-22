@@ -26,3 +26,13 @@ test('the shell identifies itself as AVEN. and uses the brand background', async
   const config = await load('https://aven.example.com');
   assert.equal(config.appName, 'AVEN.'); assert.equal(config.ios.backgroundColor, '#F8F6F1');
 });
+
+test('environments: development defaults to localhost; staging and production need a public https address', async () => {
+  const { resolveServer } = await import(`../capacitor.config.ts?case=${Math.random()}`);
+  assert.deepEqual(resolveServer({}), { environment: 'development', origin: 'http://localhost:3000', cleartext: true });
+  assert.throws(() => resolveServer({ AVEN_ENV: 'production' }), /needs the web app/);
+  assert.throws(() => resolveServer({ AVEN_ENV: 'production', AVEN_PRODUCTION_URL: 'http://aven.example.com' }), /public https/);
+  assert.throws(() => resolveServer({ AVEN_ENV: 'staging', AVEN_STAGING_URL: 'https://localhost:3000' }), /public https/);
+  assert.throws(() => resolveServer({ AVEN_ENV: 'qa' }), /AVEN_ENV/);
+  assert.deepEqual(resolveServer({ AVEN_ENV: 'production', AVEN_PRODUCTION_URL: 'https://app.aven.example/x' }), { environment: 'production', origin: 'https://app.aven.example', cleartext: false });
+});

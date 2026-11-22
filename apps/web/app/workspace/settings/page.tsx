@@ -6,6 +6,7 @@ import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
 import { BillingCard } from './billing-card';
 import { DeleteWorkspaceCard } from './delete-workspace-card';
+import { DeviceCard } from './device-card';
 import { LanguageCard } from './language-card';
 import { MyDataCard } from './my-data-card';
 import { PermissionsCard } from './permissions-card';
@@ -112,6 +113,7 @@ export default function WorkspaceSettingsPage() {
     <LanguageCard />
     <TimeZoneCard />
     <PushCard />
+    <DeviceCard />
     <BillingCard />
     <PermissionsCard />
     <div className="workspace-settings-card">

@@ -7,6 +7,7 @@ const publicRoutes = new Map([
   ['GET /api/v1/health', 'liveness probe'],
   ['GET /api/v1/health/ready', 'readiness probe'],
   ['POST /api/v1/telemetry/client-error', 'browsers report script errors here, including from signed-out pages; it is tightly rate limited, stores nothing, and scrubs what it forwards'],
+  ['POST /api/v1/push/devices/unregister', 'a phone forgets its own device token on sign-out, when the session is already gone; the unguessable token is the proof, and it is strictly rate limited'],
   ['POST /api/v1/billing/webhook', 'called by the payment provider; protected by its signature'],
   ['GET /api/v1/integrations/calendar/callback', 'the calendar provider sends the browser here after sign-in; the signed, expiring state proves who started it'],
   ['GET /api/v1/shared/documents/:token', 'a document share link: the secret in the address is the credential, and it is read-only for one document'],

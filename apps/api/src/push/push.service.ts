@@ -1,5 +1,5 @@
 import { reportIntegrationFailure, reportJobFailure } from '../observability/error-reporter.js';
-import { BadRequestException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { readApiEnvironment } from '../config/api-environment.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -7,7 +7,10 @@ import { notificationHref } from '../email/email-templates.js';
 import { sendWebhook, WebhookError } from '../workflows/webhook.js';
 import { encryptPayload, vapidAuthorization, type VapidKeys } from './push-crypto.js';
 import { MAX_SUBSCRIPTIONS_PER_USER, parseEndpoint, parseSubscription, pushMessage } from './push-rules.js';
-import { PUSH_SETTINGS, type PushSettings } from './tokens.js';
+import { APNS, PUSH_SETTINGS, type PushSettings } from './tokens.js';
+import { apnsPayload, isDeadToken, type ApnsClient } from './apns.js';
+
+const MAX_DEVICES_PER_USER = 10;
 
 const TICK_MS = 15_000;
 const FRESH_MS = 10 * 60_000;
@@ -19,16 +22,16 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private ticking = false;
 
-  constructor(private readonly prisma: PrismaService, @Inject(PUSH_SETTINGS) private readonly settings: PushSettings | null) {}
+  constructor(private readonly prisma: PrismaService, @Inject(PUSH_SETTINGS) private readonly settings: PushSettings | null, @Optional() @Inject(APNS) private readonly apns: ApnsClient | null = null) {}
 
   onModuleInit() {
-    if (!this.settings || process.env.NODE_ENV === 'test' || process.env.PUSH_DISABLED === 'true') return;
+    if ((!this.settings && !this.apns) || process.env.NODE_ENV === 'test' || process.env.PUSH_DISABLED === 'true') return;
     this.timer = setInterval(() => { void this.tick().catch((error) => { reportJobFailure('push', error); this.logger.error(`Push pass failed: ${error instanceof Error ? error.message : error}`); }); }, TICK_MS);
     this.timer.unref();
   }
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
 
-  config() { return { enabled: Boolean(this.settings), publicKey: this.settings?.publicKey ?? null }; }
+  config() { return { enabled: Boolean(this.settings), publicKey: this.settings?.publicKey ?? null, native: Boolean(this.apns) }; }
 
   private async userId(identity: AuthenticatedIdentity) {
     const user = await this.prisma.user.findUnique({ where: { identityIssuer_identitySubject: { identityIssuer: identity.issuer, identitySubject: identity.subject } }, select: { id: true } });
@@ -53,14 +56,46 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
     return { subscribed: false };
   }
 
+  /** The iPhone or iPad app registers (or re-registers) its notification token for the signed-in person. A token belongs to one person: signing in as someone else on the same device moves it. */
+  async registerDevice(identity: AuthenticatedIdentity, input: unknown) {
+    const userId = await this.userId(identity);
+    const body = input && typeof input === 'object' && !Array.isArray(input) ? input as { token?: unknown; environment?: unknown } : {};
+    const token = typeof body.token === 'string' ? body.token.trim().toLowerCase() : '';
+    if (!/^[0-9a-f]{32,200}$/.test(token)) throw new BadRequestException('That is not a valid device token.');
+    const environment = body.environment === 'development' ? 'development' : 'production';
+    const existing = await this.prisma.nativePushDevice.findUnique({ where: { token }, select: { userId: true } });
+    if (!existing && await this.prisma.nativePushDevice.count({ where: { userId } }) >= MAX_DEVICES_PER_USER) throw new BadRequestException(`You can have up to ${MAX_DEVICES_PER_USER} devices receiving notifications. Remove one first.`);
+    await this.prisma.nativePushDevice.upsert({ where: { token }, create: { userId, token, environment }, update: { userId, environment } });
+    return { registered: true };
+  }
+
+  async removeDevice(identity: AuthenticatedIdentity, input: unknown) {
+    const userId = await this.userId(identity);
+    const token = this.tokenOf(input);
+    await this.prisma.nativePushDevice.deleteMany({ where: { userId, token } });
+    return { registered: false };
+  }
+
+  /** See PushDeviceUnregisterController: the token itself is the proof. */
+  async unregisterDevice(input: unknown) {
+    await this.prisma.nativePushDevice.deleteMany({ where: { token: this.tokenOf(input) } });
+    return { registered: false };
+  }
+
+  private tokenOf(input: unknown) {
+    const token = input && typeof input === 'object' && !Array.isArray(input) && typeof (input as { token?: unknown }).token === 'string' ? (input as { token: string }).token.trim().toLowerCase() : '';
+    if (!/^[0-9a-f]{32,200}$/.test(token)) throw new BadRequestException('That is not a valid device token.');
+    return token;
+  }
+
   /** Sends each person with a subscription one push for their newest unread notifications. */
   async tick(now = new Date()): Promise<{ pushes: number; removed: number }> {
     const result = { pushes: 0, removed: 0 };
-    if (!this.settings || this.ticking) return result;
+    if ((!this.settings && !this.apns) || this.ticking) return result;
     this.ticking = true;
     try {
       const pending = await this.prisma.activityReceipt.findMany({
-        where: { isNotificationTarget: true, pushedAt: null, readAt: null, dismissedAt: null, createdAt: { gte: new Date(now.getTime() - FRESH_MS) }, user: { notifyTaskUpdates: true, pushSubscriptions: { some: {} } } },
+        where: { isNotificationTarget: true, pushedAt: null, readAt: null, dismissedAt: null, createdAt: { gte: new Date(now.getTime() - FRESH_MS) }, user: { notifyTaskUpdates: true, OR: [...(this.settings ? [{ pushSubscriptions: { some: {} } }] : []), ...(this.apns ? [{ nativePushDevices: { some: {} } }] : [])] } },
         orderBy: { createdAt: 'asc' }, take: 300,
         select: { id: true, userId: true, activity: { select: { actorId: true, entityType: true, entityId: true, message: true, actor: { select: { displayName: true } }, workspace: { select: { name: true } } } } },
       });
@@ -73,8 +108,19 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
         if (!claimed.count) continue;
         const mine = receipts.filter((r) => r.activity.actorId !== userId || r.activity.entityType === 'WORKFLOW');
         if (!mine.length) continue;
-        const payload = Buffer.from(JSON.stringify(pushMessage(mine.map((r) => ({ actorName: r.activity.actor.displayName, message: r.activity.message, workspaceName: r.activity.workspace.name, href: notificationHref(r.activity.entityType, r.activity.entityId) })), webBaseUrl)));
-        const subscriptions = await this.prisma.pushSubscription.findMany({ where: { userId } });
+        const message = pushMessage(mine.map((r) => ({ actorName: r.activity.actor.displayName, message: r.activity.message, workspaceName: r.activity.workspace.name, href: notificationHref(r.activity.entityType, r.activity.entityId) })), webBaseUrl);
+        const payload = Buffer.from(JSON.stringify(message));
+        // iPhones and iPads: through Apple. The tap opens the same screen the browser notification would.
+        if (this.apns) {
+          const devices = await this.prisma.nativePushDevice.findMany({ where: { userId } });
+          for (const device of devices) {
+            const sent = await this.apns.send(device.token, device.environment === 'development' ? 'development' : 'production', apnsPayload({ title: message.title, body: message.body, path: message.url.replace(webBaseUrl, '') || '/workspace/inbox', thread: message.title }));
+            if (sent.status === 200) { result.pushes += 1; }
+            else if (isDeadToken(sent)) { await this.prisma.nativePushDevice.deleteMany({ where: { id: device.id } }); result.removed += 1; }
+            else { reportIntegrationFailure('apns', new Error(`APNs answered ${sent.status} ${sent.reason ?? ''}`.trim()), { status: sent.status }); }
+          }
+        }
+        const subscriptions = this.settings ? await this.prisma.pushSubscription.findMany({ where: { userId } }) : [];
         for (const subscription of subscriptions) {
           try { await this.deliver(subscription, payload, now); result.pushes += 1; }
           catch (error) {

@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		265AFBF15F1D57919B71605D /* AvenBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E608601995356CD8D1F90D5 /* AvenBridgeViewController.swift */; };
+		2A31A12A0C355BF2A87E79C6 /* AvenNativePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E5F9C88863C5D93B571BF27 /* AvenNativePlugin.swift */; };
+		261C8BC4C43B56C38AA32893 /* AppLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F1D74140535D52B782034D /* AppLock.swift */; };
+		F6167F26595450209A4A0D9B /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A22D8485A1A59D3AA9FF0A4 /* Keychain.swift */; };
+		DB155C848F8B51DDBEBE3621 /* AvenNotificationCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAAF916AD1EB5CCC8A25CC63 /* AvenNotificationCenter.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -19,6 +24,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		5E608601995356CD8D1F90D5 /* AvenBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvenBridgeViewController.swift; sourceTree = "<group>"; };
+		7E5F9C88863C5D93B571BF27 /* AvenNativePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvenNativePlugin.swift; sourceTree = "<group>"; };
+		55F1D74140535D52B782034D /* AppLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLock.swift; sourceTree = "<group>"; };
+		3A22D8485A1A59D3AA9FF0A4 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		DAAF916AD1EB5CCC8A25CC63 /* AvenNotificationCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvenNotificationCenter.swift; sourceTree = "<group>"; };
+		A6F6EC26D7DC586C88014AF8 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -66,6 +77,12 @@
 			children = (
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
+				5E608601995356CD8D1F90D5 /* AvenBridgeViewController.swift */,
+				7E5F9C88863C5D93B571BF27 /* AvenNativePlugin.swift */,
+				55F1D74140535D52B782034D /* AppLock.swift */,
+				3A22D8485A1A59D3AA9FF0A4 /* Keychain.swift */,
+				DAAF916AD1EB5CCC8A25CC63 /* AvenNotificationCenter.swift */,
+				A6F6EC26D7DC586C88014AF8 /* App.entitlements */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -158,6 +175,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				265AFBF15F1D57919B71605D /* AvenBridgeViewController.swift in Sources */,
+				2A31A12A0C355BF2A87E79C6 /* AvenNativePlugin.swift in Sources */,
+				261C8BC4C43B56C38AA32893 /* AppLock.swift in Sources */,
+				F6167F26595450209A4A0D9B /* Keychain.swift in Sources */,
+				DB155C848F8B51DDBEBE3621 /* AvenNotificationCenter.swift in Sources */,
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);
@@ -301,6 +323,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -323,6 +346,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (

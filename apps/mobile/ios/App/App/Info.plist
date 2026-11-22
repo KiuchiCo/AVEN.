@@ -70,6 +70,29 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>app.aven.mobile</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>aven</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>AVEN. uses Face ID to unlock the app if you turn on the app lock in Settings. It never replaces your sign-in.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>AVEN. uses the camera when you scan a document or take a photo to attach to a task, document or message.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>AVEN. saves a photo or scan to your library only when you ask it to.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

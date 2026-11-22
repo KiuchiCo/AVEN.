@@ -13,6 +13,8 @@ import { navigationGroups, workspaceNavigation } from './workspace-navigation';
 import { OfflineBanner } from './offline-banner';
 import { TaskSyncBanner, TaskSyncProvider } from './task-sync';
 import { WorkspaceSwitcher } from './workspace-switcher';
+import { MobileTabBar } from '../mobile/mobile-tab-bar';
+import { NativeEvents } from '../mobile/native-events';
 
 const WorkspaceContext = createContext<WorkspaceSession | null>(null);
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
@@ -89,6 +91,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
       <LanguageProvider language={session.user.language}>
       <FavouritesProvider workspaceId={session.workspace.id}>
       <TaskSyncProvider>
+      <NativeEvents />
       <div className={`workspace-app${collapsed ? ' workspace-app--collapsed' : ''}`}>
         {mobileOpen && (
           <button
@@ -180,6 +183,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
             {ready ? <Fragment key={session.workspace.id}>{children}</Fragment> : <div className="ds-skeleton" aria-busy="true" aria-label={t('shell.loading')}><i /><i /><i /></div>}
           </main>
         </div>
+        <MobileTabBar unread={unread} moreOpen={mobileOpen} onMore={() => setMobileOpen((open) => !open)} />
       </div>
       </TaskSyncProvider>
       </FavouritesProvider>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Push notifications. Release builds are given the production value by their provisioning profile. -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- Universal links: add "applinks:<your web domain>" here once the domain serves /.well-known/apple-app-site-association (see docs/IOS_SETUP.md). -->
+</dict>
+</plist>
