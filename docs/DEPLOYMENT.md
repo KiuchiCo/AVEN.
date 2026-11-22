@@ -14,6 +14,8 @@ Copy `.env.example` to `.env` once and fill it in. Never copy it over an existin
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_ISSUER` | Sign-in. Use a production Clerk instance, not a development one |
 | `TRUST_PROXY` | How the API learns a visitor's address. Best: the proxy's own addresses, e.g. `10.0.0.0/8` or `loopback,172.16.0.5` (a connection from anywhere else has its forwarding headers ignored, so reaching the API directly cannot forge an address). Or the number of proxies in front (usually `1`), which is only safe if the API cannot be reached except through them. `true` is refused in production. Without it every visitor looks like the proxy's address and shares one rate limit |
 | `RATE_LIMIT_STORE` | `memory` (default) or `postgres`. With `postgres` the request counters are shared by every API instance and survive restarts (one database write per limited request; apply the `rate_limits` migration first). Signed-in requests are counted per account, others per client address. If the shared store is down or slower than 1.5 s, ordinary routes count on one instance alone, but sensitive ones (AI, exports, uploads, invitations and members, calendar connections, automations, billing) answer 503 rather than count loosely |
+| `ERROR_TRACKING_DSN`, `ERROR_TRACKING_ENVIRONMENT`, `APP_RELEASE`, `NEXT_PUBLIC_APP_RELEASE`, `METRICS_TOKEN` | Monitoring (all optional): where errors are sent, a release label on each report, and the token that opens `GET /api/v1/metrics`. See [OPERATIONS.md](OPERATIONS.md) for what is watched, alerts, deployment and rollback |
+| `REALTIME_BUS` | `memory` (default: live events reach only people connected to this API instance) or `postgres` (shared between instances over LISTEN/NOTIFY; see §4) |
 | `STREAM_MAX_MS`, `STREAM_RECHECK_MS` | How long a live stream may stay open (default 15 minutes, then the browser reconnects with a fresh sign-in token) and how often an open one is checked for access (default 25 s). Leave at the defaults |
 
 Optional features switch on when their keys are present: `ANTHROPIC_API_KEY` (AVEN Intelligence), `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` (browser push notifications; generate a pair with `npm run vapid:generate --workspace @aven/api` after building; the web app must be served over HTTPS), `WEB_SEARCH_API_KEY` (Brave Search for the assistant; verified only against a local stub), `EMAIL_API_KEY` + `EMAIL_FROM` (invitations and notification emails), `STRIPE_*` (paid plans). With no key, the feature says it is off rather than pretending.
@@ -42,14 +44,16 @@ Put both behind HTTPS (a reverse proxy or your platform's load balancer). The AP
 
 Neither needs a sign-in and neither is rate limited. The API shuts down cleanly on SIGTERM (it closes database connections).
 
-## 4. One API instance, for now
+## 4. More than one API instance
 
-Two things live in the API process's memory, so run **one** API instance until they are moved:
+By default one API instance does everything. To run several behind a load balancer:
 
-- Live messaging updates only reach people connected to the same process (`apps/api/src/messaging/channel-events.ts`; swap in Postgres `LISTEN/NOTIFY` or Redis).
-- Rate limit counters are per process unless `RATE_LIMIT_STORE=postgres` is set (then they are shared and survive restarts).
+1. Set `RATE_LIMIT_STORE=postgres` so request limits are shared.
+2. Set `REALTIME_BUS=postgres`. Live events (new messages, edits, deletions, new channels, and "a document was saved") then travel between instances over PostgreSQL `LISTEN/NOTIFY`, so everyone hears everyone whichever instance they are connected to. The bus needs a **direct** connection to PostgreSQL (not PgBouncer in transaction mode), one extra connection per instance, and no other infrastructure. Who may hear an event is decided as before: workspace isolation and private-conversation audiences travel with the event, and each open stream re-checks its person's membership every 25 s and closes after 15 minutes. If the bus is down, people on the same instance still hear each other and the bus reconnects by itself (see `realtime_bus_connected` and `realtime_publish_failures_total` in the metrics); clients reload when they reconnect.
+3. **Route live typing by document.** Keystroke-level live text (`/documents/:id/text/*`, the document stream's `text` and `cursor` events, and who-is-here presence) is held in the memory of the instance that serves the document, and is *not* shared. Send every request for one document to the same instance (consistent hashing on the document id in the path), or accept that two people typing in the same document through different instances are merged by saves only (block-level and word-level, as when someone types without live text). Presence in messaging (who is online) is likewise per instance.
+4. Workflows, email summaries and scheduled work run inside every API process. Set `WORKFLOWS_DISABLED=true` on all but one. Claiming of due work uses `FOR UPDATE SKIP LOCKED`, so a duplicate would not run a step twice.
 
-Workflows, email summaries and scheduled work run inside the API process too. If you ever run more than one, set `WORKFLOWS_DISABLED=true` on all but one. Claiming of due work uses `FOR UPDATE SKIP LOCKED`, so a duplicate would not run a step twice.
+Notifications larger than PostgreSQL's 8,000-byte limit are replaced by a small "refresh" that makes the client look again.
 
 ## 5. Files
 
@@ -128,7 +132,15 @@ npm run smoke --workspace @aven/desktop            # load the app once, print wh
 AVEN_APP_URL=https://aven.example.com npm run package --workspace @aven/desktop   # unpacked app in apps/desktop/dist
 ```
 
-Without `AVEN_APP_URL` a packaged app asks for the server address on first run (Menu → Change server… to change it later). **Not done:** installers (`.dmg`, `.exe`), code signing and notarisation (needs Apple and Windows certificates), auto-update, and web push (the desktop app uses the web app's in-page notifications only). Social sign-in (Google, Apple) may be refused by those providers inside an embedded window; email sign-in works. The build was verified on macOS (arm64) only, unsigned.
+Without `AVEN_APP_URL` a packaged app asks for the server address on first run (Menu → Change server… to change it later).
+
+**Installers.** `npm run dist:mac --workspace @aven/desktop` builds a `.dmg` and a `.zip` (verified on macOS arm64: both build, and `hdiutil verify` reports the disk image valid; the first run downloads electron-builder's own packaging tools). `npm run dist:win --workspace @aven/desktop` builds an NSIS installer; it must be run on Windows (or Linux/macOS with Wine), and **has not been run**. Without signing credentials the macOS build is *unsigned*: Gatekeeper warns on first open and auto-update will not install it.
+
+**Signing and notarisation (needs your certificates; nothing is signed or published by the repository):**
+- macOS: an Apple Developer ID Application certificate. Set `CSC_LINK` (the .p12, or a path/URL to it) and `CSC_KEY_PASSWORD`, and for notarisation `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`, then build again. The build already enables the hardened runtime.
+- Windows: a code-signing certificate. Set `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD`, and replace `win.publisherName` in `apps/desktop/package.json` with the certificate's subject name: an update must be signed by that publisher or Windows refuses it.
+
+**Updates.** The app can update itself (`electron-updater`), but it does nothing until you publish builds and tell it where: set `AVEN_UPDATE_URL` (an https address, never a local or private one) in the environment the app runs in, or bake it into your packaging. Publish the files electron-builder writes to `apps/desktop/dist` (`latest-mac.yml`, `latest.yml`, the installers and their `.blockmap` files) to that address. Behaviour: it checks half a minute after start and every six hours; it asks before downloading and again before restarting; it never installs on its own, never goes back to an older version, and a failed or interrupted download leaves the running app alone and is tried again at the next check. The operating system checks the signature: macOS refuses an update not signed by the same Developer ID, Windows one not signed by `publisherName`. Because of that, **updates only work for signed builds**, and the update path has been tested here only with a stand-in updater, not against a real feed. `AVEN_UPDATES_DISABLED=1` turns it off.
 
 ## 11. iPhone and iPad app
 

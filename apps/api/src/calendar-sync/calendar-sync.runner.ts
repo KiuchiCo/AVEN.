@@ -1,3 +1,4 @@
+import { reportJobFailure } from '../observability/error-reporter.js';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { readApiEnvironment } from '../config/api-environment.js';
 import { CalendarSyncService } from './calendar-sync.service.js';
@@ -16,7 +17,7 @@ export class CalendarSyncRunner implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
   async tick() {
     if (this.running) return; this.running = true;
-    try { await this.sync.syncDue(); } catch (error) { this.logger.error(`Calendar sync run failed: ${error instanceof Error ? error.message : error}`); }
+    try { await this.sync.syncDue(); } catch (error) { reportJobFailure('calendar-sync', error); this.logger.error(`Calendar sync run failed: ${error instanceof Error ? error.message : error}`); }
     finally { this.running = false; }
   }
 }

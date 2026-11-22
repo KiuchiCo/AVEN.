@@ -3,6 +3,7 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { Inter, Playfair_Display } from 'next/font/google';
 import { headers } from 'next/headers';
 import Script from 'next/script';
+import { ErrorReporting } from './error-reporting';
 import { ServiceWorkerRegistration } from './service-worker-registration';
 import { timeZoneScript } from './time-zone-script';
 import './globals.css';
@@ -32,6 +33,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         <Script id="aven-time-zone" nonce={nonce} strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: timeZoneScript }} />
         <Script id="aven-theme" nonce={nonce} strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('aven-theme');if(t==='light'||t==='dark'||t==='system')document.documentElement.dataset.theme=t}catch(e){}" }} />
+        <ErrorReporting />
         <ServiceWorkerRegistration />
         {publishableKey ? <ClerkProvider publishableKey={publishableKey} nonce={nonce}>{children}</ClerkProvider> : children}
       </body>

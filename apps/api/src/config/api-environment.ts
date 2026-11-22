@@ -15,6 +15,10 @@ export type ApiEnvironment = {
   trustProxy: boolean | number | string[];
   /** Where request counters live: in this process, or in PostgreSQL so every API instance shares them and a restart does not reset them. */
   rateLimitStore: 'memory' | 'postgres';
+  /** How live events reach other API instances: `memory` (this instance only) or `postgres` (LISTEN/NOTIFY). */
+  realtimeBus: 'memory' | 'postgres';
+  /** Error tracking (a Sentry-compatible DSN) and the token that opens GET /api/v1/metrics. Both optional: absent means off. */
+  monitoring: { errorTrackingDsn?: string; errorTrackingEnvironment: string; release?: string; metricsToken?: string };
   storageDriver: 'local' | 's3';
   /** Present when STORAGE_DRIVER=s3. */
   s3?: { bucket: string; region: string; accessKeyId: string; secretAccessKey: string; endpoint?: string };
@@ -99,6 +103,12 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (trustProxy === true && source.NODE_ENV === 'production') errors.push('TRUST_PROXY=true makes the API believe any client\u2019s X-Forwarded-For header; use the number of proxies in front of it, or the addresses they connect from');
   const rateLimitRaw = source.RATE_LIMIT_STORE?.trim().toLowerCase() || 'memory';
   if (rateLimitRaw !== 'memory' && rateLimitRaw !== 'postgres') errors.push('RATE_LIMIT_STORE must be memory or postgres');
+  const realtimeRaw = source.REALTIME_BUS?.trim().toLowerCase() || 'memory';
+  if (realtimeRaw !== 'memory' && realtimeRaw !== 'postgres') errors.push('REALTIME_BUS must be memory or postgres');
+  const errorTrackingDsn = source.ERROR_TRACKING_DSN?.trim() || undefined;
+  if (errorTrackingDsn) { try { const dsn = new URL(errorTrackingDsn); if (!/^https?:$/.test(dsn.protocol) || !dsn.username || dsn.pathname.length < 2) throw new Error(); } catch { errors.push('ERROR_TRACKING_DSN must look like https://<key>@<host>/<project>'); } }
+  const metricsToken = source.METRICS_TOKEN?.trim() || undefined;
+  if (metricsToken && metricsToken.length < 24) errors.push('METRICS_TOKEN must be at least 24 characters');
   const clerkIssuer = source.CLERK_ISSUER?.trim() || undefined;
   if (clerkJwtKey && !clerkJwtKey.startsWith('-----BEGIN PUBLIC KEY-----')) errors.push('CLERK_JWT_KEY must be a PEM public key');
   if ((clerkSecretKey || clerkJwtKey) && !clerkIssuer) errors.push('CLERK_ISSUER is required when Clerk verification credentials are configured');
@@ -214,5 +224,5 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, rateLimitStore: rateLimitRaw === 'postgres' ? 'postgres' : 'memory', storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, embeddings, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, rateLimitStore: rateLimitRaw === 'postgres' ? 'postgres' : 'memory', realtimeBus: realtimeRaw === 'postgres' ? 'postgres' : 'memory', monitoring: { errorTrackingDsn, errorTrackingEnvironment: source.ERROR_TRACKING_ENVIRONMENT?.trim() || source.NODE_ENV || 'production', release: source.APP_RELEASE?.trim() || undefined, metricsToken }, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, embeddings, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
 }

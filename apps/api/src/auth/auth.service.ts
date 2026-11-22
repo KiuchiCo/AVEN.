@@ -1,3 +1,5 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
+import { withTimeout } from '../observability/with-timeout.js';
 import { createClerkClient } from '@clerk/backend';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
@@ -15,7 +17,9 @@ export class AuthService {
       throw new ServiceUnavailableException('Clerk profile access is not configured.');
     }
 
-    const providerUser = await createClerkClient({ secretKey }).users.getUser(identity.subject);
+    let providerUser: Awaited<ReturnType<ReturnType<typeof createClerkClient>['users']['getUser']>>;
+    try { providerUser = await withTimeout(createClerkClient({ secretKey }).users.getUser(identity.subject), 10_000, 'The sign-in service did not answer in time.'); }
+    catch (error) { reportIntegrationFailure('clerk', error); throw new ServiceUnavailableException('The sign-in service is not answering right now. Please try again in a moment.'); }
     const primaryEmail = providerUser.emailAddresses.find(
       (address) => address.id === providerUser.primaryEmailAddressId,
     );

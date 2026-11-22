@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FilesModule } from '../files/files.module.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { readApiEnvironment } from '../config/api-environment.js';
 import { OpenAiCompatibleEmbeddings } from './embeddings.js';
@@ -7,6 +8,7 @@ import { SemanticService } from './semantic.service.js';
 import { EMBEDDINGS } from './tokens.js';
 
 @Module({
+  imports: [FilesModule],
   controllers: [SemanticController],
   providers: [SemanticService, ClerkAuthGuard, { provide: EMBEDDINGS, useFactory: () => { const { embeddings } = readApiEnvironment(); return embeddings ? new OpenAiCompatibleEmbeddings(embeddings) : null; } }],
 })

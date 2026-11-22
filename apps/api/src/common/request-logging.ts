@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
+import { metrics } from '../observability/metrics.js';
+import { requestContext } from '../observability/request-context.js';
 
 const logger = new Logger('Request');
 
@@ -15,7 +17,10 @@ export function requestLogging(request: Request, response: Response, next: NextF
   const started = process.hrtime.bigint();
   response.on('finish', () => {
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
+    const route = `${request.baseUrl ?? ''}${request.route?.path ?? ''}` || 'unmatched'; // the route pattern, never the real address: ids and tokens must not become metric labels
+    metrics.inc('http_requests_total', { method: request.method, route, status: `${Math.floor(response.statusCode / 100)}xx` });
+    metrics.observe('http_request_duration_seconds', ms / 1000, { method: request.method, route });
     logger.log(JSON.stringify({ requestId, method: request.method, path: redactPath(request.path), status: response.statusCode, ms: Math.round(ms) }));
   });
-  next();
+  requestContext.run({ requestId }, next);
 }

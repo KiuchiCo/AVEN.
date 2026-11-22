@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -45,8 +46,10 @@ export class TasksController {
   }
 
   @Get()
-  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Query('label') label?: string) {
-    return this.productivity.listTasks(identity, workspaceId, label);
+  async list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Res({ passthrough: true }) response: Response, @Query('label') label?: string) {
+    const { tasks, truncated } = await this.productivity.listTasks(identity, workspaceId, label);
+    response.setHeader('X-Row-Count', String(tasks.length)); if (truncated) response.setHeader('X-Truncated', 'true');
+    return tasks;
   }
 
   @Patch('bulk')

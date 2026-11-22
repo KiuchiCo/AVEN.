@@ -1,3 +1,4 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
@@ -72,9 +73,10 @@ export class CalendarSyncService {
       const key = this.key();
       const data = { connectedById: state.userId, accessTokenEnc: encryptToken(key, tokens.accessToken), refreshTokenEnc: encryptToken(key, tokens.refreshToken), expiresAt: tokens.expiresAt, pushEnabled: state.pushEnabled, status: 'ACTIVE', lastError: null };
       const connection = await this.prisma.calendarConnection.upsert({ where: { workspaceId_provider_accountEmail: { workspaceId: state.workspaceId, provider: state.provider, accountEmail: tokens.email } }, create: { workspaceId: state.workspaceId, provider: state.provider, accountEmail: tokens.email, ...data }, update: data, select: { id: true } });
-      void this.syncConnection(connection.id).catch((error) => this.logger.warn(`First sync failed: ${error instanceof Error ? error.message : error}`));
+      void this.syncConnection(connection.id).catch((error) => { reportIntegrationFailure('calendar', error); this.logger.warn(`First sync failed: ${error instanceof Error ? error.message : error}`); });
       return back(`connected=${state.provider.toLowerCase()}`);
     } catch (error) {
+      reportIntegrationFailure('calendar', error);
       this.logger.warn(`Calendar connection failed: ${error instanceof Error ? error.message : error}`);
       return back(`error=${encodeURIComponent(error instanceof ProviderError ? error.message : 'The calendar could not be connected. Please try again.')}`);
     }
@@ -111,7 +113,7 @@ export class CalendarSyncService {
   async syncDue(limit = 10): Promise<number> {
     const due = await this.prisma.calendarConnection.findMany({ where: { status: 'ACTIVE', OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(Date.now() - 5 * 60_000) } }] }, orderBy: { lastSyncedAt: { sort: 'asc', nulls: 'first' } }, take: limit, select: { id: true } });
     let done = 0;
-    for (const { id } of due) { try { if (await this.syncConnection(id)) done += 1; } catch (error) { this.logger.warn(`Sync of ${id} failed: ${error instanceof Error ? error.message : error}`); } }
+    for (const { id } of due) { try { if (await this.syncConnection(id)) done += 1; } catch (error) { reportIntegrationFailure('calendar', error); this.logger.warn(`Sync of ${id} failed: ${error instanceof Error ? error.message : error}`); } }
     return done;
   }
 

@@ -1,8 +1,11 @@
 import { createClerkClient } from '@clerk/backend';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { BillingService } from '../billing/billing.service.js';
 import { readApiEnvironment } from '../config/api-environment.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
+import { metrics } from '../observability/metrics.js';
+import { withTimeout } from '../observability/with-timeout.js';
 import { visibleTaskWhere } from '../productivity/project-rules.js';
 import type { AuthenticatedIdentity } from './auth.types.js';
 
@@ -12,6 +15,7 @@ const EXPORT_ROWS = 5000;
 /** A person's own data: the copy they can ask for, and the deletion they can ask for. */
 @Injectable()
 export class AccountService {
+  private readonly logger = new Logger('Account');
   constructor(private readonly prisma: PrismaService, private readonly billing: BillingService) {}
 
   private async currentUser(identity: AuthenticatedIdentity) {
@@ -26,6 +30,9 @@ export class AccountService {
    */
   async exportData(identity: AuthenticatedIdentity) {
     const user = await this.currentUser(identity);
+    // The record that a copy of someone's data was made: who and when, never what was in it.
+    this.logger.log(JSON.stringify({ event: 'account-data-export', userId: user.id }));
+    metrics.inc('account_exports_total');
     const memberships = await this.prisma.workspaceMember.findMany({ where: { userId: user.id }, select: { role: true, createdAt: true, workspace: { select: { id: true, name: true } } }, take: 100 });
     const workspaceIds = memberships.map((member) => member.workspace.id);
     const inMine = { workspaceId: { in: workspaceIds } };
@@ -90,12 +97,14 @@ export class AccountService {
       await transaction.workspaceInvite.deleteMany({ where: { email: user.email } });
       await transaction.user.update({ where: { id: user.id }, data: { email: anonymousEmail, displayName: 'Deleted user', identityIssuer: null, identitySubject: null, emailNotifications: false, notifyTeamActivity: false, notifyTaskUpdates: false, emailEnabledAt: null, timeZone: null, language: null, dashboardHiddenWidgets: [] } });
     });
+    this.logger.log(JSON.stringify({ event: 'account-deleted', userId: user.id, workspacesDeleted: aloneIds.length }));
+    metrics.inc('account_deletions_total');
     for (const { workspaceId } of others) await this.billing.syncSeatsQuietly(workspaceId);
     // Only when asked: remove the sign-in account at Clerk as well, so the same login cannot start a new AVEN account by accident.
     let signInDeleted = false;
     const { clerkSecretKey } = readApiEnvironment();
     if (body.alsoDeleteSignIn === true && clerkSecretKey) {
-      try { await createClerkClient({ secretKey: clerkSecretKey }).users.deleteUser(identity.subject); signInDeleted = true; } catch { signInDeleted = false; }
+      try { await withTimeout(createClerkClient({ secretKey: clerkSecretKey }).users.deleteUser(identity.subject), 10_000, 'The sign-in service did not answer in time.'); signInDeleted = true; } catch (error) { reportIntegrationFailure('clerk', error); signInDeleted = false; }
     }
     return { deleted: true, signInDeleted, workspacesDeleted: aloneIds.length };
   }

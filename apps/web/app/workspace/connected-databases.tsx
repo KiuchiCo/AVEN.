@@ -3,21 +3,22 @@
 import { useAuth } from '@clerk/nextjs';
 import { FavouriteStar } from './favourites';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useT } from '../i18n';
 import type { Key } from '../i18n/en';
 import { useWorkspaceSession } from './workspace-shell';
 import { PageHeader } from './ui';
 import { Icon } from './home-icons';
+import { aggregateCap, RecordPager, type PagingState } from './database-pager';
 
 type Property = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string; rollupRelationId?: string; rollupPropertyId?: string; rollupFunction?: string };
 const isComputed = (property: Property) => property.type === 'formula' || property.type === 'rollup';
 const rollupFunctionLabels = [['count', 'db.rf.count'], ['sum', 'db.rf.sum'], ['average', 'db.rf.average'], ['min', 'db.rf.min'], ['max', 'db.rf.max']] as const;
 type RecordValues = Record<string, string | number | boolean | null | string[]>;
-type DatabaseRecord = { id: string; values: RecordValues; updatedAt: string };
+type DatabaseRecord = { id: string; values: RecordValues; updatedAt: string; linkNames?: Record<string, string> };
 type ViewLayout = 'TABLE' | 'BOARD' | 'GALLERY' | 'CALENDAR' | 'LIST' | 'TIMELINE' | 'CHART';
 type SavedView = { id: string; name: string; filterQuery: string; sortPropertyId: string; sortDirection: 'ASC' | 'DESC'; layout: ViewLayout; groupByPropertyId: string; datePropertyId: string; chartPropertyId: string };
-type WorkspaceDatabase = { id: string; name: string; description: string | null; properties: Property[]; records: DatabaseRecord[]; views: SavedView[] };
+type WorkspaceDatabase = { id: string; name: string; description: string | null; properties: Property[]; records: DatabaseRecord[]; views: SavedView[]; recordTotal: number };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const statuses = ['Planning', 'In progress', 'On track', 'At risk', 'Completed'];
@@ -101,6 +102,11 @@ export function DatabasesWorkspace() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [pageInfo, setPageInfo] = useState({ key: '', page: 1 });
+  const [pageSize, setPageSize] = useState(50);
+  const [refresh, setRefresh] = useState(0);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [paging, setPaging] = useState<PagingState>({ total: 0, loading: false, loaded: 0, error: '', capped: false });
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
@@ -117,8 +123,10 @@ export function DatabasesWorkspace() {
   }, [getToken]);
 
   const reload = useCallback(async () => {
-    const rows = await request(`/workspaces/${workspace.id}/databases`) as WorkspaceDatabase[];
-    setDatabases(rows);
+    // The list carries the databases and their counts; the records are loaded a page at a time below.
+    const rows = await request(`/workspaces/${workspace.id}/databases?recordLimit=0`) as WorkspaceDatabase[];
+    setDatabases((current) => rows.map((row) => ({ ...row, records: current.find((item) => item.id === row.id)?.records ?? [] })));
+    setRefresh((count) => count + 1);
     setSelectedId((current) => rows.some((database) => database.id === current) ? current : rows[0]?.id ?? '');
   }, [request, workspace.id]);
 
@@ -131,6 +139,58 @@ export function DatabasesWorkspace() {
     })();
     return () => { cancelled = true; };
   }, [reload]);
+
+  const aggregate = viewLayout === 'BOARD' || viewLayout === 'CALENDAR' || viewLayout === 'TIMELINE' || viewLayout === 'CHART';
+  // The server sorts stored properties; a formula or rollup is worked out per record there, so it cannot be sorted on across pages. Those fall back to "updated".
+  const sortProperty = databases.find((database) => database.id === selectedId)?.properties.find((property) => property.id === sortPropertyId);
+  const serverSort = sortPropertyId !== 'updatedAt' && sortProperty && ['text', 'number', 'checkbox', 'date', 'status'].includes(sortProperty.type) ? sortPropertyId : 'updatedAt';
+  useEffect(() => { const timer = setTimeout(() => setDebouncedQuery(filterQuery.trim()), 300); return () => clearTimeout(timer); }, [filterQuery]);
+  // Changing what is asked for (another database, a search, a sort, a page size) starts again at page 1.
+  const filterKey = `${selectedId}|${debouncedQuery}|${serverSort}|${sortDirection}|${pageSize}`;
+  const page = pageInfo.key === filterKey ? pageInfo.page : 1;
+  const setPage = (next: number) => setPageInfo({ key: filterKey, page: next });
+
+  const setRecords = useCallback((databaseId: string, records: DatabaseRecord[]) => setDatabases((current) => current.map((database) => (database.id === databaseId ? { ...database, records } : database))), []);
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    const size = aggregate ? 500 : pageSize;
+    const query = (pageNumber: number) => `pageSize=${size}&page=${pageNumber}&sort=${encodeURIComponent(serverSort)}&dir=${sortDirection}${debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''}`;
+    void (async () => {
+      setPaging((current) => ({ ...current, loading: true, error: '' }));
+      try {
+        const first = await request(`/workspaces/${workspace.id}/databases/${selectedId}/records?${query(aggregate ? 1 : page)}`) as { records: DatabaseRecord[]; total: number };
+        if (cancelled) return;
+        let records = first.records;
+        const wanted = aggregate ? Math.min(first.total, aggregateCap) : first.records.length;
+        setRecords(selectedId, records); setPaging({ total: first.total, loading: records.length < wanted, loaded: records.length, error: '', capped: aggregate && first.total > aggregateCap });
+        for (let next = 2; aggregate && records.length < wanted; next += 1) {
+          const more = await request(`/workspaces/${workspace.id}/databases/${selectedId}/records?${query(next)}`) as { records: DatabaseRecord[] };
+          if (cancelled || !more.records.length) break;
+          records = [...records, ...more.records].slice(0, aggregateCap);
+          setRecords(selectedId, records); setPaging({ total: first.total, loading: records.length < wanted, loaded: records.length, error: '', capped: first.total > aggregateCap });
+        }
+        if (!cancelled) setPaging({ total: first.total, loading: false, loaded: records.length, error: '', capped: aggregate && first.total > aggregateCap });
+      } catch (reason) { if (!cancelled) setPaging((current) => ({ ...current, loading: false, error: reason instanceof Error ? reason.message : 'Could not load records.' })); }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedId, aggregate, page, pageSize, debouncedQuery, serverSort, sortDirection, refresh, request, workspace.id, setRecords]);
+
+  // Relation pickers and linked-record names need the records of the related databases: a bounded batch, with a note when there are more.
+  const relatedIds = useMemo(() => {
+    const properties = databases.find((database) => database.id === selectedId)?.properties ?? [];
+    return [...new Set(properties.filter((property) => property.type === 'relation' && property.relatedDatabaseId).map((property) => property.relatedDatabaseId!))];
+  }, [databases, selectedId]);
+  const relatedKey = relatedIds.join(',');
+  useEffect(() => {
+    if (!relatedKey) return;
+    let cancelled = false;
+    void Promise.all(relatedKey.split(',').map(async (id) => {
+      const result = await request(`/workspaces/${workspace.id}/databases/${id}/records?pageSize=500&sort=updatedAt&dir=desc`) as { records: DatabaseRecord[] };
+      if (!cancelled) setRecords(id, result.records);
+    })).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [relatedKey, refresh, request, workspace.id, setRecords]);
 
   const selected = databases.find((database) => database.id === selectedId);
   const selectedView = selected?.views.find((view) => view.id === selectedViewId);
@@ -145,24 +205,8 @@ export function DatabasesWorkspace() {
   const bulkProperty = bulkProperties.find((property) => property.id === bulkPropertyId) ?? bulkProperties[0];
   const activeSelection = selected ? selectedIds.filter((id) => selected.records.some((record) => record.id === id)) : [];
   const chartValuePropertyId = numericProperties.some((property) => property.id === chartPropertyId) ? chartPropertyId : '';
-  const visibleRecords = selected ? selected.records
-    .filter((record) => {
-      const query = filterQuery.trim().toLocaleLowerCase();
-      if (!query) return true;
-      return selected.properties.some((property) => propertyValueLabel(property, record.values[property.id]).toLocaleLowerCase().includes(query));
-    })
-    .sort((left, right) => {
-      const leftValue = sortPropertyId === 'updatedAt' ? left.updatedAt : left.values[sortPropertyId];
-      const rightValue = sortPropertyId === 'updatedAt' ? right.updatedAt : right.values[sortPropertyId];
-      const leftEmpty = leftValue === null || leftValue === undefined || leftValue === '';
-      const rightEmpty = rightValue === null || rightValue === undefined || rightValue === '';
-      if (leftEmpty !== rightEmpty) return leftEmpty ? 1 : -1;
-      let comparison = 0;
-      if (typeof leftValue === 'number' && typeof rightValue === 'number') comparison = leftValue - rightValue;
-      else if (typeof leftValue === 'boolean' && typeof rightValue === 'boolean') comparison = Number(leftValue) - Number(rightValue);
-      else comparison = String(leftValue ?? '').localeCompare(String(rightValue ?? ''), undefined, { numeric: true, sensitivity: 'base' });
-      return sortDirection === 'asc' ? comparison : -comparison;
-    }) : [];
+  // The server already searched and sorted across every record: what is loaded is what to show.
+  const visibleRecords = selected?.records ?? [];
   const boardGroups = statusProperties.length ? [...new Set([...statuses, ...visibleRecords.map((record) => String(record.values[boardPropertyId] ?? 'No status'))])] : [];
   const chartGroups = statusProperties.length ? [...new Set([...statuses, ...visibleRecords.map((record) => String(record.values[boardPropertyId] ?? 'No status'))])] : [];
   const chartValues = chartGroups.map((group) => {
@@ -178,21 +222,33 @@ export function DatabasesWorkspace() {
     return Object.fromEntries(Object.entries(values).filter(([propertyId]) => { const property = selected?.properties.find((item) => item.id === propertyId); return property && !isComputed(property); }));
   }
 
+  const linkNameMap = useMemo(() => Object.assign({}, ...(selected?.records ?? []).map((record) => record.linkNames ?? {})) as Record<string, string>, [selected]);
   function propertyValueLabel(property: Property, value: RecordValues[string]) {
     if (property.type === 'rollup' && typeof value === 'number') return String(Number(value.toFixed(2)));
     if (property.type !== 'relation' || !Array.isArray(value)) return value == null ? '—' : String(value);
     const related = databases.find((database) => database.id === property.relatedDatabaseId);
     return value.map((recordId) => {
+      if (linkNameMap[recordId]) return linkNameMap[recordId];
       const record = related?.records.find((item) => item.id === recordId);
       return String(record?.values.name ?? record?.values[related?.properties[0]?.id ?? ''] ?? 'Linked record');
     }).join(', ') || '—';
   }
 
-  function exportCsv() {
+  /** Exports every record that matches the current search and sort, not just the page on screen (up to 50,000). */
+  async function exportCsv() {
     if (!selected) return;
+    setNotice(t('db.exporting')); setError('');
+    const everything: DatabaseRecord[] = [];
+    try {
+      for (let next = 1; everything.length < 50_000; next += 1) {
+        const chunk = await request(`/workspaces/${workspace.id}/databases/${selected.id}/records?pageSize=500&page=${next}&sort=${encodeURIComponent(serverSort)}&dir=${sortDirection}${debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''}`) as { records: DatabaseRecord[]; total: number };
+        everything.push(...chunk.records);
+        if (!chunk.records.length || everything.length >= chunk.total) break;
+      }
+    } catch (reason) { setNotice(''); setError(reason instanceof Error ? reason.message : 'Could not export the records.'); return; }
     const properties = selected.properties.filter((property) => property.type !== 'relation');
     const lines = [properties.map((property) => csvCell(property.name)).join(',')];
-    for (const record of visibleRecords) {
+    for (const record of everything) {
       lines.push(properties.map((property) => csvCell(record.values[property.id] == null ? '' : String(record.values[property.id]), (property.type === 'number' || isComputed(property)))).join(','));
     }
     const file = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
@@ -203,7 +259,7 @@ export function DatabasesWorkspace() {
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setError('');
-    setNotice(t('db.exported', { n: visibleRecords.length }));
+    setNotice(t('db.exported', { n: everything.length }));
   }
 
   async function importCsv(event: FormEvent<HTMLFormElement>) {
@@ -488,7 +544,7 @@ export function DatabasesWorkspace() {
         <label className="database-picker">{t('db.workspaceDb')}<span><span className="rd-tile rd-tile--sm"><Icon name="database" size={18} /></span><select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); setViewLayout('TABLE'); setGroupByPropertyId('status'); setCalendarDatePropertyId(''); setChartPropertyId(''); }} disabled={!databases.length}>
           {databases.length ? databases.map((database) => <option key={database.id} value={database.id}>{database.name}</option>) : <option value="">{t('db.createFirst')}</option>}
         </select></span></label>
-        <span>{selected ? t(selected.records.length === 1 ? 'db.recordOne' : 'db.recordMany', { n: selected.records.length }) : t('db.startSimple')}</span>
+        <span>{selected ? t(selected.recordTotal === 1 ? 'db.recordOne' : 'db.recordMany', { n: selected.recordTotal }) : t('db.startSimple')}</span>
       </div>
 
       <div className="database-layout">
@@ -531,12 +587,13 @@ export function DatabasesWorkspace() {
               <label>{t('db.filter')}<input type="search" value={filterQuery} onChange={(event) => { setFilterQuery(event.target.value); setSelectedViewId(''); }} placeholder={t('db.filterPh')} /></label>
               <label>{t('db.sortBy')}<select value={sortPropertyId} onChange={(event) => { setSortPropertyId(event.target.value); setSelectedViewId(''); }}>
                 <option value="updatedAt">{t('db.updated')}</option>
-                {selected.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
+                {selected.properties.filter((property) => !isComputed(property) && property.type !== 'relation').map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
               </select></label>
               <label>{t('db.order')}<select value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as 'asc' | 'desc'); setSelectedViewId(''); }}><option value="asc">{t('db.asc')}</option><option value="desc">{t('db.desc2')}</option></select></label>
-              <span className="database-view-count">{filterQuery.trim() ? t('db.countOf', { shown: visibleRecords.length, total: selected.records.length }) : t('db.recordMany', { n: selected.records.length })}</span>
               <button type="button" className={`database-relation-toggle${showRelationMap ? ' is-active' : ''}`} onClick={() => setShowRelationMap((current) => !current)}><Icon name="link" size={16} />{t('db.relations')}</button>
             </div>
+            <RecordPager mode={aggregate ? 'all' : 'pages'} page={page} pageSize={pageSize} state={paging} onPage={setPage} onPageSize={(size) => { setPageSize(size); setSelectedIds([]); }} onRetry={() => setRefresh((count) => count + 1)} />
+            {!aggregate && <p className="database-pager__note">{t('db.pager.partialSelection')}</p>}
             {showRelationMap && <section className="database-relation-map" aria-label={t('db.relationMap')}>
               <div className="database-relation-map__node is-current"><span>{t('db.thisDb')}</span><strong>{selected.name}</strong><small>{t('db.recordMany', { n: selected.records.length })}</small></div>
               {selected.properties.filter((property) => property.type === 'relation').map((property) => {
@@ -550,7 +607,7 @@ export function DatabasesWorkspace() {
             <form className="database-csv-tools" onSubmit={importCsv}>
               <span className="rd-tile"><Icon name="upload" size={20} /></span><label>{t('db.importCsv')}<input name="csvFile" type="file" accept=".csv,text/csv" required /></label>
               <button type="submit" disabled={busy}>{busy ? t('db.importing') : <><Icon name="download" size={16} />{t('db.importRows')}</>}</button>
-              <button type="button" onClick={exportCsv} disabled={busy}><Icon name="upload" size={16} />{t('db.exportVisible', { n: visibleRecords.length })}</button>
+              <button type="button" onClick={() => void exportCsv()} disabled={busy}><Icon name="upload" size={16} />{t('db.exportVisible', { n: visibleRecords.length })}</button>
               <small>{t('db.csvHint')}</small>
             </form>
             <form className="database-save-view" onSubmit={saveCurrentView}>
@@ -566,13 +623,13 @@ export function DatabasesWorkspace() {
                   <time>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</time>
                 </article>;
               })}
-              {!visibleRecords.length && <p className="database-gallery-empty">{selected.records.length ? t('db.noMatch') : t('db.addToSee')}</p>}
+              {!visibleRecords.length && <p className="database-gallery-empty">{selected.recordTotal ? t('db.noMatch') : t('db.addToSee')}</p>}
             </div> : viewLayout === 'CHART' && boardPropertyId ? <section className="database-chart" aria-label={t('db.statusChart')}>
               <div className="database-chart__heading"><h3>{chartValuePropertyId ? t('db.sumOf', { name: numericProperties.find((property) => property.id === chartValuePropertyId)?.name ?? '' }) : t('db.recordCount')}</h3><span>{t('db.by', { name: statusProperties.find((property) => property.id === boardPropertyId)?.name ?? '' })}</span></div>
               <div className="database-chart__rows">{chartValues.map((item) => <div className="database-chart__row" key={item.group}>
                 <span>{item.group}</span><div><i style={{ width: `${(item.value / maxChartValue) * 100}%` }} /></div><strong>{item.value}{chartValuePropertyId ? '' : ` / ${item.count}`}</strong>
               </div>)}</div>
-              {!visibleRecords.length && <p className="database-gallery-empty">{selected.records.length ? t('db.noMatch') : t('db.addToSee')}</p>}
+              {!visibleRecords.length && <p className="database-gallery-empty">{selected.recordTotal ? t('db.noMatch') : t('db.addToSee')}</p>}
             </section> : viewLayout === 'TIMELINE' && calendarPropertyId ? <section className="database-timeline" aria-label={t('db.timeline')}>
               <header className="database-calendar__header">
                 <button type="button" aria-label={t('db.prevMonth')} onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>‹</button>
@@ -596,7 +653,7 @@ export function DatabasesWorkspace() {
                       <time dateTime={dateKey}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(`${dateKey}T12:00:00`))}</time>
                     </div>;
                   })}
-                  {!records.length && <p className="database-gallery-empty">{selected.records.length ? t('db.noDated') : t('db.addDated')}</p>}
+                  {!records.length && <p className="database-gallery-empty">{selected.recordTotal ? t('db.noDated') : t('db.addDated')}</p>}
                 </>;
               })()}
             </section> : viewLayout === 'GALLERY' ? <div className="database-gallery" aria-label={t('db.gallery')}>
@@ -611,7 +668,7 @@ export function DatabasesWorkspace() {
                   </div>
                 </article>;
               })}
-              {!visibleRecords.length && <p className="database-gallery-empty">{selected.records.length ? t('db.noMatch') : t('db.addToSee')}</p>}
+              {!visibleRecords.length && <p className="database-gallery-empty">{selected.recordTotal ? t('db.noMatch') : t('db.addToSee')}</p>}
             </div> : viewLayout === 'CALENDAR' && calendarPropertyId ? <section className="database-calendar" aria-label={t('db.calendarAria')}>
               <header className="database-calendar__header">
                 <button type="button" aria-label={t('db.prevMonth')} onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>‹</button>
@@ -666,11 +723,11 @@ export function DatabasesWorkspace() {
                     <td>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updatedAt))}</td><td><div className="database-row-actions"><button className="database-row-edit" type="button" onClick={() => startEdit(record)}><Icon name="edit" size={15} />{t('db.edit')}</button><button className="database-row-edit" type="button" onClick={() => void duplicateRecord(record)} disabled={busy}><Icon name="copy" size={15} />{t('db.duplicate')}</button><button className="database-row-edit" type="button" onClick={() => void deleteRecord(record)} disabled={busy}><Icon name="trash" size={15} />{t('db.delete')}</button></div></td>
                   </>}
                 </tr>)}
-                {!selected.records.length && <tr><td colSpan={selected.properties.length + 3} className="database-table-empty">{t('db.emptyTable')}</td></tr>}
-                {selected.records.length > 0 && !visibleRecords.length && <tr><td colSpan={selected.properties.length + 3} className="database-table-empty">{t('db.noMatch')}</td></tr>}
+                {!selected.recordTotal && <tr><td colSpan={selected.properties.length + 3} className="database-table-empty">{t('db.emptyTable')}</td></tr>}
+                {selected.recordTotal > 0 && !paging.loading && !visibleRecords.length && <tr><td colSpan={selected.properties.length + 3} className="database-table-empty">{t('db.noMatch')}</td></tr>}
               </tbody></table></div></>}
             <form className="database-add-record" onSubmit={createRecord}>
-              {selected.properties.filter((property) => !isComputed(property)).map((property) => <label key={property.id}>{property.name}{property.type === 'relation' ? <select name={property.id} multiple size={3}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select> : property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">{t('db.chooseStatus')}</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? t('db.recordNamePh') : undefined} required={property.id === 'name'} />}</label>)}
+              {selected.properties.filter((property) => !isComputed(property)).map((property) => <label key={property.id}>{property.name}{property.type === 'relation' ? <>{(() => { const related = databases.find((database) => database.id === property.relatedDatabaseId); return related && related.recordTotal > related.records.length ? <small>{t('db.relationPartial', { n: related.records.length, total: related.recordTotal })}</small> : null; })()}<select name={property.id} multiple size={3}>{(databases.find((database) => database.id === property.relatedDatabaseId)?.records ?? []).map((target) => <option key={target.id} value={target.id}>{String(target.values.name ?? 'Untitled record')}</option>)}</select></> : property.type === 'status' ? <select name={property.id} defaultValue={property.id === 'status' ? 'Planning' : ''}><option value="">{t('db.chooseStatus')}</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select> : property.type === 'checkbox' ? <input name={property.id} type="checkbox" /> : <input name={property.id} type={property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'} maxLength={property.type === 'text' ? 2000 : undefined} placeholder={property.id === 'name' ? t('db.recordNamePh') : undefined} required={property.id === 'name'} />}</label>)}
               <button type="submit" disabled={busy}>{busy ? t('db.adding') : t('db.addRecord')}</button>
             </form>
           </>}

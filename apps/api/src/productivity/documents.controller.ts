@@ -132,8 +132,10 @@ export class DocumentsController {
   }
 
   @Get()
-  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
-    return this.productivity.listDocuments(identity, workspaceId);
+  async list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Res({ passthrough: true }) response: Response) {
+    const { documents, truncated } = await this.productivity.listDocuments(identity, workspaceId);
+    response.setHeader('X-Row-Count', String(documents.length)); if (truncated) response.setHeader('X-Truncated', 'true');
+    return documents;
   }
 
   @Get(':documentId')

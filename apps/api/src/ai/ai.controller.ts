@@ -7,6 +7,8 @@ import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { AiAgentsService } from './ai-agents.service.js';
 import { AiService, type AiEvent } from './ai.service.js';
 import { LlmError } from './llm.js';
+import { metrics } from '../observability/metrics.js';
+import { reporter } from '../observability/error-reporter.js';
 
 const workspace = () => Param('workspaceId', new ParseUUIDPipe());
 const conversation = () => Param('conversationId', new ParseUUIDPipe());
@@ -41,7 +43,7 @@ export class AiController {
     response.on('close', () => abort.abort());
     const emit = (event: AiEvent) => { if (!response.writableEnded) response.write(`data: ${JSON.stringify(event)}\n\n`); };
     try { await run(emit, abort.signal); }
-    catch (error) { emit({ type: 'error', message: error instanceof LlmError ? error.message : 'Something went wrong while answering. Please try again.' }); }
+    catch (error) { metrics.inc('ai_request_failures_total', { kind: error instanceof LlmError ? String(error.kind ?? 'provider') : 'internal' }); if (!(error instanceof LlmError)) reporter.capture(error, { area: 'ai' }); emit({ type: 'error', message: error instanceof LlmError ? error.message : 'Something went wrong while answering. Please try again.' }); }
     finally { response.end(); }
   }
 }

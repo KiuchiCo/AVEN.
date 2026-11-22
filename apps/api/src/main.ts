@@ -9,17 +9,22 @@ import { RateLimitGuard } from './common/rate-limit.guard.js';
 import { PostgresRateLimitStore } from './common/rate-limit.store.js';
 import { PrismaService } from './database/prisma.service.js';
 import { securityHeaders } from './common/security-headers.js';
+import { compress } from './common/compress.js';
 import { requestLogging } from './common/request-logging.js';
+import { reporter } from './observability/error-reporter.js';
+import { JsonLogger } from './observability/json-logger.js';
 import { readApiEnvironment } from './config/api-environment.js';
 
 config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)) });
 
 async function bootstrap() {
   const environment = readApiEnvironment();
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false, rawBody: true });
+  reporter.configure({ dsn: environment.monitoring.errorTrackingDsn, environment: environment.monitoring.errorTrackingEnvironment, release: environment.monitoring.release });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false, rawBody: true, ...(environment.isProduction ? { logger: new JsonLogger() } : {}) });
   app.disable('x-powered-by');
   app.set('trust proxy', environment.trustProxy);
   app.use(securityHeaders(environment.isProduction));
+  app.use(compress);
   app.use(requestLogging);
   app.useBodyParser('json', { limit: '4mb' });
   app.useGlobalFilters(new AllExceptionsFilter());

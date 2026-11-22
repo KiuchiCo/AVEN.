@@ -1986,7 +1986,7 @@ body {
 .workspace-settings-card input { width: min(100%, 440px); padding: 11px 12px; border: 1px solid var(--h-ded6cb); border-radius: 9px; background: var(--h-ffffff); font: 13px var(--aven-interface-font); }
 .workspace-settings-card input:disabled { background: var(--h-f4f1ec); color: var(--h-777777); }
 .workspace-settings-save { padding: 10px 14px; border: 0; border-radius: 9px; background: var(--h-292722); color: var(--h-ffffff); font: 600 12px var(--aven-interface-font); cursor: pointer; }
-.workspace-settings-save:disabled { opacity: .55; cursor: default; }
+.workspace-settings-save:disabled, .workspace-settings-save[role="radio"][aria-checked="true"] { opacity: .55; cursor: default; }
 .workspace-settings-card dl { display: flex; flex-wrap: wrap; gap: 34px; margin: 0; padding-top: 18px; border-top: 1px solid var(--h-eee8df); }
 .workspace-settings-card dl div { display: grid; gap: 5px; }
 .workspace-settings-card dt { color: var(--h-8a8176); font-size: 10px; }
@@ -3948,3 +3948,12 @@ select { max-width: 100%; }
 
 /* Visually hidden text inside a scrolling table is positioned absolutely; the scroller must contain it or it widens the whole page. */
 .database-table-scroll { position: relative; }
+
+/* Pages of database records */
+.database-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 10px 0 6px; color: var(--m-muted, #77766E); font-size: .9rem; }
+.database-pager label { display: inline-flex; align-items: center; gap: 6px; }
+.database-pager select { min-height: 36px; }
+.database-pager button { min-height: 36px; min-width: 44px; padding: 0 14px; border: 1px solid var(--m-border, #DCD9D0); border-radius: 999px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.database-pager button:disabled { opacity: .5; cursor: default; }
+.database-pager button:focus-visible, .database-pager select:focus-visible { outline: 2px solid var(--m-focus, #A48766); outline-offset: 2px; }
+.database-pager__note { margin: 0 0 8px; color: var(--m-muted, #77766E); font-size: .8rem; }

@@ -13,8 +13,8 @@ export const skip = enabled ? false : 'set INTEGRATION_DATABASE_URL to a migrate
 export async function boot(env = {}) {
   const run = randomUUID().slice(0, 8);
   Object.assign(process.env, { DATABASE_URL: process.env.INTEGRATION_DATABASE_URL, NODE_ENV: 'test', ...env });
-  const [{ NestFactory }, { UnauthorizedException }, { ClerkAuthGuard }, { AppModule }, { PrismaService }, { AllExceptionsFilter }] = await Promise.all([
-    import('@nestjs/core'), import('@nestjs/common'), import('../../dist/auth/clerk-auth.guard.js'), import('../../dist/app.module.js'), import('../../dist/database/prisma.service.js'), import('../../dist/common/all-exceptions.filter.js'),
+  const [{ NestFactory }, { UnauthorizedException }, { ClerkAuthGuard }, { AppModule }, { PrismaService }, { AllExceptionsFilter }, { requestLogging }, { compress }] = await Promise.all([
+    import('@nestjs/core'), import('@nestjs/common'), import('../../dist/auth/clerk-auth.guard.js'), import('../../dist/app.module.js'), import('../../dist/database/prisma.service.js'), import('../../dist/common/all-exceptions.filter.js'), import('../../dist/common/request-logging.js'), import('../../dist/common/compress.js'),
   ]);
   ClerkAuthGuard.prototype.canActivate = function canActivate(context) {
     const request = context.switchToHttp().getRequest();
@@ -24,6 +24,8 @@ export async function boot(env = {}) {
     return true;
   };
   const app = await NestFactory.create(AppModule, { bodyParser: false, rawBody: true, logger: false });
+  app.use(compress);
+  app.use(requestLogging);
   app.useBodyParser('json', { limit: '4mb' });
   app.setGlobalPrefix('api/v1');
   app.useGlobalFilters(new AllExceptionsFilter());

@@ -1,3 +1,4 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
 export interface Embeddings { readonly model: string; embed(texts: string[]): Promise<number[][]> }
 export type EmbeddingsConfig = { apiKey: string; baseUrl: string; model: string };
 
@@ -15,7 +16,7 @@ export class OpenAiCompatibleEmbeddings implements Embeddings {
       method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${this.config.apiKey}` },
       body: JSON.stringify({ model: this.config.model, input: texts }), signal: AbortSignal.timeout(30_000),
     });
-    if (!response.ok) throw new Error(`The embeddings provider answered ${response.status}.`);
+    if (!response.ok) { reportIntegrationFailure('embeddings', new Error(`The embeddings provider answered ${response.status}.`), { status: response.status }); throw new Error(`The embeddings provider answered ${response.status}.`); }
     const data = ((await response.json()) as { data?: { index?: number; embedding?: unknown }[] }).data;
     if (!Array.isArray(data) || data.length !== texts.length) throw new Error('The embeddings provider returned an unexpected reply.');
     const vectors = [...data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0)).map((row) => row.embedding);

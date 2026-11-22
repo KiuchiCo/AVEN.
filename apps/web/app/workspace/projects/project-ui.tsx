@@ -57,7 +57,8 @@ export function Modal({ title, onClose, children, footer, size = 'md', descripti
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    const first = panel.current?.querySelector<HTMLElement>('[data-autofocus]') ?? panel.current?.querySelector<HTMLElement>('input:not([type=hidden]), select, textarea, button');
+    // An explicit autofocus wins, then the first field in the body (not the close button that comes first in the page order), then the first button.
+    const first = panel.current?.querySelector<HTMLElement>('[data-autofocus]') ?? panel.current?.querySelector<HTMLElement>('.pw-modal__body input:not([type=hidden]):not(:disabled), .pw-modal__body select:not(:disabled), .pw-modal__body textarea:not(:disabled)') ?? panel.current?.querySelector<HTMLElement>('.pw-modal__body button, footer button, button');
     first?.focus();
     const scroll = document.body.style.overflow; document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = scroll; opener?.focus?.(); };

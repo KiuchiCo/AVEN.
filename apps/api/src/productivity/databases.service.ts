@@ -11,21 +11,76 @@ import { parseBaseUpdatedAt, recordConflict } from './document-concurrency.js';
 export class DatabasesService {
   constructor(private readonly prisma: PrismaService, private readonly entitlements: EntitlementsService) {}
 
-  async list(identity: AuthenticatedIdentity, workspaceId: string) {
+  /** Most records per database that the plain list sends. Past it `hasMore` is true and `recordTotal` says how many there are; the records endpoint pages through all of them. */
+  static readonly listRecordCap = 2000;
+
+  /**
+   * The databases with their views, properties and record counts, and up to `recordLimit` of each one's newest records (0 sends none: the Databases page then asks for pages itself).
+   * `recordTotal` is always the real number of records, so nothing is ever silently left out.
+   */
+  async list(identity: AuthenticatedIdentity, workspaceId: string, recordLimitRaw?: string) {
     await this.requireMembership(identity, workspaceId);
+    const requested = recordLimitRaw === undefined || recordLimitRaw === '' ? DatabasesService.listRecordCap : Number(recordLimitRaw);
+    if (!Number.isInteger(requested) || requested < 0) throw new BadRequestException('recordLimit must be a whole number of 0 or more.');
+    const recordLimit = Math.min(requested, DatabasesService.listRecordCap);
     const databases = await this.prisma.workspaceDatabase.findMany({
       where: { workspaceId },
       orderBy: { updatedAt: 'desc' },
       include: {
-        records: { orderBy: { updatedAt: 'desc' }, include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } } },
+        records: { orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: recordLimit, include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } } },
         views: { orderBy: { createdAt: 'asc' } },
+        _count: { select: { records: true } },
       },
     });
-    const rollupSource = await this.loadRollupSource(workspaceId, databases);
-    return databases.map((database) => ({
+    const withRecords = databases.map(({ _count, records, ...database }) => ({ ...database, records, recordTotal: _count.records }));
+    const linkSource = await this.loadRollupSource(workspaceId, withRecords);
+    return withRecords.map((database) => ({
       ...database,
-      records: database.records.map((record) => this.withRelationValues(record, database.properties, rollupSource)),
+      hasMore: database.recordTotal > database.records.length,
+      records: database.records.map((record) => this.withRelationValues(record, database.properties, linkSource)),
     }));
+  }
+
+  static readonly pageSizes = [25, 50, 100, 200, 500] as const;
+
+  /**
+   * One page of a database's records, sorted and searched on the server across ALL of them. Formulas and rollups are worked out per record on the server, so a page
+   * holds correct values; totals (`total`, `pageCount`) are counts over every matching record, never over the page.
+   */
+  async listRecords(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, query: { page?: string; pageSize?: string; q?: string; sort?: string; dir?: string }) {
+    await this.requireMembership(identity, workspaceId);
+    const database = await this.prisma.workspaceDatabase.findFirst({ where: { id: databaseId, workspaceId }, select: { id: true, properties: true } });
+    if (!database) throw new NotFoundException('Database not found in this workspace.');
+    const pageSize = query.pageSize === undefined || query.pageSize === '' ? 50 : Number(query.pageSize);
+    if (!(DatabasesService.pageSizes as readonly number[]).includes(pageSize)) throw new BadRequestException(`pageSize must be one of ${DatabasesService.pageSizes.join(', ')}.`);
+    const page = query.page === undefined || query.page === '' ? 1 : Number(query.page);
+    if (!Number.isInteger(page) || page < 1 || page > 1_000_000) throw new BadRequestException('page must be a whole number of 1 or more.');
+    const search = query.q?.trim() ?? '';
+    if (search.length > 200) throw new BadRequestException('Search can be up to 200 characters.');
+    const direction = query.dir === 'desc' ? 'desc' : query.dir === undefined || query.dir === '' || query.dir === 'asc' ? 'asc' : null;
+    if (!direction) throw new BadRequestException('dir must be asc or desc.');
+    const properties = propertyList(database.properties);
+    const sortKey = query.sort ?? 'updatedAt';
+    const sortProperty = properties.find((property) => property.id === sortKey);
+    if (sortKey !== 'updatedAt' && sortKey !== 'createdAt' && !(sortProperty && ['text', 'number', 'checkbox', 'date', 'status'].includes(sortProperty.type))) throw new BadRequestException('Sort by a stored property, updatedAt or createdAt.');
+
+    const where = Prisma.sql`"workspaceId" = ${workspaceId}::uuid AND "databaseId" = ${databaseId}::uuid${search ? Prisma.sql` AND EXISTS (SELECT 1 FROM jsonb_each_text(values) AS cell WHERE cell.value ILIKE ${`%${search.replace(/[\\%_]/g, '\\$&')}%`})` : Prisma.empty}`;
+    const dir = direction === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`;
+    const order = sortKey === 'updatedAt' || sortKey === 'createdAt'
+      ? Prisma.sql`${sortKey === 'updatedAt' ? Prisma.sql`"updatedAt"` : Prisma.sql`"createdAt"`} ${dir}`
+      : sortProperty!.type === 'number' ? Prisma.sql`(CASE WHEN values ->> ${sortKey}::text ~ '^-?[0-9]+(\.[0-9]+)?$' THEN (values ->> ${sortKey}::text)::numeric END) ${dir} NULLS LAST`
+      : sortProperty!.type === 'checkbox' ? Prisma.sql`(values ->> ${sortKey}::text) ${dir} NULLS LAST`
+      : Prisma.sql`lower(values ->> ${sortKey}::text) ${dir} NULLS LAST`;
+    const [idRows, totalRows] = await Promise.all([
+      this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`SELECT id FROM database_records WHERE ${where} ORDER BY ${order}, "updatedAt" DESC, id DESC LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
+      this.prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM database_records WHERE ${where}`),
+    ]);
+    const total = Number(totalRows[0]?.n ?? 0);
+    const found = await this.prisma.databaseRecord.findMany({ where: { id: { in: idRows.map((row) => row.id) }, workspaceId, databaseId }, include: { outgoingLinks: { select: { propertyId: true, targetRecordId: true } } } });
+    const byId = new Map(found.map((record) => [record.id, record]));
+    const ordered = idRows.flatMap((row) => { const record = byId.get(row.id); return record ? [record] : []; });
+    const linkSource = await this.loadRollupSource(workspaceId, [{ properties: database.properties, records: ordered }]);
+    return { records: ordered.map((record) => this.withRelationValues(record, database.properties, linkSource)), total, page, pageSize, pageCount: Math.max(1, Math.ceil(total / pageSize)), sort: sortKey, dir: direction, q: search };
   }
 
   async create(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
@@ -334,17 +389,21 @@ export class DatabasesService {
       return result;
     };
     for (const property of formulas.values()) values[property.id] = evaluateProperty(property.id);
-    return { ...base, values };
+    const linkNames: Record<string, string> = {};
+    for (const link of outgoingLinks) {
+      const target = rollupSource.get(link.targetRecordId);
+      if (!target || link.targetRecordId in linkNames) continue;
+      const label = target.name ?? Object.values(target).find((value) => typeof value === 'string' && value.trim());
+      linkNames[link.targetRecordId] = String(label ?? 'Untitled record').slice(0, 120);
+    }
+    return { ...base, values, linkNames };
   }
 
   /** One query for every linked record that a rollup needs, shared by all records being returned. */
   private async loadRollupSource(workspaceId: string, entries: Array<{ properties: unknown; records: Array<{ outgoingLinks: Array<{ propertyId: string; targetRecordId: string }> }> }>): Promise<RollupSource> {
     const ids = new Set<string>();
-    for (const { properties, records } of entries) {
-      const relationIds = new Set(propertyList(properties).filter((property) => property.type === 'rollup' && property.rollupRelationId).map((property) => property.rollupRelationId!));
-      if (!relationIds.size) continue;
-      for (const record of records) for (const link of record.outgoingLinks) if (relationIds.has(link.propertyId)) ids.add(link.targetRecordId);
-    }
+    // Every record these ones link to: rollups need their values, and the screens need their names, so a linked record shows by name even when it is not in the loaded page.
+    for (const { records } of entries) for (const record of records) for (const link of record.outgoingLinks) ids.add(link.targetRecordId);
     if (!ids.size) return new Map();
     const rows = await this.prisma.databaseRecord.findMany({ where: { id: { in: [...ids] }, workspaceId }, select: { id: true, values: true } });
     return new Map(rows.map((row) => [row.id, row.values && typeof row.values === 'object' && !Array.isArray(row.values) ? row.values as Record<string, Prisma.JsonValue> : {}]));

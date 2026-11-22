@@ -1,3 +1,4 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
 import { LlmError, type LlmEvent, type LlmProvider, type LlmRequest } from './llm.js';
 
 type Settings = { apiKey: string; model: string; baseUrl: string };
@@ -24,6 +25,9 @@ export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator
   } finally { reader.releaseLock(); }
 }
 
+/** Longest one answer may take from start to finish. */
+const STREAM_TIMEOUT_MS = 5 * 60_000;
+
 /** Anthropic Messages API over streaming HTTP. Uses plain fetch, so there is no SDK dependency. */
 export class AnthropicProvider implements LlmProvider {
   readonly name = 'anthropic';
@@ -36,12 +40,13 @@ export class AnthropicProvider implements LlmProvider {
     try {
       response = await fetch(`${this.settings.baseUrl.replace(/\/$/, '')}/v1/messages`, {
         method: 'POST',
-        signal: request.signal,
+        signal: request.signal ? AbortSignal.any([request.signal, AbortSignal.timeout(STREAM_TIMEOUT_MS)]) : AbortSignal.timeout(STREAM_TIMEOUT_MS), // a stalled provider must not hold the answer open for ever
         headers: { 'content-type': 'application/json', 'x-api-key': this.settings.apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ model: this.settings.model, max_tokens: request.maxTokens, system: request.system, messages: request.messages, tools: request.tools.length ? request.tools : undefined, stream: true }),
       });
     } catch (error) {
       if ((error as Error).name === 'AbortError') throw error;
+      reportIntegrationFailure('anthropic', error, { kind: 'network' });
       throw new LlmError('Could not reach the AI provider.', 'network');
     }
     if (!response.ok || !response.body) throw await this.failure(response);
@@ -95,6 +100,7 @@ export class AnthropicProvider implements LlmProvider {
   }
 
   private async failure(response: Response): Promise<LlmError> {
+    reportIntegrationFailure('anthropic', new Error(`The AI provider answered ${response.status}`), { status: response.status });
     if (response.status === 401 || response.status === 403) return new LlmError('The AI provider rejected the API key. Check ANTHROPIC_API_KEY.', 'auth');
     if (response.status === 429) return new LlmError('The AI provider is rate limiting requests. Try again shortly.', 'rate_limit');
     if (response.status === 529 || response.status >= 500) return new LlmError('The AI provider is unavailable right now. Try again shortly.', 'overloaded');

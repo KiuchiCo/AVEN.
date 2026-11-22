@@ -157,7 +157,7 @@ export function ButtonBlock({ label, taskTitle, readOnly, running, onLabel, onTa
 
 type Property = { id: string; name: string; type: string };
 type DbRecord = { id: string; values: Record<string, unknown>; updatedAt?: string };
-type Db = { id: string; name: string; properties: Property[]; records: DbRecord[] };
+type Db = { recordTotal?: number; id: string; name: string; properties: Property[]; records: DbRecord[] };
 const viewIcons = { TABLE: 'database-table', BOARD: 'database-board', GALLERY: 'database-gallery', LIST: 'database-list', BAR_V: 'chart-bar-vertical', BAR_H: 'chart-bar-horizontal', DONUT: 'chart-donut', NUMBER: 'chart-number', MAP: 'database-map', CALENDAR: 'database-calendar', TIMELINE: 'database-timeline', FEED: 'database-feed', DASHBOARD: 'database-dashboard', LINE: 'chart-line' } as const;
 const viewOrder = Object.keys(viewIcons) as DatabaseView[];
 const show = (value: unknown) => (Array.isArray(value) ? value.join(', ') : value === null || value === undefined ? '' : typeof value === 'boolean' ? (value ? '✓' : '') : String(value));
@@ -284,7 +284,7 @@ export function DatabaseBlock({ databaseId, view, linked, create, readOnly, onCh
     </div>
     {error && <p className="workspace-settings-status" role="alert">{error}</p>}
     {!database ? <p className="document-image__missing">{linked ? t('bl.pickLinked') : t('bl.pickDatabaseHint')}</p>
-      : view === 'NUMBER' ? <p className="document-database__number"><strong>{database.records.length}</strong><span>{database.name}</span></p>
+      : view === 'NUMBER' ? <p className="document-database__number"><strong>{database.recordTotal ?? database.records.length}</strong><span>{database.name}</span></p>
       : view === 'BAR_V' ? <div className="document-chart document-chart--v" role="img" aria-label={database.name}>{groups.map((group, index) => <div key={group.label}><i style={{ height: `${(group.count / total) * 100}%`, background: tones[index % tones.length] }} /><strong>{group.count}</strong><span>{group.label}</span></div>)}</div>
       : view === 'BAR_H' ? <HBars groups={groups} label={database.name} />
       : view === 'DONUT' ? <Donut groups={groups} label={database.name} />
@@ -297,7 +297,7 @@ export function DatabaseBlock({ databaseId, view, linked, create, readOnly, onCh
       })()
       : view === 'LINE' ? (dateProperty ? (dated.length ? <LineChart points={countByMonth(dated.map((entry) => entry.day))} label={database.name} /> : <p className="document-image__missing">{t('bl.noDates')}</p>) : <p className="document-image__missing">{t('bl.needDate')}</p>)
       : view === 'DASHBOARD' ? <div className="document-dashboard">
-        <p className="document-database__number"><strong>{database.records.length}</strong><span>{database.name}</span></p>
+        <p className="document-database__number"><strong>{database.recordTotal ?? database.records.length}</strong><span>{database.name}</span></p>
         <Donut groups={groups} label={database.name} /><HBars groups={groups} label={database.name} />
         <ul className="document-database__list">{database.records.slice(0, 5).map((record) => <li key={record.id}><strong>{show(record.values[titleProperty?.id ?? '']) || t('db.untitled')}</strong><span>{database.properties.filter((property) => property.id !== titleProperty?.id).slice(0, 2).map((property) => show(record.values[property.id])).filter(Boolean).join(' · ')}</span></li>)}</ul></div>
       : view === 'FEED' ? <div className="document-feed">{[...database.records].sort((a, b) => (dateProperty ? String(b.values[dateProperty.id] ?? '').localeCompare(String(a.values[dateProperty.id] ?? '')) : 0)).map((record) => <article key={record.id}><strong>{show(record.values[titleProperty?.id ?? '']) || t('db.untitled')}</strong><dl>{database.properties.filter((property) => property.id !== titleProperty?.id).map((property) => show(record.values[property.id]) ? <div key={property.id}><dt>{property.name}</dt><dd>{show(record.values[property.id])}</dd></div> : null)}</dl></article>)}</div>

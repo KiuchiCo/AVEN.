@@ -1,3 +1,4 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
 export type Email = { to: string; subject: string; text: string; html: string };
 
 /** Sends one email. To use another service, write another class with this shape. */
@@ -27,8 +28,9 @@ export class ResendMailer implements Mailer {
         headers: { authorization: `Bearer ${this.settings.apiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify({ from: this.settings.from, to: [email.to], subject: email.subject, text: email.text, html: email.html }),
       });
-    } catch { throw new MailError('The email service could not be reached.', true); }
+    } catch (error) { reportIntegrationFailure('email', error, { kind: 'network' }); throw new MailError('The email service could not be reached.', true); }
     if (response.ok) return;
+    reportIntegrationFailure('email', new Error(`The email service answered ${response.status}`), { status: response.status });
     if (response.status === 401 || response.status === 403) throw new MailError('The email service rejected the API key. Check EMAIL_API_KEY.', false);
     if (response.status === 429 || response.status >= 500) throw new MailError('The email service is busy or unavailable.', true);
     const detail = await response.json().catch(() => null) as { message?: string } | null;

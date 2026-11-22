@@ -1,3 +1,4 @@
+import { reportIntegrationFailure, reportJobFailure } from '../observability/error-reporter.js';
 import { BadRequestException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { readApiEnvironment } from '../config/api-environment.js';
@@ -22,7 +23,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     if (!this.settings || process.env.NODE_ENV === 'test' || process.env.PUSH_DISABLED === 'true') return;
-    this.timer = setInterval(() => { void this.tick().catch((error) => this.logger.error(`Push pass failed: ${error instanceof Error ? error.message : error}`)); }, TICK_MS);
+    this.timer = setInterval(() => { void this.tick().catch((error) => { reportJobFailure('push', error); this.logger.error(`Push pass failed: ${error instanceof Error ? error.message : error}`); }); }, TICK_MS);
     this.timer.unref();
   }
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
@@ -78,7 +79,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
           try { await this.deliver(subscription, payload, now); result.pushes += 1; }
           catch (error) {
             if (error instanceof WebhookError && (error.status === 404 || error.status === 410)) { await this.prisma.pushSubscription.deleteMany({ where: { id: subscription.id } }); result.removed += 1; }
-            else this.logger.warn(`Could not push to a device of user ${userId}: ${error instanceof Error ? error.message : 'unknown error'}`);
+            else { reportIntegrationFailure('push', error); this.logger.warn(`Could not push to a device of user ${userId}: ${error instanceof Error ? error.message : 'unknown error'}`); }
           }
         }
       }

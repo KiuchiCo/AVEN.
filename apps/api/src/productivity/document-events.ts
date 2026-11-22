@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { RealtimeBus } from '../realtime/realtime-bus.js';
 
 export type Viewer = { id: string; name: string };
 /** Who has the document open, and the block each person last put their cursor in (null when none). */
@@ -25,6 +26,11 @@ export class DocumentEvents {
   private readonly open = new Map<string, number>();
   private readonly focus = new Map<string, Map<string, string>>();
   private readonly emptied = new Set<(documentId: string) => void>();
+
+  constructor(@Optional() private readonly bus?: RealtimeBus) {
+    // A save made on another API instance tells the people here to fetch it. Typing and presence stay on the instance that holds the live text.
+    bus?.on('document', (message) => this.deliver(message.scope, message.event as DocumentEvent));
+  }
 
   /** Caps how many live document connections one person can hold. Returns a release function, or null when over the cap. */
   acquire(userId: string, max = 10): (() => void) | null {
@@ -72,6 +78,11 @@ export class DocumentEvents {
   }
 
   publish(documentId: string, event: DocumentEvent) {
+    this.deliver(documentId, event);
+    if (event.type === 'saved') void this.bus?.publish({ topic: 'document', scope: documentId, event });
+  }
+
+  private deliver(documentId: string, event: DocumentEvent) {
     for (const listener of [...(this.listeners.get(documentId) ?? [])]) {
       try { listener.send(event); } catch { /* one broken connection must not stop the others */ }
     }

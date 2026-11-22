@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { metrics } from '../observability/metrics.js';
 import { EntitlementsService } from '../billing/entitlements.service.js';
 import type { Readable } from 'node:stream';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
@@ -9,7 +10,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { cleanFileName, downloadHeaders, formatBytes, normalizeMimeType, reconcileMime, uniqueName } from './file-rules.js';
 import type { StorageDriver } from './storage.js';
-import { extractText, titleFromFileName } from './text-extract.js';
+import { extractTextWithOcr, titleFromFileName } from './text-extract.js';
 import { FILE_LIMITS, STORAGE, type FileLimits } from './tokens.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -148,7 +149,7 @@ export class FilesService {
     // Sent in X-File-Mime because Content-Type must stay application/octet-stream: the JSON body parser would consume a JSON upload.
     const declaredMime = normalizeMimeType(request.headers['x-file-mime']);
     const storageKey = `${workspaceId}/${randomUUID()}`;
-    const { size, checksum } = await this.storage.put(storageKey, request, maxUploadBytes);
+    const { size, checksum } = await this.storage.put(storageKey, request, maxUploadBytes).catch((error) => { metrics.inc('file_upload_failures_total', { stage: 'store' }); throw error; });
     try {
       const mimeType = reconcileMime(declaredMime, await this.head(storageKey));
       if (size === 0) throw new BadRequestException('The file is empty.');
@@ -168,6 +169,7 @@ export class FilesService {
       });
       return file;
     } catch (error) {
+      metrics.inc('file_upload_failures_total', { stage: 'after-store' });
       await this.storage.delete(storageKey).catch(() => undefined);
       throw error;
     }
@@ -201,7 +203,7 @@ export class FilesService {
     let bytes: Buffer;
     try { const stored = await this.storage.get(file.storageKey); const parts: Buffer[] = []; for await (const chunk of stored.stream) parts.push(Buffer.from(chunk as Buffer)); bytes = Buffer.concat(parts); }
     catch { throw new NotFoundException('The file contents are missing from storage.'); }
-    const { text, truncated } = extractText(file.name, file.mimeType, bytes);
+    const { text, truncated, ocrPages } = await extractTextWithOcr(file.name, file.mimeType, bytes);
     const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 200) : titleFromFileName(file.name);
     const rawTags = body.tags === undefined || body.tags === null ? [] : body.tags;
     if (!Array.isArray(rawTags) || rawTags.length > 20 || rawTags.some((tag) => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 40)) throw new BadRequestException('Use up to 20 tags of up to 40 characters.');
@@ -211,7 +213,7 @@ export class FilesService {
       await transaction.workspaceActivity.create({ data: { workspaceId, actorId: userId, entityType: 'KNOWLEDGE', entityId: created.id, message: `added “${title}” to Knowledge from a file` } });
       return created;
     });
-    return { ...item, truncated };
+    return { ...item, truncated, ocrPages };
   }
 
   /** For share links: an image file's bytes, with no sign-in. The caller has already proved the document uses this file. */

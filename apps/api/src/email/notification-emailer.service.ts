@@ -1,3 +1,4 @@
+import { reportIntegrationFailure, reportJobFailure } from '../observability/error-reporter.js';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { readApiEnvironment } from '../config/api-environment.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -25,7 +26,7 @@ export class NotificationEmailer implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     if (!this.mailer || process.env.EMAIL_DISABLED === 'true' || process.env.NODE_ENV === 'test') return;
-    this.timer = setInterval(() => { void this.tick().catch((error) => this.logger.error(`Email pass failed: ${error instanceof Error ? error.message : error}`)); }, TICK_MS);
+    this.timer = setInterval(() => { void this.tick().catch((error) => { reportJobFailure('email-summary', error); this.logger.error(`Email pass failed: ${error instanceof Error ? error.message : error}`); }); }, TICK_MS);
     this.timer.unref();
   }
 
@@ -74,6 +75,7 @@ export class NotificationEmailer implements OnModuleInit, OnModuleDestroy {
           await this.prisma.activityReceipt.updateMany({ where: { id: { in: mine.map((r) => r.id) } }, data: { emailedAt: null } });
           const retry = error instanceof MailError ? error.retry : true;
           this.retryAfter.set(userId, now.getTime() + (retry ? 15 * 60_000 : 60 * 60_000));
+          reportIntegrationFailure('email', error);
           this.logger.warn(`Could not email notifications to user ${userId}: ${error instanceof Error ? error.message : 'unknown error'}`);
         }
       }

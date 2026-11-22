@@ -67,3 +67,7 @@ Light mode is the default. Define semantic tokens so a future dark theme can cha
 ## Current implementation
 
 The static dashboard is a visual prototype. It uses sample figures and names for layout exploration; those values are not live workspace data. Its palette and typography now follow these tokens; the framework migration will replace the static prototype with reusable application components.
+
+## Reference images
+
+The UI reference screens are not in the repository. They live in `/Users/Business/Desktop/AVEN. UI/` (20 images: Analytics, Automations, Calendar, Documents, Intelligence, Knowledge, My Tasks, People, Project Templates, Task Board (two), Task Labels, Inbox, Whiteboards, Workspace Dashboard, Database, Projects, Files, Messaging, Activity). There is no reference for Settings or the account-data screens, so those follow the existing settings cards and the tokens above.

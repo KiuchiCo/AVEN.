@@ -1,3 +1,4 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
 import { requireWorkspaceMember } from '../auth/workspace-access.js';
@@ -114,7 +115,7 @@ export class BillingService {
 
   /** Best effort, for use after membership changes: a billing hiccup must never block adding or removing a person. */
   async syncSeatsQuietly(workspaceId: string) {
-    try { await this.syncSeats(workspaceId); } catch (error) { this.logger.warn(`Could not update billed seats: ${error instanceof Error ? error.message : 'unknown error'}`); }
+    try { await this.syncSeats(workspaceId); } catch (error) { reportIntegrationFailure('stripe', error); this.logger.warn(`Could not update billed seats: ${error instanceof Error ? error.message : 'unknown error'}`); }
   }
 
   // ---- webhooks --------------------------------------------------------------------------------------------

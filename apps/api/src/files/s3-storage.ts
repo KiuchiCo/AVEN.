@@ -1,3 +1,4 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
 import { createHash, createHmac } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { NotFoundException, PayloadTooLargeException } from '@nestjs/common';
@@ -47,7 +48,13 @@ export class S3StorageDriver implements StorageDriver {
     if (/\0/.test(key) || key.split('/').includes('..')) throw new Error('Invalid storage key.');
     const path = `${this.base.pathname.replace(/\/$/, '')}/${this.config.bucket}/${encodePath(key)}`;
     const headers = signV4({ method, host: this.base.host, path, payloadHash: sha256(body ?? ''), region: this.config.region, accessKeyId: this.config.accessKeyId, secretAccessKey: this.config.secretAccessKey, now: new Date() });
-    return this.fetcher(`${this.base.origin}${path}`, { method, headers, body: body ? new Uint8Array(body) : undefined });
+    // A stalled object store must not hold an upload or a download open for ever: writes get two minutes, a read ten (it covers streaming the whole file).
+    const signal = AbortSignal.timeout(method === 'GET' ? 10 * 60_000 : 2 * 60_000);
+    try {
+      const response = await this.fetcher(`${this.base.origin}${path}`, { method, headers, body: body ? new Uint8Array(body) : undefined, signal });
+      if (!response.ok && response.status !== 404) reportIntegrationFailure('s3', new Error(`Object storage answered ${response.status}`), { status: response.status, method });
+      return response;
+    } catch (error) { reportIntegrationFailure('s3', error, { kind: 'network', method }); throw error; }
   }
 
   async put(key: string, source: Readable, maxBytes: number) {

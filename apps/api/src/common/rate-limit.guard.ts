@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { isIP } from 'node:net';
 import type { Request, Response } from 'express';
+import { metrics } from '../observability/metrics.js';
 import type { Hit, RateLimitStore } from './rate-limit.store.js';
 
 /** The client's address as Express worked it out from the trusted proxies. Anything that is not an IP address (a forged or malformed header value) is ignored in favour of the connection's own address, so garbage cannot be used to get a fresh allowance. */
@@ -57,6 +58,7 @@ export class RateLimitGuard implements CanActivate {
     const key = `${who ? `u:${who.issuer}|${who.subject}` : `ip:${clientAddress(request)}`}${live ? ':live' : ''}:${this.limit}`;
     const check = (hit: Hit) => {
       if (hit.count > (live ? this.liveLimit : this.limit)) {
+        metrics.inc('rate_limit_rejections_total', { scope: this.failClosed ? 'strict' : 'standard' });
         http.getResponse<Response>().setHeader('Retry-After', Math.ceil((hit.resetAt - now) / 1000));
         throw new HttpException('Too many requests. Please slow down and try again shortly.', HttpStatus.TOO_MANY_REQUESTS);
       }
@@ -72,6 +74,7 @@ export class RateLimitGuard implements CanActivate {
     try {
       return await Promise.race([store.hit(key, this.windowMs, now), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('rate limit store timed out')), RateLimitGuard.storeTimeoutMs); })]);
     } catch {
+      metrics.inc('rate_limit_store_failures_total', { mode: this.failClosed ? 'refused' : 'degraded' });
       if (this.failClosed) throw new HttpException('This service is briefly unavailable. Please try again in a moment.', HttpStatus.SERVICE_UNAVAILABLE);
       return this.hitLocal(key, now);
     } finally { clearTimeout(timer); }

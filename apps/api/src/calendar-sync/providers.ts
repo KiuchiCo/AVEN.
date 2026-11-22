@@ -1,3 +1,4 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
 import type { CalendarOAuth } from '../config/api-environment.js';
 import { fromAllDayDates, toAllDayDates, type EventContent, type RemoteEvent } from './remote-events.js';
 
@@ -26,9 +27,10 @@ const expires = (seconds: unknown) => new Date(Date.now() + (typeof seconds === 
 async function call(url: string, init: RequestInit & { allow?: number[] }): Promise<{ status: number; body: Json | null }> {
   let response: Response;
   try { response = await fetch(url, { ...init, signal: AbortSignal.timeout(20_000) }); }
-  catch { throw new ProviderError('The calendar service could not be reached.', 'retry'); }
+  catch (error) { reportIntegrationFailure('calendar', error, { kind: 'network' }); throw new ProviderError('The calendar service could not be reached.', 'retry'); }
   const body = await response.json().catch(() => null) as Json | null;
   if (response.ok || init.allow?.includes(response.status)) return { status: response.status, body };
+  reportIntegrationFailure('calendar', new Error(`The calendar service answered ${response.status}`), { status: response.status });
   const detail = String(body?.error_description ?? body?.error?.message ?? body?.error ?? '').slice(0, 160);
   if (response.status === 401 || (response.status === 400 && /invalid_grant/.test(String(body?.error)))) throw new ProviderError(detail || 'The calendar account needs to be reconnected.', 'auth');
   if (response.status === 403 && /insufficient|forbidden|scope/i.test(detail)) throw new ProviderError(detail || 'AVEN was not given permission to use this calendar.', 'auth');

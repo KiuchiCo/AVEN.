@@ -1,3 +1,4 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Email } from './mailer.js';
 import { MAILER, type OptionalMailer } from './mailer.js';
@@ -16,6 +17,6 @@ export class TransactionalEmail {
   async send(email: Email): Promise<EmailOutcome> {
     if (!this.mailer) return 'not_configured';
     try { await this.mailer.send(email); return 'sent'; }
-    catch (error) { this.logger.warn(`Could not send an email: ${error instanceof Error ? error.message : 'unknown error'}`); return 'failed'; }
+    catch (error) { reportIntegrationFailure('email', error); this.logger.warn(`Could not send an email: ${error instanceof Error ? error.message : 'unknown error'}`); return 'failed'; }
   }
 }

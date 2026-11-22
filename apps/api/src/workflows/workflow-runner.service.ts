@@ -1,3 +1,4 @@
+import { reportJobFailure } from '../observability/error-reporter.js';
 import { HttpException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { EntitlementsService } from '../billing/entitlements.service.js';
 import { creditsFor, estimateTokens, monthWindow } from '../ai/ai-rules.js';
@@ -46,7 +47,7 @@ export class WorkflowRunner implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     if (process.env.WORKFLOWS_DISABLED === 'true' || process.env.NODE_ENV === 'test') return;
-    this.timer = setInterval(() => { void this.tick().catch((error) => this.logger.error(`Workflow tick failed: ${error instanceof Error ? error.message : error}`)); }, TICK_MS);
+    this.timer = setInterval(() => { void this.tick().catch((error) => { reportJobFailure('workflow-runner', error); this.logger.error(`Workflow tick failed: ${error instanceof Error ? error.message : error}`); }); }, TICK_MS);
     this.timer.unref();
   }
 
@@ -153,7 +154,7 @@ export class WorkflowRunner implements OnModuleInit, OnModuleDestroy {
     try {
       const activity = await this.prisma.workspaceActivity.create({ data: { workspaceId: run.workspaceId, actorId: run.workflow.createdById, entityType: 'WORKFLOW', entityId: run.workflowId, message: `Workflow “${run.workflow.name}” failed: ${text}`.slice(0, 500), recipientScoped: true } });
       await this.prisma.activityReceipt.create({ data: { activityId: activity.id, userId: run.workflow.createdById, isNotificationTarget: true } });
-    } catch (error) { this.logger.warn(`Could not report a failed run: ${error instanceof Error ? error.message : error}`); }
+    } catch (error) { reportJobFailure('workflow-failure-report', error); this.logger.warn(`Could not report a failed run: ${error instanceof Error ? error.message : error}`); }
   }
 
   private classify(error: unknown): StepError {

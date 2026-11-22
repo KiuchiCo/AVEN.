@@ -18,7 +18,7 @@ export type Channel = { id: string; kind: 'CHANNEL' | 'DIRECT' | 'GROUP'; name: 
 export type Message = { id: string; channelId: string; parentId: string | null; body: string; createdAt: string; editedAt: string | null; deletedAt: string | null; replyCount: number; author: Participant; files: { id: string; name: string; mimeType: string; sizeBytes: number }[] };
 type Member = { userId: string; displayName: string; role: string };
 type Hit = { id: string; channelId: string; parentId: string | null; body: string; createdAt: string; author: Participant; channel: { kind: Channel['kind']; name: string | null; participants: Participant[] } };
-type LiveEvent = { type: 'message' | 'message_updated'; channelId: string; message: Message } | { type: 'message_deleted'; channelId: string; id: string; parentId?: string | null } | { type: 'channel'; channel: Channel } | { type: 'presence'; online: string[] };
+type LiveEvent = { type: 'refresh' } | { type: 'message' | 'message_updated'; channelId: string; message: Message } | { type: 'message_deleted'; channelId: string; id: string; parentId?: string | null } | { type: 'channel'; channel: Channel } | { type: 'presence'; online: string[] };
 const byName = (a: Channel, b: Channel) => (a.name ?? '').localeCompare(b.name ?? '');
 
 export function MessagesWorkspace() {
@@ -84,6 +84,7 @@ export function MessagesWorkspace() {
     const abort = new AbortController(); let first = true;
     const handle = (event: LiveEvent) => {
       if (event.type === 'presence') { setOnline(event.online); return; }
+      if (event.type === 'refresh') { void loadChannels(); if (active.current) void loadMessages(active.current); if (openThread.current && active.current) void loadThread(active.current, openThread.current); return; } // an event too large to pass between servers: look again
       if (event.type === 'channel') { setChannels((list) => (list.some((item) => item.id === event.channel.id) ? list : [...list, event.channel])); return; }
       const inActive = event.channelId === active.current;
       if (event.type === 'message_deleted') {

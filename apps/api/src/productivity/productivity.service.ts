@@ -37,6 +37,11 @@ const taskViewSorts = ['DUE_ASC', 'DUE_DESC', 'PRIORITY', 'TITLE'] as const;
 const databaseRecordSearchPageSize = 300;
 const databaseRecordSearchMaxScan = 3000;
 
+/** A document reduced to its first words, still in the editor's format so the same preview code reads it. */
+function previewContent(content: string): string {
+  return JSON.stringify({ format: 'aven-doc-v1', blocks: [{ id: 'preview', type: 'PARAGRAPH', text: documentPlainText(content).slice(0, 400) }] });
+}
+
 @Injectable()
 export class ProductivityService {
   constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService, private readonly documentEvents: DocumentEvents, private readonly textSessions: TextSessions) {}
@@ -442,13 +447,23 @@ export class ProductivityService {
     return { id: milestone.id, deleted: true };
   }
 
-  async listTasks(identity: AuthenticatedIdentity, workspaceId: string, label?: string) {
+  /** Most tasks one list request returns. Above it the answer says it was cut (`truncated`), instead of sending tens of megabytes. */
+  static readonly taskListLimit = 10_000;
+  static readonly documentListLimit = 3000;
+
+  async listTasks(identity: AuthenticatedIdentity, workspaceId: string, label?: string): Promise<{ tasks: Awaited<ReturnType<ProductivityService['fetchTasks']>>; truncated: boolean }> {
+    const rows = await this.fetchTasks(identity, workspaceId, label);
+    return { tasks: rows.slice(0, ProductivityService.taskListLimit), truncated: rows.length > ProductivityService.taskListLimit };
+  }
+
+  private async fetchTasks(identity: AuthenticatedIdentity, workspaceId: string, label?: string) {
     const actor = await this.projectActor(identity, workspaceId);
     const normalizedLabel = label?.trim().toLocaleLowerCase();
     if (normalizedLabel && (normalizedLabel.length > 32 || !/^[\p{L}\p{N}_-]+$/u.test(normalizedLabel))) throw new BadRequestException('Task label must be 1–32 letters, numbers, underscores, or hyphens.');
     return this.prisma.task.findMany({
       where: { workspaceId, ...(normalizedLabel ? { labels: { has: normalizedLabel } } : {}), ...(Object.keys(visibleProjectWhere(actor)).length ? { OR: [{ projectId: null }, { project: visibleProjectWhere(actor) }] } : {}) },
       orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
+      take: ProductivityService.taskListLimit + 1,
       include: {
         project: { select: { id: true, name: true } },
         milestone: { select: { id: true, title: true } },
@@ -984,12 +999,15 @@ export class ProductivityService {
 
   async listDocuments(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
-    const [documents, hidden] = await Promise.all([this.prisma.document.findMany({
+    const [found, hidden] = await Promise.all([this.prisma.document.findMany({
       where: { workspaceId },
       orderBy: { updatedAt: 'desc' },
+      take: ProductivityService.documentListLimit + 1,
       include: { project: { select: { id: true, name: true } }, createdBy: { select: { id: true, displayName: true } } },
     }), hiddenLinksFor(this.prisma, workspaceId, userId)]);
-    return documents.map((document) => unlinkHidden(document, hidden));
+    // A list needs a title and a short preview, not every document in full: the whole text is read when one is opened.
+    const documents = found.slice(0, ProductivityService.documentListLimit).map((document) => ({ ...unlinkHidden(document, hidden), content: previewContent(document.content) }));
+    return { documents, truncated: found.length > ProductivityService.documentListLimit };
   }
 
   async deleteDocument(identity: AuthenticatedIdentity, workspaceId: string, documentId: string) {

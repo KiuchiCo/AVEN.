@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { RateLimitGuard } from '../common/rate-limit.guard.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
@@ -11,8 +11,19 @@ export class DatabasesController {
   constructor(private readonly databases: DatabasesService) {}
 
   @Get()
-  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
-    return this.databases.list(identity, workspaceId);
+  list(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string, @Query('recordLimit') recordLimit?: string) {
+    return this.databases.list(identity, workspaceId, recordLimit);
+  }
+
+  /** One page of a database's records, searched and sorted across all of them. */
+  @Get(':databaseId/records')
+  records(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+    @Query() query: { page?: string; pageSize?: string; q?: string; sort?: string; dir?: string },
+  ) {
+    return this.databases.listRecords(identity, workspaceId, databaseId, query);
   }
 
   @Post()

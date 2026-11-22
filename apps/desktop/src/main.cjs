@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { updateFeed, startUpdates } = require('./updates.cjs');
 const { parseServerUrl, resolveServerUrl, classifyUrl, permissionAllowed, usableBounds } = require('./rules.cjs');
 
 /**
@@ -111,6 +112,7 @@ else {
     buildMenu();
     createWindow();
     if (smoke) runSmokeTest();
+    else startUpdates({ feed: updateFeed(process.env, app.isPackaged), autoUpdater: app.isPackaged ? require('electron-updater').autoUpdater : null, dialog: require('electron').dialog, getWindow: () => window, log: (message) => console.warn(message) });
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

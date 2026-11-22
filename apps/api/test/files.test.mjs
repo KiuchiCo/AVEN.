@@ -149,3 +149,18 @@ test('S3 driver stores, reads, enforces the size cap and deletes against a stub 
     await assert.rejects(s3.get('../x'), /Invalid storage key/);
   } finally { server.close(); }
 });
+
+test('object storage calls carry a timeout, and a failure is counted as an integration failure and passed on', async () => {
+  const { Readable } = await import('node:stream');
+  const { metrics } = await import('../dist/observability/metrics.js');
+  const seen = [];
+  const config = { bucket: 'b', region: 'eu-west-1', accessKeyId: 'AK', secretAccessKey: 'SK' };
+  const healthy = new S3StorageDriver(config, async (_url, init) => { seen.push(init); return new Response('ok', { status: 200 }); });
+  await healthy.put('w/k', Readable.from([Buffer.from('hello')]), 1000); await healthy.delete('w/k');
+  assert.ok(seen.length === 2 && seen.every((init) => init.signal instanceof AbortSignal), 'every request has a timeout signal');
+  const refusing = new S3StorageDriver(config, async () => new Response('no', { status: 503 }));
+  await assert.rejects(refusing.put('w/k', Readable.from([Buffer.from('x')]), 1000), /rejected the upload \(503\)/);
+  const unreachable = new S3StorageDriver(config, async () => { throw new Error('connect ECONNREFUSED'); });
+  await assert.rejects(unreachable.delete('w/k'), /ECONNREFUSED/);
+  assert.match(metrics.render(), /integration_failures_total\{integration="s3"\} [2-9]/);
+});

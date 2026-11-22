@@ -10,7 +10,11 @@
     "smoke": "AVEN_DESKTOP_SMOKE=1 electron .",
     "test": "node --test test/*.test.mjs",
     "prepackage": "node scripts/write-config.cjs",
-    "package": "electron-builder --dir --publish never"
+    "package": "electron-builder --dir --publish never",
+    "dist:mac": "electron-builder --mac dmg zip --publish never",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "predist:mac": "node scripts/write-config.cjs",
+    "predist:win": "node scripts/write-config.cjs"
   },
   "devDependencies": {
     "electron": "45.4.1",
@@ -38,15 +42,35 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     },
     "win": {
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "target": [
+        "nsis"
+      ],
+      "publisherName": [
+        "AVEN."
+      ]
     },
     "linux": {
       "category": "Office",
       "icon": "assets/icon.png"
     },
-    "electronDist": "../../node_modules/electron/dist"
+    "electronDist": "../../node_modules/electron/dist",
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }

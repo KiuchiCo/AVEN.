@@ -1,4 +1,4 @@
-import { inflateSync } from 'node:zlib';
+import { crc32, deflateSync, inflateSync } from 'node:zlib';
 
 /** What can't be read from a PDF is reported with a plain reason. */
 export class PdfError extends Error {}
@@ -55,7 +55,8 @@ function readObjects(file: Buffer): Map<number, Obj> {
       const dataStart = streamAt + (text[streamAt + 6] === '\r' && text[streamAt + 7] === '\n' ? 8 : 7);
       const lengthEntry = entry(dict, 'Length'); const direct = lengthEntry && /^\d+$/.test(lengthEntry) ? Number(lengthEntry) : null;
       const closing = text.indexOf('endstream', dataStart);
-      const dataEnd = direct !== null && text.startsWith('endstream', dataStart + direct) ? dataStart + direct : closing >= 0 ? closing : endAt;
+      let dataEnd = direct !== null && text.startsWith('endstream', dataStart + direct) ? dataStart + direct : closing >= 0 ? closing : endAt;
+      if (!(direct !== null && dataEnd === dataStart + direct)) { if (text[dataEnd - 1] === '\n') dataEnd -= 1; if (text[dataEnd - 1] === '\r') dataEnd -= 1; } // the line break before "endstream" is not part of the data
       objects.set(id, { dict, stream: file.subarray(dataStart, dataEnd) });
       header.lastIndex = Math.max(dataEnd, header.lastIndex);
     } else { objects.set(id, { dict: text.slice(bodyStart, endAt) }); header.lastIndex = endAt; }
@@ -194,4 +195,65 @@ export function pdfToText(file: Buffer): string {
     pages.push(text);
   }
   return pages.map((page) => page.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()).filter(Boolean).join('\n\n');
+}
+
+export type ScanImage = { page: number; data: Buffer; format: 'jpeg' | 'png' };
+
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_PIXELS = 40_000_000;
+
+function png(width: number, height: number, channels: 1 | 3, compressed: Buffer): Buffer {
+  const chunk = (type: string, data: Buffer) => { const out = Buffer.alloc(12 + data.length); out.writeUInt32BE(data.length, 0); out.write(type, 4, 'latin1'); data.copy(out, 8); out.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type, 'latin1'), data])), 8 + data.length); return out; };
+  const header = Buffer.alloc(13); header.writeUInt32BE(width, 0); header.writeUInt32BE(height, 4); header[8] = 8; header[9] = channels === 1 ? 0 : 2;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', header), chunk('IDAT', compressed), chunk('IEND', Buffer.alloc(0))]);
+}
+
+/**
+ * The picture on each page of a scanned PDF, in page order, ready to be read by an OCR engine. A scan is usually one large image per page: JPEG pictures are passed on as they are,
+ * and 8-bit grey or RGB pictures are wrapped as PNG. Other kinds (fax-style CCITT, JBIG2, indexed colour) are counted as `unsupported` rather than guessed at.
+ * The same limits as reading text apply (total unpacked size, page count), plus a cap on picture size.
+ */
+export function pdfScanImages(file: Buffer, maxPages = 30): { images: ScanImage[]; unsupported: number; pages: number } {
+  if (!file.subarray(0, 1024).toString('latin1').includes('%PDF-')) throw new PdfError('That file isn’t a PDF.');
+  unpacked = 0;
+  const objects = readObjects(file);
+  if ([...objects.values()].some((object) => /\/Encrypt\b/.test(object.dict)) || /\/Encrypt\s+\d+\s+\d+\s+R/.test(latin(file.subarray(Math.max(0, file.length - 4096))))) throw new PdfError('That PDF is password-protected, so AVEN. cannot read it.');
+  const pageIds: number[] = [];
+  const walk = (id: number, seen: Set<number>) => {
+    if (seen.has(id) || pageIds.length >= maxPages) return; seen.add(id);
+    const dict = objects.get(id)?.dict ?? '';
+    if (/\/Type\s*\/Pages\b/.test(dict) || (/\/Kids/.test(dict) && !/\/Type\s*\/Page\b/.test(dict))) for (const kid of refsIn(entry(dict, 'Kids'))) walk(kid, seen);
+    else if (/\/Type\s*\/Page\b/.test(dict)) pageIds.push(id);
+  };
+  const root = [...objects.entries()].find(([, object]) => /\/Type\s*\/Catalog\b/.test(object.dict));
+  const rootPages = root ? refId(entry(root[1].dict, 'Pages')) : null;
+  if (rootPages !== null) walk(rootPages, new Set());
+  if (!pageIds.length) for (const [id, object] of [...objects].sort((a, b) => a[0] - b[0])) if (/\/Type\s*\/Page\b/.test(object.dict) && pageIds.length < maxPages) pageIds.push(id);
+  const inherited = (id: number, key: string, depth = 0): string | null => { const dict = objects.get(id)?.dict ?? ''; return entry(dict, key) ?? (depth < 8 && refId(entry(dict, 'Parent')) !== null ? inherited(refId(entry(dict, 'Parent'))!, key, depth + 1) : null); };
+
+  const images: ScanImage[] = []; let unsupported = 0;
+  pageIds.forEach((pageId, index) => {
+    let resources = inherited(pageId, 'Resources') ?? ''; const resourceRef = refId(resources); if (resourceRef !== null) resources = objects.get(resourceRef)?.dict ?? '';
+    let xobjects = entry(resources, 'XObject') ?? ''; const xobjectRef = refId(xobjects); if (xobjectRef !== null) xobjects = objects.get(xobjectRef)?.dict ?? '';
+    const candidates = [...xobjects.matchAll(/\/[^\s/<>[\]()]+\s+(\d+)\s+\d+\s+R/g)].map((m) => Number(m[1])).flatMap((id) => { const object = objects.get(id); return object?.stream && /\/Subtype\s*\/Image\b/.test(object.dict) ? [object] : []; });
+    if (!candidates.length) return;
+    const area = (dict: string) => Number(entry(dict, 'Width') ?? 0) * Number(entry(dict, 'Height') ?? 0);
+    const picture = candidates.sort((a, b) => area(b.dict) - area(a.dict))[0]; // the page's scan is its largest picture
+    const width = Number(entry(picture.dict, 'Width')), height = Number(entry(picture.dict, 'Height'));
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width * height > MAX_PIXELS || picture.stream!.length > MAX_IMAGE_BYTES) { unsupported += 1; return; }
+    const filter = entry(picture.dict, 'Filter') ?? '';
+    if (/DCTDecode/.test(filter) && !/FlateDecode|LZW|ASCII85|RunLength/.test(filter)) { images.push({ page: index + 1, data: picture.stream!, format: 'jpeg' }); return; }
+    const space = entry(picture.dict, 'ColorSpace') ?? ''; const channels = /DeviceGray/.test(space) ? 1 : /DeviceRGB/.test(space) ? 3 : 0;
+    const bits = Number(entry(picture.dict, 'BitsPerComponent') ?? 0);
+    if (!channels || bits !== 8 || !/^\s*(\/FlateDecode|\/Fl)\s*$|^\[\s*\/FlateDecode\s*\]$/.test(filter)) { unsupported += 1; return; }
+    const parms = entry(picture.dict, 'DecodeParms') ?? '';
+    const predictor = Number(entry(parms, 'Predictor') ?? 1);
+    if (predictor >= 10 && Number(entry(parms, 'Columns') ?? width) === width && Number(entry(parms, 'Colors') ?? channels) === channels) { images.push({ page: index + 1, data: png(width, height, channels as 1 | 3, picture.stream!), format: 'png' }); return; } // rows already carry PNG filter bytes
+    const raw = decodeStream(picture.dict, picture.stream!);
+    if (!raw || predictor !== 1 || raw.length < width * height * channels) { unsupported += 1; return; }
+    const rows = Buffer.alloc((width * channels + 1) * height);
+    for (let y = 0; y < height; y += 1) raw.copy(rows, y * (width * channels + 1) + 1, y * width * channels, (y + 1) * width * channels);
+    images.push({ page: index + 1, data: png(width, height, channels as 1 | 3, deflateSync(rows)), format: 'png' });
+  });
+  return { images, unsupported, pages: pageIds.length };
 }

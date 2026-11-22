@@ -3,6 +3,7 @@ import { CanActivate, ExecutionContext, Injectable, ServiceUnavailableException,
 import type { Request } from 'express';
 import type { AuthenticatedIdentity } from './auth.types.js';
 import { readApiEnvironment } from '../config/api-environment.js';
+import { metrics } from '../observability/metrics.js';
 
 @Injectable()
 export class ClerkAuthGuard implements CanActivate {
@@ -13,6 +14,7 @@ export class ClerkAuthGuard implements CanActivate {
     const token = request.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
 
     if (!token) {
+      metrics.inc('auth_failures_total', { reason: 'missing' });
       throw new UnauthorizedException('A valid sign-in session is required.');
     }
 
@@ -40,6 +42,7 @@ export class ClerkAuthGuard implements CanActivate {
       request.authenticatedIdentity = identity;
       return true;
     } catch (error) {
+      metrics.inc('auth_failures_total', { reason: error instanceof UnauthorizedException ? 'incomplete' : 'invalid' });
       if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException('The sign-in session is invalid or expired.');
     }

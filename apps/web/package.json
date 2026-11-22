@@ -13,7 +13,8 @@
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "pretypecheck": "tsc -p ../../packages/collab/tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "node e2e/run.mjs"
+    "test:e2e": "node e2e/run.mjs",
+    "test:components": "vitest run"
   },
   "dependencies": {
     "@aven/collab": "*",
@@ -29,15 +30,22 @@
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@clerk/testing": "^2.3.6",
     "@playwright/test": "^1.65.1",
     "@tailwindcss/postcss": "4.3.5",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.13",
     "@types/node": "26.6.6",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "axe-core": "^4.14.1",
     "eslint": "^9.39.1",
     "eslint-config-next": "16.4.6",
+    "jsdom": "^31.0.1",
     "postcss": "^8.5.6",
     "tailwindcss": "4.3.5",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.0",
+    "vitest": "^5.1.1"
   }
 }

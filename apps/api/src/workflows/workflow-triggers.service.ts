@@ -1,3 +1,4 @@
+import { reportJobFailure } from '../observability/error-reporter.js';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Trigger } from './workflow-rules.js';
@@ -32,6 +33,7 @@ export class WorkflowTriggersService {
         await this.prisma.workflowRun.create({ data: { workflowId: workflow.id, workspaceId, trigger: { ...event, taskId } } });
       }
     } catch (error) {
+      reportJobFailure('workflow-trigger', error);
       this.logger.warn(`Could not queue workflows: ${error instanceof Error ? error.message : 'unknown error'}`);
     }
   }

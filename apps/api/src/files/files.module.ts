@@ -15,6 +15,6 @@ import { FILE_LIMITS, STORAGE } from './tokens.js';
     { provide: STORAGE, useFactory: () => { const env = readApiEnvironment(); return env.s3 ? new S3StorageDriver(env.s3) : new LocalStorageDriver(env.storageDir); } },
     { provide: FILE_LIMITS, useFactory: () => { const { maxUploadBytes, storageQuotaBytes } = readApiEnvironment(); return { maxUploadBytes, storageQuotaBytes }; } },
   ],
-  exports: [FilesService],
+  exports: [FilesService, STORAGE],
 })
 export class FilesModule {}

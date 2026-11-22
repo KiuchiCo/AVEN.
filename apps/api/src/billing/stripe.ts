@@ -1,3 +1,4 @@
+import { reportIntegrationFailure } from '../observability/error-reporter.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 /** A failure from the payment provider with a message that is safe to show. */
@@ -34,9 +35,10 @@ export class StripeClient {
         headers: { authorization: `Bearer ${this.settings.secretKey}`, ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
         body: form ? new URLSearchParams(form).toString() : undefined,
       });
-    } catch { throw new BillingProviderError('The payment provider could not be reached. Try again shortly.', true); }
+    } catch (error) { reportIntegrationFailure('stripe', error, { kind: 'network' }); throw new BillingProviderError('The payment provider could not be reached. Try again shortly.', true); }
     const body = await response.json().catch(() => null) as Record<string, unknown> | null;
     if (response.ok && body) return body;
+    reportIntegrationFailure('stripe', new Error(`Stripe answered ${response.status}`), { status: response.status });
     if (response.status === 401 || response.status === 403) throw new BillingProviderError('The payment provider rejected the API key. Check STRIPE_SECRET_KEY.');
     if (response.status === 429 || response.status >= 500) throw new BillingProviderError('The payment provider is busy. Try again shortly.', true);
     const message = (body?.error as { message?: string } | undefined)?.message;

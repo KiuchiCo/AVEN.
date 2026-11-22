@@ -1,6 +1,10 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { OFFICE_EXTENSIONS, officeToText } from './office-text.js';
-import { PdfError, pdfToText } from './pdf-text.js';
+import { OcrFailedError, OcrUnavailableError, ocrImage } from './ocr.js';
+import { PdfError, pdfScanImages, pdfToText } from './pdf-text.js';
+
+/** A PDF with no text of its own: a scan. It can be read with OCR (see extractTextWithOcr). */
+export class ScannedPdfError extends BadRequestException {}
 
 export const KNOWLEDGE_TEXT_LIMIT = 20_000;
 export const READABLE_EXTENSIONS = ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'html', 'htm', 'log'] as const;
@@ -32,7 +36,7 @@ export function extractText(name: string, mimeType: string, bytes: Buffer): { te
   if (ext === 'pdf' || mimeType === 'application/pdf') {
     let raw: string;
     try { raw = pdfToText(bytes); } catch (error) { throw new BadRequestException(error instanceof PdfError ? error.message : 'That PDF couldn’t be read.'); }
-    if (!raw.trim()) throw new BadRequestException('There is no readable text in that PDF. It may be a scan or made of images.');
+    if (!raw.trim()) throw new ScannedPdfError('There is no readable text in that PDF. It may be a scan or made of images.');
     return finish(raw);
   }
   const readable = (READABLE_EXTENSIONS as readonly string[]).includes(ext) || mimeType.startsWith('text/') || mimeType === 'application/json';
@@ -56,4 +60,34 @@ function finish(input: string): { text: string; truncated: boolean } {
 export function titleFromFileName(name: string): string {
   const base = name.replace(/\.[A-Za-z0-9]{1,8}$/, '').replace(/[_]+/g, ' ').trim();
   return (base || name).slice(0, 200);
+}
+
+/** Most OCR time one file may use, so one scan cannot hold the server for long. */
+const OCR_BUDGET_MS = 3 * 60_000;
+
+/**
+ * Like extractText, but a PDF that is a scan is read with OCR: its page pictures are passed, in page order, to a local OCR program (see ocr.ts). At most 30 pages, with a time budget.
+ * `ocrPages` says how many pages were read that way (0 for everything else).
+ */
+export async function extractTextWithOcr(name: string, mimeType: string, bytes: Buffer, ocr: (image: Buffer) => Promise<string> = (image) => ocrImage(image), budgetMs = OCR_BUDGET_MS): Promise<{ text: string; truncated: boolean; ocrPages: number }> {
+  try { return { ...extractText(name, mimeType, bytes), ocrPages: 0 }; }
+  catch (error) {
+    if (!(error instanceof ScannedPdfError)) throw error;
+    let scan: ReturnType<typeof pdfScanImages>;
+    try { scan = pdfScanImages(bytes); } catch (reason) { throw new BadRequestException(reason instanceof PdfError ? reason.message : 'That PDF couldn’t be read.'); }
+    if (!scan.images.length) throw new BadRequestException(scan.unsupported ? 'This scan uses a picture format that AVEN. cannot read yet (it needs to be a JPEG or plain grey or colour scan).' : 'There is no readable text in that PDF, and no scanned page pictures to read either.');
+    const started = Date.now(); const pages: string[] = [];
+    for (const image of scan.images) {
+      if (Date.now() - started > budgetMs) throw new BadRequestException('Reading this scan took too long. Try a document with fewer pages.');
+      try { pages.push(await ocr(image.data)); }
+      catch (reason) {
+        if (reason instanceof OcrUnavailableError) throw new ServiceUnavailableException(reason.message);
+        if (reason instanceof OcrFailedError) throw new BadRequestException(reason.message);
+        throw reason;
+      }
+    }
+    const text = pages.map((page) => page.trim()).filter(Boolean).join('\n\n');
+    if (!text) throw new BadRequestException('No text could be read from that scan.');
+    return { ...finish(text), ocrPages: scan.images.length };
+  }
 }

@@ -89,3 +89,13 @@ test('Clerk guard rejects requests without a bearer token', async () => {
     await assert.rejects(new ClerkAuthGuard().canActivate(context), UnauthorizedException);
   });
 });
+
+test('refused sign-ins are counted by reason, so a wave of bad tokens shows up in the metrics', async () => {
+  const { metrics } = await import('../dist/observability/metrics.js');
+  await withClerkConfig(async () => {
+    await assert.rejects(new ClerkAuthGuard().canActivate(contextFor(null).context), UnauthorizedException);
+    await assert.rejects(new ClerkAuthGuard().canActivate(contextFor('not.a.token').context), UnauthorizedException);
+  });
+  const text = metrics.render();
+  assert.match(text, /auth_failures_total\{reason="missing"\} [1-9]/); assert.match(text, /auth_failures_total\{reason="invalid"\} [1-9]/);
+});

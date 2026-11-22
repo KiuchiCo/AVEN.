@@ -46,10 +46,12 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - name: Component tests (rendered React, with accessibility rules)
+        run: npm run test:components --workspace @aven/web
       - name: Integration tests (real PostgreSQL, migrated above)
         run: npm run test:integration
         env:
           INTEGRATION_DATABASE_URL: ${{ env.DATABASE_URL }}
       - run: npm run build
-      - name: Browser tests (installed Chrome, public pages)
+      - name: Browser tests (installed Chrome: public pages, accessibility, responsive; signed-in tests are skipped without a Clerk test user)
         run: npm run test:e2e --workspace @aven/web

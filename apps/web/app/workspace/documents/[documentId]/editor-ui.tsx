@@ -35,11 +35,13 @@ export function SlashMenu({ query, index, category, onCategory, onPick, onHover 
   const t = useT();
   const items = filterSlash(query, (item) => t(nameOf(item.id)), readRecent()).filter((item) => !category || item.category === category);
   const chips: (BlockCategory | null)[] = [null, ...catalogCategories];
-  return <div id="aven-slash-list" className="document-slash rd-menu__list" role="listbox" aria-label={t('ed.slashLabel')} onMouseDown={(event) => event.preventDefault()}>
+  // The listbox holds only the options: the category buttons and the empty message sit beside it, because a listbox may contain nothing but options.
+  return <div className="document-slash rd-menu__list" onMouseDown={(event) => event.preventDefault()}>
     <div className="document-slash__cats" role="group" aria-label={t('ed.slashCategories')}>{chips.map((chip) => <button type="button" key={chip ?? 'all'} aria-pressed={category === chip} className={category === chip ? 'is-on' : ''} onClick={() => onCategory(chip)}>{chip ? t(`blk.cat.${chip}` as Key) : t('ed.slashAll')}</button>)}</div>
-    {items.length === 0 ? <p className="document-slash__empty">{t('ed.slashEmpty')}</p> : items.map((item, position) => <button type="button" role="option" id={`aven-slash-${item.id}`} aria-selected={position === index} className={position === index ? 'is-active' : ''} key={item.id} ref={(node) => { if (node && position === index) node.scrollIntoView({ block: 'nearest' }); }} onMouseEnter={() => onHover(position)} onClick={() => onPick(item)}>
+    {items.length === 0 && <p className="document-slash__empty" role="status">{t('ed.slashEmpty')}</p>}
+    <div id="aven-slash-list" role="listbox" aria-label={t('ed.slashLabel')}>{items.map((item, position) => <button type="button" role="option" id={`aven-slash-${item.id}`} aria-selected={position === index} className={position === index ? 'is-active' : ''} key={item.id} ref={(node) => { if (node && position === index) node.scrollIntoView({ block: 'nearest' }); }} onMouseEnter={() => onHover(position)} onClick={() => onPick(item)}>
       <BlockIcon id={item.id} size={20} /><span><strong>{t(nameOf(item.id))}</strong><small>{t(`${nameOf(item.id)}.d` as Key)}</small></span>
-    </button>)}
+    </button>)}</div>
   </div>;
 }
 export const slashCount = (query: string, label: (item: CatalogEntry) => string) => filterSlash(query, label).length;
