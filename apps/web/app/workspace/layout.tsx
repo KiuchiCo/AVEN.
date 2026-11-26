@@ -24,6 +24,7 @@ export default async function WorkspaceLayout({ children }: Readonly<{ children:
   if (!token) redirect('/sign-in');
 
   let session: WorkspaceSession | null = null;
+  let expired = false;
   try {
     const activeWorkspaceId = (await cookies()).get('aven-workspace-id')?.value;
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/session/bootstrap`, {
@@ -33,6 +34,7 @@ export default async function WorkspaceLayout({ children }: Readonly<{ children:
       cache: 'no-store',
     });
     if (response.ok) session = (await response.json()) as WorkspaceSession;
+    else expired = response.status === 401; // a stale sign-in cookie, not a missing API: a full reload refreshes it
   } catch {
     // The page below explains the local API/database setup if the request fails.
   }
@@ -43,8 +45,10 @@ export default async function WorkspaceLayout({ children }: Readonly<{ children:
         <Link className="auth-brand__wordmark" href="/" aria-label="AVEN home">AVEN<span>.</span></Link>
         <p className="auth-setup__eyebrow">Workspace setup</p>
         <h1>Your account is ready.</h1>
-        <p>AVEN could not load your workspace. Check that the API and local database are running, then try again.</p>
-        <Link className="workspace-unavailable__retry" href="/workspace">Try again</Link>
+        <p>{expired ? 'Your sign-in needs refreshing before AVEN can load your workspace.' : 'AVEN could not load your workspace. Check that the API and local database are running, then try again.'}</p>
+        {/* A full page load, not client navigation, so Clerk can refresh the session cookie first. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+        <a className="workspace-unavailable__retry" href="/workspace">Try again</a>
         <a className="workspace-link" href="/prototype.html">Open the design preview</a>
       </main>
     );

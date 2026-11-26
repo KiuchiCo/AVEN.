@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { Icon, type IconName } from './home-icons';
 
 export type { IconName };
@@ -39,10 +39,12 @@ export function PillTabs<T extends string>({ items, value, onChange, label, size
 
 /** A soft white panel with an optional icon tile, small caps line, serif heading and actions at the right. */
 export function Panel({ icon, eyebrow, title, subtitle, actions, children, className = '', id }: { icon?: IconName; eyebrow?: ReactNode; title?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; id?: string }) {
-  return <section className={`rd-panel ${className}`} aria-labelledby={title ? `${id ?? 'panel'}-title` : undefined}>
+  const autoId = useId();
+  const titleId = `${id ?? autoId}-title`;
+  return <section className={`rd-panel ${className}`} aria-labelledby={title ? titleId : undefined}>
     {(title || actions) && <header className="rd-panel__head">
       {icon && <span className="rd-tile" aria-hidden="true"><Icon name={icon} size={24} /></span>}
-      <div className="rd-panel__titles">{eyebrow && <p className="workspace-eyebrow">{eyebrow}</p>}{title && <h2 id={`${id ?? 'panel'}-title`}>{title}</h2>}{subtitle && <p>{subtitle}</p>}</div>
+      <div className="rd-panel__titles">{eyebrow && <p className="workspace-eyebrow">{eyebrow}</p>}{title && <h2 id={titleId}>{title}</h2>}{subtitle && <p>{subtitle}</p>}</div>
       {actions && <div className="rd-panel__actions">{actions}</div>}
     </header>}
     {children}
@@ -50,13 +52,13 @@ export function Panel({ icon, eyebrow, title, subtitle, actions, children, class
 }
 
 const arts: Record<string, ReactNode> = {
-  tag: <><path d="M26 74V44a6 6 0 0 1 6-6h30l32 32a6 6 0 0 1 0 8.5L77 95a6 6 0 0 1-8.5 0z" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" /><circle cx="42" cy="53" r="5" fill="#fff" stroke="#a48766" strokeWidth="2.5" /><path d="M86 22l6 6M98 34l8 3M78 16l2 8" stroke="#a48766" strokeWidth="2.5" strokeLinecap="round" /><rect x="52" y="64" width="38" height="38" rx="8" fill="#e9e3d9" opacity=".7" /></>,
-  envelope: <><rect x="24" y="48" width="72" height="50" rx="8" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" /><path d="m26 52 34 26 34-26" fill="none" stroke="#a48766" strokeWidth="2.5" strokeLinejoin="round" /><path d="M56 22l-2 10M72 24l5 8M88 32l8 5" stroke="#a48766" strokeWidth="2.5" strokeLinecap="round" /></>,
-  stack: <><path d="m60 22 38 20-38 20-38-20z" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" strokeLinejoin="round" /><path d="m22 58 38 20 38-20M22 74l38 20 38-20" fill="none" stroke="#a48766" strokeWidth="2.5" strokeLinejoin="round" /></>,
-  check: <><rect x="28" y="28" width="64" height="64" rx="14" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" /><path d="m44 62 12 12 22-26" fill="none" stroke="#a48766" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></>,
-  search: <><circle cx="54" cy="54" r="26" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" /><path d="m74 74 22 22" stroke="#a48766" strokeWidth="3" strokeLinecap="round" /></>,
-  chat: <><path d="M24 34a8 8 0 0 1 8-8h56a8 8 0 0 1 8 8v36a8 8 0 0 1-8 8H56L38 94V78h-6a8 8 0 0 1-8-8z" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" strokeLinejoin="round" /><path d="M40 46h40M40 58h26" stroke="#a48766" strokeWidth="2.5" strokeLinecap="round" /></>,
-  folder: <><path d="M20 40a8 8 0 0 1 8-8h22l8 10h34a8 8 0 0 1 8 8v36a8 8 0 0 1-8 8H28a8 8 0 0 1-8-8z" fill="#efe3d3" stroke="#a48766" strokeWidth="2.5" strokeLinejoin="round" /></>,
+  tag: <><path d="M26 74V44a6 6 0 0 1 6-6h30l32 32a6 6 0 0 1 0 8.5L77 95a6 6 0 0 1-8.5 0z" fill="var(--m-tile)" stroke="var(--m-focus)" strokeWidth="2.5" /><circle cx="42" cy="53" r="5" fill="var(--m-card-solid)" stroke="var(--m-focus)" strokeWidth="2.5" /><path d="M86 22l6 6M98 34l8 3M78 16l2 8" stroke="var(--m-focus)" strokeWidth="2.5" strokeLinecap="round" /><rect x="52" y="64" width="38" height="38" rx="8" fill="var(--m-track)" opacity=".7" /></>,
+  envelope: <><rect x="24" y="48" width="72" height="50" rx="8" fill="var(--m-tile)" stroke="var(--m-focus)" strokeWidth="2.5" /><path d="m26 52 34 26 34-26" fill="none" stroke="var(--m-focus)" strokeWidth="2.5" strokeLinejoin="round" /><path d="M56 22l-2 10M72 24l5 8M88 32l8 5" stroke="var(--m-focus)" strokeWidth="2.5" strokeLinecap="round" /></>,
+  stack: <><path d="m60 22 38 20-38 20-38-20z" fill="var(--m-tile)" stroke="var(--m-focus)" strokeWidth="2.5" strokeLinejoin="round" /><path d="m22 58 38 20 38-20M22 74l38 20 38-20" fill="none" stroke="var(--m-focus)" strokeWidth="2.5" strokeLinejoin="round" /></>,
+  check: <><rect x="28" y="28" width="64" height="64" rx="14" fill="var(--m-tile)" stroke="var(--m-focus)" strokeWidth="2.5" /><path d="m44 62 12 12 22-26" fill="none" stroke="var(--m-focus)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></>,
+  search: <><circle cx="54" cy="54" r="26" fill="var(--m-tile)" stroke="var(--m-focus)" strokeWidth="2.5" /><path d="m74 74 22 22" stroke="var(--m-focus)" strokeWidth="3" strokeLinecap="round" /></>,
+  chat: <><path d="M24 34a8 8 0 0 1 8-8h56a8 8 0 0 1 8 8v36a8 8 0 0 1-8 8H56L38 94V78h-6a8 8 0 0 1-8-8z" fill="var(--m-tile)" stroke="var(--m-focus)" strokeWidth="2.5" strokeLinejoin="round" /><path d="M40 46h40M40 58h26" stroke="var(--m-focus)" strokeWidth="2.5" strokeLinecap="round" /></>,
+  folder: <><path d="M20 40a8 8 0 0 1 8-8h22l8 10h34a8 8 0 0 1 8 8v36a8 8 0 0 1-8 8H28a8 8 0 0 1-8-8z" fill="var(--m-tile)" stroke="var(--m-focus)" strokeWidth="2.5" strokeLinejoin="round" /></>,
 };
 
 /** Friendly empty state: a small line illustration, a serif heading, one sentence and (optionally) actions. */

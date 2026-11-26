@@ -2088,6 +2088,7 @@ export const es: Dictionary = {
   'shell.collapseNav': "Contraer la barra lateral",
   'shell.expandNav': "Expandir la barra lateral",
   'shell.loading': "Cargando",
+  'shell.skip': "Saltar al contenido",
   'ed.slashLabel': "Insertar un bloque",
   'ed.slashEmpty': "Ningún bloque coincide",
   'ed.fmt.label': "Formato de texto",

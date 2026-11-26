@@ -25,7 +25,7 @@
   --ds-dur: 160ms; --ds-ease: cubic-bezier(.22, 1, .36, 1);
   /* Soft surfaces and accents that used to be hard-coded hex values in components */
   --m-active-soft: #f7ede0; --m-track: #ebe6dc; --m-tile: #efe3d3; --m-accent-ink: #6b5746; --m-good: #3e5f38; --m-focus: #a48766;
-  --m-good-bg: #e3ecdb; --m-warn-bg: #fbe9cf; --m-warn-ink: #9a6418; --m-bad-bg: #f9dfdb; --m-bad-ink: #b0402f; --m-info-bg: #dfe9f3; --m-info-ink: #3f6c99; --m-violet-bg: #e7e3dc; --m-violet-ink: #5a5249; --m-bronze-bg: #f1e4d2; --m-bronze-ink: #7a5a37; --m-good-ink: #3f6334;
+  --m-good-bg: #e3ecdb; --m-warn-bg: #fbe9cf; --m-warn-ink: #8a5612; --m-bad-bg: #f9dfdb; --m-bad-ink: #b0402f; --m-info-bg: #dfe9f3; --m-info-ink: #38628c; --m-violet-bg: #e7e3dc; --m-violet-ink: #5a5249; --m-bronze-bg: #f1e4d2; --m-bronze-ink: #7a5a37; --m-good-ink: #3f6334;
 }
 :root[data-theme='dark'] {
   --m-active-soft: #3a342b; --m-track: #3a352d; --m-tile: #3d352b; --m-accent-ink: #d8c3a5; --m-good: #8dbb7c; --m-focus: #c4a87f;
@@ -152,3 +152,27 @@ html { scrollbar-gutter: stable; } /* a page with a scrollbar and one without mu
   .workspace-content .msgs-main { min-height: 70dvh; padding-inline: 0; }
   .workspace-content .msgs-list { max-height: 40dvh; }
 }
+.workspace-create { display: flex; }
+.workspace-create-button__chevron { flex: 0 0 auto; }
+/* The dashboard's columns follow the room the main column actually has (sidebar and AI rail take a share of the screen),
+   so priority task titles are never cut to a few characters at laptop widths. */
+.home__main { container-type: inline-size; }
+@container (max-width: 860px) {
+  .home-row--tasks, .home-row--insight { grid-template-columns: minmax(0, 1fr); }
+  .home-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.home-tile__value { flex-wrap: wrap; row-gap: 4px; }
+/* On phones the message box stays in reach above the tab bar instead of sitting below the whole thread. */
+@media (max-width: 760px) {
+  .workspace-content .msgs-main { overflow: clip; } /* clip, not hidden: hidden would trap the sticky composer */
+  .workspace-content .msgs-panel > .chat-compose { position: sticky; bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 2; background: var(--m-card-solid); box-shadow: 0 0 0 8px var(--m-page); }
+  .workspace-app:has(.mobile-tabbar.is-hidden) .msgs-panel > .chat-compose { bottom: 8px; }
+}
+/* Choices inside an error or conflict notice are real buttons, spaced apart, in every module. */
+.productivity-error > button, .productivity-error > div > button { min-height: var(--ds-control-h-sm); margin: 10px 8px 0 0; padding: 0 14px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-card-solid); color: var(--m-ink); font: 600 13px var(--aven-interface-font); cursor: pointer; }
+.productivity-error > button:hover, .productivity-error > div > button:hover { background: var(--m-chip); }
+.productivity-error > p { margin: 0; }
+/* Keyboard users can jump past the sidebar; the link only shows while focused. */
+.workspace-skip { position: fixed; top: 12px; left: 12px; z-index: 100; padding: 10px 16px; border-radius: var(--ds-radius-md); background: var(--m-primary); color: var(--m-primary-ink); font: 600 14px var(--aven-interface-font); text-decoration: none; transform: translateY(-200%); }
+.workspace-skip:focus-visible { transform: none; outline: 2px solid var(--m-focus); outline-offset: 2px; }
+.workspace-content:focus { outline: none; }

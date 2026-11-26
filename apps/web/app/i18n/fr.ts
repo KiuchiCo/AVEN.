@@ -2088,6 +2088,7 @@ export const fr: Dictionary = {
   'shell.collapseNav': "Réduire la barre latérale",
   'shell.expandNav': "Développer la barre latérale",
   'shell.loading': "Chargement",
+  'shell.skip': "Aller au contenu",
   'ed.slashLabel': "Insérer un bloc",
   'ed.slashEmpty': "Aucun bloc correspondant",
   'ed.fmt.label': "Mise en forme du texte",

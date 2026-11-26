@@ -36,6 +36,8 @@ export function addChange(queue: QueuedChange[], change: Omit<QueuedChange, 'id'
 export function splitConflict(change: QueuedChange, current: TaskLike): { clean: TaskFields; base: TaskFields; conflicting: string[] } {
   const clean: TaskFields = {}, base: TaskFields = {}, conflicting: string[] = [];
   for (const field of Object.keys(change.fields)) {
+    // Already holds this value (another tab of ours sent the same queued edit first): applied, not a clash.
+    if (same(field, currentValue(current, field), change.fields[field])) continue;
     if (!(field in change.base) || same(field, currentValue(current, field), change.base[field])) { clean[field] = change.fields[field]; if (field in change.base) base[field] = currentValue(current, field) ?? null; }
     else conflicting.push(field);
   }

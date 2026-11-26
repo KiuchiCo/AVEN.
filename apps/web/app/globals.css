@@ -11,7 +11,7 @@
   --aven-umber: #6b5746;
   --aven-charcoal: #2b2a27;
   --aven-ink: #111111;
-  --aven-muted: #77766e;
+  --aven-muted: #6b6a63;
   --aven-border: #dcd9d0;
   --aven-success: #34765a;
   --aven-warning: #c18a42;
@@ -209,7 +209,7 @@
   --h-776f64: #776f64;
   --h-776f65: #776f65;
   --h-777168: #777168;
-  --h-77766e: #77766e;
+  --h-77766e: #6b6a63;
   --h-777777: #777777;
   --h-779177: #779177;
   --h-786b5c: #786b5c;
@@ -234,8 +234,8 @@
   --h-7f7568: #7f7568;
   --h-80786e: #80786e;
   --h-80987c: #80987c;
-  --h-81776b: #81776b;
-  --h-81786d: #81786d;
+  --h-81776b: #6b6a63;
+  --h-81786d: #6b6a63;
   --h-81786e: #81786e;
   --h-81796f: #81796f;
   --h-817a70: #817a70;
@@ -260,13 +260,13 @@
   --h-888176: #888176;
   --h-888178: #888178;
   --h-897c6d: #897c6d;
-  --h-898176: #898176;
+  --h-898176: #6b6a63;
   --h-8a6420: #8a6420;
   --h-8a6d4d: #8a6d4d;
   --h-8a6d4e: #8a6d4e;
   --h-8a7560: #8a7560;
   --h-8a765e: #8a765e;
-  --h-8a8176: #8a8176;
+  --h-8a8176: #6b6a63;
   --h-8a8278: #8a8278;
   --h-8a837a: #8a837a;
   --h-8b653e: #8b653e;
@@ -314,7 +314,7 @@
   --h-984b3e: #984b3e;
   --h-98764d: #98764d;
   --h-988b7b: #988b7b;
-  --h-989087: #989087;
+  --h-989087: #6b6a63;
   --h-994b2a: #994b2a;
   --h-994b43: #994b43;
   --h-999187: #999187;
@@ -807,13 +807,13 @@
   --h-888176: #888278;
   --h-888178: #868078;
   --h-897c6d: #918577;
-  --h-898176: #888177;
+  --h-898176: #a29b8f;
   --h-8a6420: #dfb975;
   --h-8a6d4d: #af9578;
   --h-8a6d4e: #ae9478;
   --h-8a7560: #9d8a77;
   --h-8a765e: #9f8d77;
-  --h-8a8176: #888076;
+  --h-8a8176: #a29b8f;
   --h-8a8278: #867f76;
   --h-8a837a: #847e76;
   --h-8b653e: #bd9b78;
@@ -861,7 +861,7 @@
   --h-984b3e: #bc776c;
   --h-98764d: #ae906b;
   --h-988b7b: #837768;
-  --h-989087: #777068;
+  --h-989087: #a29b8f;
   --h-994b2a: #d58766;
   --h-994b43: #b8726a;
   --h-999187: #777067;
@@ -1369,13 +1369,13 @@
   --h-888176: #888278;
   --h-888178: #868078;
   --h-897c6d: #918577;
-  --h-898176: #888177;
+  --h-898176: #a29b8f;
   --h-8a6420: #dfb975;
   --h-8a6d4d: #af9578;
   --h-8a6d4e: #ae9478;
   --h-8a7560: #9d8a77;
   --h-8a765e: #9f8d77;
-  --h-8a8176: #888076;
+  --h-8a8176: #a29b8f;
   --h-8a8278: #867f76;
   --h-8a837a: #847e76;
   --h-8b653e: #bd9b78;
@@ -1423,7 +1423,7 @@
   --h-984b3e: #bc776c;
   --h-98764d: #ae906b;
   --h-988b7b: #837768;
-  --h-989087: #777068;
+  --h-989087: #a29b8f;
   --h-994b2a: #d58766;
   --h-994b43: #b8726a;
   --h-999187: #777067;
@@ -2148,7 +2148,7 @@ body {
 .workspace-breadcrumb strong { color: var(--h-312d28); font-weight: 650; }
 .workspace-topbar__search { display: flex; width: clamp(190px, 25vw, 340px); height: 40px; align-items: center; gap: 10px; padding: 0 11px; border: 1px solid var(--h-e6e0d8); border-radius: 11px; background: var(--h-fffdfa); color: var(--h-8a837a); font-size: 12px; text-decoration: none; }
 .workspace-topbar__search:hover { border-color: var(--h-cdbba6); color: var(--aven-umber); }
-.workspace-topbar__search span { flex: 1; }
+.workspace-topbar__search span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-topbar__search kbd { padding: 3px 5px; border-radius: 5px; background: var(--h-f0ece5); color: var(--h-746d64); font: inherit; font-size: 11px; }
 .workspace-search-page { }
 .workspace-search-input { display: flex; align-items: center; gap: 11px; margin: 26px 0 18px; padding: 12px 15px; border: 1px solid var(--h-d8cabc); border-radius: 12px; background: var(--h-fffdfa); box-shadow: 0 7px 24px rgb(55 43 30 / 6%); color: var(--h-8a7560); }
@@ -3012,7 +3012,7 @@ body {
 .task-quick-actions button:disabled { cursor: not-allowed; opacity: .55; }
 .task-detail__summary > div { display: grid; gap: 5px; }
 .task-detail__summary span { color: var(--h-91877b); font-size: 12px; letter-spacing: 0; }
-.task-detail__summary strong { color: var(--h-332e27); font-size: 13px; text-transform: capitalize; }
+.task-detail__summary strong { color: var(--h-332e27); font-size: 13px; }
 .task-detail__labels { grid-column: 1 / -1; border-top: 1px solid var(--h-eee8e0); padding-top: 10px; }
 .task-detail__layout { display: grid; grid-template-columns: minmax(0,1fr) 270px; align-items: start; gap: 18px; }
 .task-detail__layout aside { display: grid; gap: 14px; }
@@ -3790,7 +3790,7 @@ body {
 .chat-side .chat-compose button { align-self: end; }
 
 .board-card { display: grid; align-content: center; gap: 2px; width: 100%; height: 100%; padding: 8px 12px; box-sizing: border-box; overflow: hidden; color: #2b2a27; font: 14px/1.3 var(--aven-interface-font); }
-.board-card small { color: #77766e; font-size: 12px; letter-spacing: 0; }
+.board-card small { color: var(--m-muted); font-size: 12px; letter-spacing: 0; }
 .board-card strong { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .board-open { color: var(--aven-umber); font-size: 12px; text-decoration: none; }
 .board-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--aven-border); border-radius: 12px; background: var(--aven-paper); }

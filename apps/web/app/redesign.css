@@ -11,7 +11,9 @@
 .rd-tile { display: inline-grid; flex: none; width: 44px; height: 44px; place-items: center; border-radius: var(--ds-radius-md); background: var(--m-chip); color: var(--m-accent-ink); }
 .rd-tile--large { width: 62px; height: 62px; border-radius: var(--ds-radius-lg); }
 
-.rd-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: var(--ds-gap); margin-bottom: var(--ds-section-gap); }
+.rd-stats { --rd-n: var(--rd-cols, 4); display: grid; gap: var(--ds-gap); margin-bottom: var(--ds-section-gap);
+  /* StatRow's column count when every tile gets 170px, otherwise straight to two columns, then one: never a 3 + 1 orphan row. */
+  grid-template-columns: repeat(auto-fit, minmax(max(calc((100% - (var(--rd-n) - 1) * var(--ds-gap)) / var(--rd-n)), clamp(0px, (var(--rd-n) * 170px + (var(--rd-n) - 1) * var(--ds-gap) - 100%) * 999, calc((100% - var(--ds-gap)) / 2)), clamp(0px, (340px + var(--ds-gap) - 100%) * 999, 100%)), 1fr)); }
 .rd-stat { position: relative; display: flex; align-items: center; gap: 14px; min-width: 0; padding: 18px 20px; overflow: hidden; border: 1px solid var(--m-border); border-radius: var(--ds-radius-lg); background: var(--m-card); box-shadow: var(--m-shadow); }
 .rd-stat > div { display: grid; min-width: 0; gap: 1px; }
 .rd-stat strong { font-family: var(--aven-display-font); font-size: 34px; font-weight: 500; line-height: 1.05; color: var(--m-ink); }
@@ -59,7 +61,8 @@
 
 /* Buttons and fields in the same language: charcoal primary, white outlined secondary, rounded fields. */
 .rd-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: var(--ds-control-h); padding: 0 18px; border: 1px solid var(--m-primary); border-radius: var(--ds-radius-md); background: var(--m-primary); color: var(--m-primary-ink); font: 600 14px var(--aven-interface-font); text-decoration: none; cursor: pointer; transition: background-color var(--ds-dur) var(--ds-ease), border-color var(--ds-dur) var(--ds-ease), transform var(--ds-dur) var(--ds-ease); }
-.rd-btn:hover { background: color-mix(in srgb, var(--m-primary) 86%, var(--m-page)); }
+.rd-btn:hover, .files-upload:hover, .workspace-settings-save:not([role='radio'], :disabled):hover { background: color-mix(in srgb, var(--m-primary) 86%, var(--m-page)); }
+.files-upload:hover, .workspace-settings-save:not([role='radio'], :disabled):hover { color: var(--m-primary-ink); }
 .rd-btn:active:not(:disabled) { transform: scale(.98); }
 .rd-btn:disabled { opacity: .5; cursor: default; box-shadow: none; }
 .rd-btn--soft { border-color: var(--m-border); background: var(--m-card-solid); color: var(--m-ink); font-weight: 500; }
@@ -131,7 +134,8 @@
 .rd-due--none { color: var(--m-muted); }
 .rd-statuspick .rd-select { min-width: 120px; }
 .rd-rail { display: grid; gap: 16px; align-content: start; }
-.rd-rail__card .rd-panel__head { margin-bottom: 14px; }
+.rd-rail__card .rd-panel__head { flex-wrap: nowrap; margin-bottom: 14px; }
+.rd-rail__card .rd-panel__titles { flex-basis: 0; }
 .rd-rail__card .rd-panel__titles h2 { font-size: 21px; }
 .rd-rail__note { margin: 12px 0 0; color: var(--m-muted); font-size: 13px; line-height: 1.5; }
 .rd-btn--block { display: flex; width: 100%; }
@@ -163,7 +167,7 @@
 .inbox-notifications__more { margin-top: 6px; font-size: 13px; }
 .inbox-notifications__more ul { margin: 6px 0 0; padding-left: 18px; color: var(--m-muted); }
 .inbox-unread-count { padding: 3px 10px; border-radius: 999px; background: var(--m-chip); color: var(--m-muted); font-size: 12px; font-weight: 600; }
-.inbox-updates-more { display: inline-block; margin-top: 12px; color: #7a5a37; font-size: 13px; }
+.inbox-updates-more { display: inline-block; margin-top: 12px; color: var(--m-bronze-ink); font-size: 13px; }
 .inbox-page .rd-panel + .rd-panel { margin-top: 18px; }
 .task-list-page .rd-panel { padding: 18px 22px; }
 @media (max-width: 900px) {
@@ -210,6 +214,8 @@
 .productivity-form > button[type='submit'], .productivity-form button[type='submit'] { min-height: var(--ds-control-h); border: 1px solid var(--m-primary); border-radius: var(--ds-radius-md); background: var(--m-primary); color: var(--m-primary-ink); font: 600 14px var(--aven-interface-font); cursor: pointer; }
 .productivity-form button[type='submit']:hover { box-shadow: 0 6px 16px rgb(43 42 39 / 22%); }
 .productivity-form__row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+/* Native date and time pickers need about 210px to show the whole value, so rows holding them stack sooner. */
+.productivity-form__row:has(input[type='datetime-local'], input[type='date'], input[type='time']) { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
 .aven-calendar { padding: 22px 24px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-xl); background: var(--m-card); box-shadow: var(--m-shadow); }
 .aven-calendar__toolbar h2 { font-family: var(--aven-display-font); font-size: 30px; font-weight: 500; letter-spacing: -.02em; }
 .aven-calendar__controls button, .calendar-import { min-height: var(--ds-control-h); padding: 0 16px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-card-solid); color: var(--m-ink); font: 500 13px var(--aven-interface-font); cursor: pointer; }
@@ -220,7 +226,7 @@
 .calendar-filters button, .calendar-type-filters button { padding: 6px 14px; border: 1px solid var(--m-border); border-radius: 999px; background: var(--m-card-solid); color: var(--m-ink); font: 500 13px var(--aven-interface-font); cursor: pointer; }
 .calendar-filters button.is-active, .calendar-type-filters button.is-active { border-color: #a48766; background: var(--m-active-soft); }
 .aven-calendar__grid { border-radius: var(--ds-radius-md); overflow: hidden; }
-.aven-calendar__day.is-today time { background: #a48766; color: #fff; }
+.aven-calendar__day.is-today time, .aven-calendar__week-grid > section.is-today .aven-calendar__week-date strong { background: var(--m-primary); color: var(--m-primary-ink); } /* same today marker as the project calendar; white on bronze was 3.4:1 */
 .aven-calendar__day.is-selected { background: var(--m-active-soft); box-shadow: inset 0 0 0 1.5px #c9a77a; }
 
 .workspace-section-heading h2 { font-family: var(--aven-display-font); font-weight: 500; }

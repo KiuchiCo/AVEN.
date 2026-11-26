@@ -16,12 +16,12 @@
   --m-chip: #f1ece3;
   --m-active: #e9e3d9;
   --m-ink: #2b2a27;
-  --m-muted: #77766e;
+  --m-muted: #6b6a63; /* brand muted #77766E, one step darker so small text passes WCAG AA on ivory and sand */
   --m-primary: #2b2a27;
   --m-primary-ink: #ffffff;
-  --m-pill-high: #fbe5d6; --m-pill-high-ink: #bf6a3a;
-  --m-pill-medium: #dfe9f3; --m-pill-medium-ink: #4b78a6;
-  --m-pill-low: #ebe7df; --m-pill-low-ink: #7a766c;
+  --m-pill-high: #fbe5d6; --m-pill-high-ink: #9e4f22;
+  --m-pill-medium: #dfe9f3; --m-pill-medium-ink: #38628c;
+  --m-pill-low: #ebe7df; --m-pill-low-ink: #625e55;
   --m-hero-opacity: 1;
 }
 :root[data-theme='dark'] {
@@ -63,17 +63,17 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 .workspace-nav__rule { display: block; height: 1px; margin: 14px 6px 0; background: var(--m-border); }
 .workspace-nav__item { height: 42px; gap: 14px; padding: 0 13px; border-radius: 12px; color: var(--m-ink); font-size: 14.5px; font-weight: 450; }
 .workspace-nav__item svg { width: 21px; height: 21px; stroke-width: 1.45; color: #5f5a52; }
-.workspace-nav__item:hover { background: rgb(233 227 217 / 55%); }
+.workspace-nav__item:hover { background: var(--m-chip); }
 .workspace-nav__item--active { background: var(--m-active); color: var(--m-ink); font-weight: 500; }
 .workspace-nav__item--active svg { color: var(--aven-umber); }
 .workspace-nav__badge { display: grid; min-width: 24px; height: 24px; margin-left: auto; padding: 0 7px; place-items: center; border-radius: 999px; background: var(--m-active); color: var(--m-ink); font-size: 12px; font-weight: 600; font-style: normal; }
-.workspace-nav__item--active .workspace-nav__badge { background: rgb(255 255 255 / 70%); }
+.workspace-nav__item--active .workspace-nav__badge { background: var(--m-card-solid); }
 .workspace-sidebar__bottom { padding-top: 14px; }
 .workspace-profile { gap: 12px; padding: 14px 6px 2px; border-top: 1px solid var(--m-border); }
 .workspace-profile__text strong { color: var(--m-ink); font-size: 14.5px; font-weight: 600; }
 .workspace-profile__text span { color: var(--m-muted); font-size: 12.5px; text-transform: none; }
 .workspace-profile__settings { display: grid; width: 34px; height: 34px; margin-left: auto; place-items: center; border-radius: 10px; color: var(--m-muted); }
-.workspace-profile__settings:hover { background: rgb(233 227 217 / 55%); color: var(--m-ink); }
+.workspace-profile__settings:hover { background: var(--m-chip); color: var(--m-ink); }
 .workspace-profile__settings svg { width: 20px; height: 20px; }
 
 /* ---- top bar and the hero landscape ----------------------------------------------------------------------- */
@@ -83,17 +83,17 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 .workspace-content { position: relative; z-index: 1; padding-top: 6px; }
 .workspace-history { display: flex; gap: 4px; }
 .workspace-history button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--m-muted); cursor: pointer; }
-.workspace-history button:hover { background: rgb(233 227 217 / 55%); color: var(--m-ink); }
+.workspace-history button:hover { background: var(--m-chip); color: var(--m-ink); }
 .workspace-history svg { width: 20px; height: 20px; }
 .workspace-breadcrumb strong { color: var(--m-ink); font-size: 15px; font-weight: 600; }
 .workspace-topbar__search { width: clamp(240px, 28vw, 420px); height: 46px; padding: 0 12px 0 16px; border: 1px solid var(--m-border); border-radius: 15px; background: var(--m-field); color: var(--m-muted); box-shadow: 0 4px 16px rgb(107 87 70 / 6%); font-size: 14.5px; }
 .workspace-topbar__search kbd { padding: 4px 9px; border-radius: 8px; background: var(--m-chip); color: var(--m-muted); font: 500 12px var(--aven-interface-font); }
 .workspace-bell { position: relative; display: grid; width: 44px; height: 44px; place-items: center; border-radius: 13px; color: var(--m-ink); }
-.workspace-bell:hover { background: rgb(233 227 217 / 55%); }
+.workspace-bell:hover { background: var(--m-chip); }
 .workspace-bell svg { width: 23px; height: 23px; stroke-width: 1.5; }
 .workspace-bell i { position: absolute; top: 9px; right: 10px; width: 9px; height: 9px; border: 2px solid var(--m-page); border-radius: 50%; background: #e0523f; }
 .workspace-create-button { height: 46px; padding: 0 18px; border-radius: 13px; background: var(--m-primary); color: var(--m-primary-ink); font-size: 15px; font-weight: 600; box-shadow: 0 6px 18px rgb(43 42 39 / 22%); }
-.workspace-create-button:hover { background: #3d3a35; }
+.workspace-create-button:hover { background: color-mix(in srgb, var(--m-primary) 86%, var(--m-page)); }
 .workspace-create-button__chevron { color: inherit; opacity: .7; }
 
 /* ---- the shared card, field and button look --------------------------------------------------------------- */
@@ -205,7 +205,7 @@ body { background: var(--m-page-wash) fixed; color: var(--m-ink); font-family: v
 
 /* ---- favourites ------------------------------------------------------------------------------------------- */
 .favourite-star { display: inline-grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--m-muted); cursor: pointer; vertical-align: middle; }
-.favourite-star:hover { background: rgb(233 227 217 / 55%); color: var(--m-ink); }
+.favourite-star:hover { background: var(--m-chip); color: var(--m-ink); }
 .favourite-star.is-on { color: var(--aven-bronze); }
 .favourite-star__error { color: var(--aven-error); font-size: 12px; }
 .workspace-nav__favourites .workspace-nav__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

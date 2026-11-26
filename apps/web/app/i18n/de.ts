@@ -2088,6 +2088,7 @@ export const de: Dictionary = {
   'shell.collapseNav': "Seitenleiste einklappen",
   'shell.expandNav': "Seitenleiste ausklappen",
   'shell.loading': "Wird geladen",
+  'shell.skip': "Zum Inhalt springen",
   'ed.slashLabel': "Block einfügen",
   'ed.slashEmpty': "Keine passenden Blöcke",
   'ed.fmt.label': "Textformatierung",

@@ -2087,6 +2087,7 @@ export const en = {
   'shell.collapseNav': "Collapse sidebar",
   'shell.expandNav': "Expand sidebar",
   'shell.loading': "Loading",
+  'shell.skip': "Skip to content",
   'ed.slashLabel': "Insert a block",
   'ed.slashEmpty': "No matching blocks",
   'ed.fmt.label': "Text formatting",

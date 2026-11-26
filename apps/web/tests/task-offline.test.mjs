@@ -33,6 +33,13 @@ test('a conflict keeps what others did and still applies what nobody touched', (
   assert.deepEqual(dated.conflicting, [], 'the same moment written two ways is not a conflict');
 });
 
+test('a field the server already holds at our value is applied, not a clash (another tab sent the same edit)', () => {
+  const queue = addChange([], change({ fields: { priority: 'HIGH', status: 'COMPLETED' }, base: { priority: 'MEDIUM', status: 'TODO' } }));
+  const { clean, conflicting } = splitConflict(queue[0], { priority: 'HIGH', status: 'IN_REVIEW' });
+  assert.deepEqual(conflicting, ['status'], 'only the field someone else really changed is a conflict');
+  assert.deepEqual(clean, {}, 'the already-applied field is not sent again');
+});
+
 test('the queue survives a reload, is per person and workspace, and bad data is ignored', () => {
   const store = memory(); const key = queueKey('u1', 'w1');
   assert.notEqual(key, queueKey('u1', 'w2'));

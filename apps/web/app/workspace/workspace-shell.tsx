@@ -3,7 +3,7 @@
 import { UserButton, useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Fragment, createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { WorkspaceSession } from './layout';
 import { timeZoneCookie, timeZoneCookieValue } from '../time-zone-script';
 import type { Key } from '../i18n/en';
@@ -40,12 +40,14 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
   const [mobileOpen, setMobileOpen] = useState(false);
   const collapsed = useSyncExternalStore(subscribeSidebar, readSidebarCollapsed, () => false);
   const [createOpen, setCreateOpen] = useState(false);
+  const createRef = useRef<HTMLDivElement>(null);
   const { getToken } = useAuth();
   const [unread, setUnread] = useState(0);
   const [planName, setPlanName] = useState('');
   const t = (key: Key, values?: Record<string, string | number>) => translate(session.user.language, key, values);
-  const activeItem = workspaceNavigation.find((item) => item.href === pathname);
-  const pageTitle = pathname === '/workspace/search' ? t('shell.pageSearch') : activeItem ? t(activeItem.key) : t('shell.pageWorkspace');
+  // Detail pages (a task, a project's board) take their section's name, so the bar never falls back to a generic title.
+  const activeItem = workspaceNavigation.filter((item) => pathname === item.href || (item.href !== '/workspace' && pathname.startsWith(`${item.href}/`))).sort((a, b) => b.href.length - a.href.length)[0];
+  const pageTitle = pathname === '/workspace/search' ? t('shell.pageSearch') : pathname.startsWith('/workspace/settings') ? t('shell.settings') : activeItem ? t(activeItem.key) : t('shell.pageWorkspace');
 
   // A time zone chosen on another device is applied here too: remember it in the cookie the page reads on load, then reload once.
   useEffect(() => {
@@ -74,6 +76,16 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
 
   function toggleSidebar() { try { localStorage.setItem('aven-sidebar', collapsed ? 'expanded' : 'collapsed'); } catch { /* storage unavailable: the choice just won't be remembered */ } sidebarListeners.forEach((listener) => listener()); }
 
+  // Escape closes the create menu and the phone drawer; a click outside closes the create menu.
+  useEffect(() => {
+    if (!createOpen && !mobileOpen) return;
+    function onKey(event: KeyboardEvent) { if (event.key === 'Escape') { setCreateOpen(false); setMobileOpen(false); } }
+    function onPointer(event: PointerEvent) { if (createRef.current && !createRef.current.contains(event.target as Node)) setCreateOpen(false); }
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onPointer);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('pointerdown', onPointer); };
+  }, [createOpen, mobileOpen]);
+
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
       if (event.defaultPrevented) return; // the document editor uses Cmd/Ctrl + K for links when text is selected
@@ -93,6 +105,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
       <TaskSyncProvider>
       <NativeEvents />
       <div className={`workspace-app${collapsed ? ' workspace-app--collapsed' : ''}`}>
+        <a className="workspace-skip" href="#workspace-content">{t('shell.skip')}</a>
         {mobileOpen && (
           <button
             className="workspace-sidebar-scrim"
@@ -153,14 +166,14 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
                 <span>{t('shell.searchPlaceholder')}</span><kbd>⌘K</kbd>
               </Link>
               <Link className="workspace-bell" href="/workspace/inbox" aria-label={unread > 0 ? `${t('nav.inbox')}, ${t('shell.unread', { n: unread })}` : t('nav.inbox')}><NavIcon name="bell" />{unread > 0 && <i aria-hidden="true" />}</Link>
-              {session.workspace.role !== 'GUEST' && <>
+              {session.workspace.role !== 'GUEST' && <div className="workspace-create" ref={createRef}>
               <button
                 className="workspace-create-button"
                 onClick={() => setCreateOpen((open) => !open)}
                 aria-expanded={createOpen}
                 aria-controls="workspace-create-menu"
               >
-                <span aria-hidden="true">＋</span> {t('shell.create')} <span className="workspace-create-button__chevron" aria-hidden="true">⌄</span>
+                {t('shell.create')} <svg className="workspace-create-button__chevron" aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
               </button>
               {createOpen && (
                 <div id="workspace-create-menu" className="workspace-create-menu">
@@ -169,14 +182,13 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
                   <Link href="/workspace/tasks" onClick={() => setCreateOpen(false)}><NavIcon name="tasks" /> {t('shell.createTasks')}</Link>
                   <Link href="/workspace/documents" onClick={() => setCreateOpen(false)}><NavIcon name="documents" /> {t('nav.documents')}</Link>
                   <Link href="/workspace/databases" onClick={() => setCreateOpen(false)}><NavIcon name="databases" /> {t('nav.databases')}</Link>
-                  <small>More creation options will be added as each section is built.</small>
                 </div>
               )}
-              </>}
+              </div>}
             </div>
           </header>
 
-          <main className="workspace-content">
+          <main id="workspace-content" className="workspace-content" tabIndex={-1}>
             <OfflineBanner />
             <TaskSyncBanner />
             {session.workspace.role === 'GUEST' && <p className="workspace-readonly-banner" role="status">Guest access is read-only. You can browse workspace information, but editing is disabled.</p>}
