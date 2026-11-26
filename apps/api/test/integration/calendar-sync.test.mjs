@@ -233,7 +233,7 @@ describe('calendar sync', { skip }, () => {
       assert.ok(await until(() => find('Pushed soon v2')), 'the edit followed'); assert.equal([...stub.google.events.values(), ...stub.graph.events.values()].filter((e) => /^Pushed soon/.test(e.summary ?? e.subject)).length, 1, 'one copy, not two');
       await t.call('ora', 'DELETE', `/workspaces/${W.id}/events/${made.id}`);
       assert.ok(await until(() => !find('Pushed soon v2')), 'the deletion followed');
-    } finally { svc.sendInTests = false; svc.pushDelayMs = 4000 }
+    } finally { svc.sendInTests = false; svc.pushDelayMs = 1000 }
   });
 
   test('after disconnecting Google, background and on-open syncing no longer touch it', async () => {

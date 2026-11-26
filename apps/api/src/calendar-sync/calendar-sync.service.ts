@@ -17,8 +17,8 @@ const DAY = 86_400_000;
 const STALE_CLAIM_MS = 10 * 60_000;
 /** A sync is due when the last one finished this long ago. A little under five minutes, so the one-minute check lands on the five-minute mark instead of just missing it. */
 const DUE_AFTER_MS = 4.5 * 60_000;
-/** Opening the calendar only syncs a connection that hasn't been synced for this long. */
-const OPEN_COOLDOWN_MS = 60_000;
+/** An open calendar asks every ten seconds or so; a connection synced within this long is left alone, so many tabs or people never multiply the requests to Google. */
+const OPEN_COOLDOWN_MS = 8_000;
 /** The whole window is re-read this often even when sync tokens work, to pick up events that have moved into it. */
 const FULL_RESYNC_MS = 6 * 3_600_000;
 /** After this many failures in a row background syncing stops and the person is asked to reconnect (or press Sync now). */
@@ -180,8 +180,8 @@ export class CalendarSyncService {
   }
 
   private readonly pushTimers = new Map<string, NodeJS.Timeout>();
-  /** How long a burst of AVEN edits is held before it is sent. Exposed so tests don't wait for it. */
-  pushDelayMs = 4000;
+  /** How long a burst of AVEN edits is held before it is sent (a second, so several quick edits go as one). Exposed so tests don't wait for it. */
+  pushDelayMs = 1000;
   /** Tests only: sends changes even though background syncing is switched off in the test environment. */
   sendInTests = false;
   /**

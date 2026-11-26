@@ -1238,7 +1238,7 @@ export const es: Dictionary = {
   'cn.reconnectNeeded': "hay que volver a conectar",
   'cn.alsoSend': "Enviar también los eventos creados en AVEN",
   'cn.syncingNow': 'Sincronizando ahora…',
-  'cn.autoSync': 'AVEN mantiene este calendario al día por sí solo: cada 5 minutos aproximadamente, cada vez que abres el calendario y poco después de cambiar un evento en AVEN. «Sincronizar ahora» es solo un atajo.',
+  'cn.autoSync': 'AVEN mantiene este calendario al día por sí solo: en segundos mientras el calendario está abierto, cada 5 minutos aproximadamente en caso contrario, y alrededor de un segundo después de que cambies un evento en AVEN. «Sincronizar ahora» es solo un atajo.',
   'cn.syncError': 'El último intento falló',
   'cn.confirmSend': '¿Activar el envío? {n} evento(s) que ya están en AVEN (de hace 30 días a 6 meses adelante, sin contar los repetidos) se añadirán a este calendario, una sola vez. Los eventos que crees después se envían automáticamente.',
   'cn.sendOff': 'Los eventos que creas en AVEN se quedan en AVEN. Marca «Enviar también los eventos creados en AVEN» para enviarlos a este calendario.',

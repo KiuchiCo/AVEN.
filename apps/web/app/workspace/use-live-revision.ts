@@ -36,3 +36,25 @@ export function useLiveRevision(known: MutableRefObject<string | null>, fetchRev
     return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [known, intervalMs, minGapMs]);
 }
+
+/**
+ * Runs `task` as soon as the page is on screen, then every `intervalMs` while it stays on screen, and again when you come back to the tab.
+ * Never while the tab is hidden, never twice within `minGapMs`, and never overlapping a run that hasn't finished. Used to keep a connected calendar fresh in seconds.
+ */
+export function usePeriodicWhileVisible(task: () => Promise<void> | void, { intervalMs = 10_000, minGapMs = 4_000 }: Options = {}) {
+  const taskRef = useRef(task);
+  useEffect(() => { taskRef.current = task; });
+  useEffect(() => {
+    let busy = false; let last = 0; let stopped = false;
+    const run = async () => {
+      if (busy || stopped || document.visibilityState !== 'visible' || Date.now() - last < minGapMs) return;
+      busy = true; last = Date.now();
+      try { await taskRef.current(); } catch { /* the next run tries again */ } finally { busy = false; }
+    };
+    void run();
+    const timer = setInterval(() => { void run(); }, intervalMs);
+    const onVisible = () => { void run(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [intervalMs, minGapMs]);
+}

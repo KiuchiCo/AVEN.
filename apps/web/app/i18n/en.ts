@@ -1237,7 +1237,7 @@ export const en = {
   'cn.reconnectNeeded': "needs to be reconnected",
   'cn.alsoSend': "Also send events made in AVEN",
   'cn.syncingNow': 'Syncing now…',
-  'cn.autoSync': 'AVEN keeps this calendar up to date by itself: about every 5 minutes, whenever you open the calendar, and shortly after you change an event in AVEN. “Sync now” is only a shortcut.',
+  'cn.autoSync': 'AVEN keeps this calendar up to date by itself: within seconds while the calendar is open, about every 5 minutes otherwise, and about a second after you change an event in AVEN. “Sync now” is only a shortcut.',
   'cn.syncError': 'Last attempt failed',
   'cn.confirmSend': 'Turn on sending? {n} event(s) already in AVEN (from 30 days ago to 6 months ahead, not counting repeating ones) will be added to this calendar, once. Events you create later are sent automatically.',
   'cn.sendOff': 'Events you create in AVEN stay in AVEN. Tick “Also send events made in AVEN” to send them to this calendar.',

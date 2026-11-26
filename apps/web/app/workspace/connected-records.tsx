@@ -5,7 +5,7 @@ import type { Key } from '../i18n/en';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { useLiveRevision } from './use-live-revision';
+import { useLiveRevision, usePeriodicWhileVisible } from './use-live-revision';
 import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabels } from './task-labels';
 import { Icon } from './home-icons';
@@ -161,7 +161,7 @@ export function CalendarWorkspace() {
     knownRevision.current = await fetchRevision().catch(() => null); // the live check is a bonus: if it fails, the calendar still loads
     setEvents(await request(`/workspaces/${workspace.id}/events`) as CalendarEvent[]);
   }, [request, fetchRevision, workspace.id]);
-  useLiveRevision(knownRevision, fetchRevision, reloadEvents);
+  useLiveRevision(knownRevision, fetchRevision, reloadEvents, { intervalMs: 5_000, minGapMs: 2_000 });
 
   useEffect(() => {
     let cancelled = false;
@@ -173,25 +173,16 @@ export function CalendarWorkspace() {
     return () => { cancelled = true; };
   }, [reload]);
 
-  // Opening the calendar (and coming back to it) asks the server to bring connected calendars up to date. The server only does the work
-  // when they are a minute or more out of date, and this ref stops repeated renders or quick tab switches from asking again.
-  const lastRefresh = useRef(0);
+  // While the calendar is on screen it asks the server every few seconds to bring connected calendars up to date (the server does a small incremental
+  // read, and skips connections synced in the last few seconds, so several tabs or people don't multiply the requests). Nothing runs while the tab is hidden.
   const laterReload = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const refreshFromProviders = useCallback(async () => {
-    if (Date.now() - lastRefresh.current < 60_000) return;
-    lastRefresh.current = Date.now();
-    try {
-      const result = await request(`/workspaces/${workspace.id}/integrations/calendar/refresh`, { method: 'POST' }) as { changed: boolean; syncing: boolean };
-      if (result.changed) await reloadEvents();
-      if (result.syncing) { clearTimeout(laterReload.current); laterReload.current = setTimeout(() => { void reloadEvents().catch(() => undefined); }, 6000); }
-    } catch { /* the calendar still works from what AVEN already has */ }
+    const result = await request(`/workspaces/${workspace.id}/integrations/calendar/refresh`, { method: 'POST' }) as { changed: boolean; syncing: boolean };
+    if (result.changed) await reloadEvents();
+    if (result.syncing) { clearTimeout(laterReload.current); laterReload.current = setTimeout(() => { void reloadEvents().catch(() => undefined); }, 3000); }
   }, [request, reloadEvents, workspace.id]);
-  useEffect(() => {
-    void (async () => { await refreshFromProviders(); })();
-    const onVisible = () => { if (document.visibilityState === 'visible') void refreshFromProviders(); };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => { document.removeEventListener('visibilitychange', onVisible); clearTimeout(laterReload.current); };
-  }, [refreshFromProviders]);
+  usePeriodicWhileVisible(refreshFromProviders, { intervalMs: 10_000, minGapMs: 4_000 });
+  useEffect(() => () => clearTimeout(laterReload.current), []);
 
   async function createEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

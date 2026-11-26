@@ -1238,7 +1238,7 @@ export const de: Dictionary = {
   'cn.reconnectNeeded': "muss neu verbunden werden",
   'cn.alsoSend': "Auch in AVEN erstellte Termine senden",
   'cn.syncingNow': 'Synchronisiere gerade…',
-  'cn.autoSync': 'AVEN hält diesen Kalender selbstständig aktuell: etwa alle 5 Minuten, beim Öffnen des Kalenders und kurz nach einer Änderung eines Termins in AVEN. „Jetzt synchronisieren“ ist nur eine Abkürzung.',
+  'cn.autoSync': 'AVEN hält diesen Kalender selbstständig aktuell: innerhalb von Sekunden, solange der Kalender geöffnet ist, sonst etwa alle 5 Minuten, und etwa eine Sekunde nach einer Änderung eines Termins in AVEN. „Jetzt synchronisieren“ ist nur eine Abkürzung.',
   'cn.syncError': 'Der letzte Versuch ist fehlgeschlagen',
   'cn.confirmSend': 'Senden aktivieren? {n} Termin(e), die bereits in AVEN sind (von vor 30 Tagen bis 6 Monate voraus, ohne wiederkehrende), werden einmalig zu diesem Kalender hinzugefügt. Später erstellte Termine werden automatisch gesendet.',
   'cn.sendOff': 'In AVEN erstellte Termine bleiben in AVEN. Aktiviere „Auch in AVEN erstellte Termine senden“, um sie an diesen Kalender zu senden.',

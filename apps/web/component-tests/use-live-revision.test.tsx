@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useLiveRevision } from '../app/workspace/use-live-revision';
+import { useLiveRevision, usePeriodicWhileVisible } from '../app/workspace/use-live-revision';
 
 /** Lets the pending promises settle after a timer fires. */
 const settle = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
@@ -61,5 +61,43 @@ describe('useLiveRevision', () => {
     const calls = fetchRevision.mock.calls.length;
     await act(async () => { vi.advanceTimersByTime(10_000); }); await settle();
     expect(fetchRevision.mock.calls.length).toBe(calls);
+  });
+});
+
+describe('usePeriodicWhileVisible', () => {
+  beforeEach(() => { vi.useFakeTimers(); setVisibility('visible'); });
+  afterEach(() => { vi.useRealTimers(); setVisibility('visible'); });
+
+  it('runs at once, then every interval while the tab is on screen: a handful of requests a minute, not a flood', async () => {
+    const task = vi.fn(async () => undefined);
+    renderHook(() => usePeriodicWhileVisible(task, { intervalMs: 10_000, minGapMs: 4_000 }));
+    await settle(); expect(task).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 6; i += 1) { await act(async () => { vi.advanceTimersByTime(10_000); }); await settle(); }
+    expect(task.mock.calls.length).toBe(7); // once at the start and once every ten seconds
+  });
+
+  it('stops while the tab is hidden, and runs straight away when you come back (but not in a burst)', async () => {
+    const task = vi.fn(async () => undefined);
+    renderHook(() => usePeriodicWhileVisible(task, { intervalMs: 10_000, minGapMs: 4_000 }));
+    await settle(); setVisibility('hidden');
+    await act(async () => { vi.advanceTimersByTime(120_000); }); await settle();
+    expect(task).toHaveBeenCalledTimes(1);
+    setVisibility('visible'); setVisibility('visible'); setVisibility('visible'); await settle();
+    expect(task).toHaveBeenCalledTimes(2);
+  });
+
+  it('never overlaps a slow run, survives a failed one, and stops on unmount', async () => {
+    let release: () => void = () => undefined;
+    const task = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+    const { unmount } = renderHook(() => usePeriodicWhileVisible(task, { intervalMs: 1_000, minGapMs: 0 }));
+    await act(async () => { vi.advanceTimersByTime(5_000); }); await settle();
+    expect(task).toHaveBeenCalledTimes(1);
+    task.mockRejectedValueOnce(new Error('offline')); await act(async () => { release(); }); await settle();
+    await act(async () => { vi.advanceTimersByTime(1_000); }); await settle();
+    await act(async () => { vi.advanceTimersByTime(1_000); }); await settle();
+    expect(task.mock.calls.length).toBeGreaterThan(1);
+    unmount(); const calls = task.mock.calls.length;
+    await act(async () => { vi.advanceTimersByTime(10_000); }); await settle();
+    expect(task.mock.calls.length).toBe(calls);
   });
 });
