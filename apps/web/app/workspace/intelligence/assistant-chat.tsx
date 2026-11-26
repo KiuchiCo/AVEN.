@@ -9,7 +9,7 @@ import type { Key } from '../../i18n/en';
 import { useWorkspaceSession } from '../workspace-shell';
 import { AgentsPanel, type AgentInfo } from './agents-panel';
 import { encodeBlocks, textToBlocks, titleFromText } from './text-to-blocks';
-import { connectionError } from '../connection-error';
+import { connectionError, apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const actionLabels: Record<string, Key> = { create_task: 'as.proposedTask', update_task: 'as.proposedChange', create_document: 'as.proposedDocument', create_event: 'as.proposedEvent' };
@@ -45,7 +45,7 @@ export function AssistantChat() {
   const call = useCallback(async <T,>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${base}${path}`, { method: init.method ?? 'GET', cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: init.body !== undefined ? JSON.stringify(init.body) : undefined });
+    const response = await apiFetch(`${base}${path}`, { method: init.method ?? 'GET', cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: init.body !== undefined ? JSON.stringify(init.body) : undefined });
     const body = await response.json().catch(() => null);
     if (!response.ok) throw new Error((body as { message?: string } | null)?.message ?? 'AVEN could not complete that request.');
     return body as T;
@@ -90,7 +90,7 @@ export function AssistantChat() {
       setMessages((current) => [...current, mine, reply]);
       const token = await getToken();
       abort.current = new AbortController();
-      const response = await fetch(`${base}/conversations/${id}/messages`, { method: 'POST', signal: abort.current.signal, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      const response = await apiFetch(`${base}/conversations/${id}/messages`, { method: 'POST', signal: abort.current.signal, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
       if (!response.ok || !response.body) { const body = await response.json().catch(() => null) as { message?: string } | null; throw new Error(body?.message ?? 'The assistant could not answer.'); }
       const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
       const apply = (item: StreamEvent) => {
@@ -117,7 +117,7 @@ export function AssistantChat() {
     setError('');
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: titleFromText(message.text), content: encodeBlocks(textToBlocks(message.text)) }) });
+      const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/documents`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: titleFromText(message.text), content: encodeBlocks(textToBlocks(message.text)) }) });
       const body = await response.json().catch(() => null) as { id?: string; title?: string; message?: string } | null;
       if (!response.ok || !body?.id) throw new Error(body?.message ?? 'Could not save this as a document.');
       setSaved((current) => ({ ...current, [message.id]: { id: body.id!, title: body.title ?? 'Document' } }));

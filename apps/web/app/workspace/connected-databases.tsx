@@ -10,7 +10,7 @@ import { useWorkspaceSession } from './workspace-shell';
 import { PageHeader } from './ui';
 import { Icon } from './home-icons';
 import { aggregateCap, RecordPager, type PagingState } from './database-pager';
-import { connectionError } from './connection-error';
+import { connectionError, apiFetch } from './connection-error';
 
 type Property = { id: string; name: string; type: string; relatedDatabaseId?: string; formula?: string; rollupRelationId?: string; rollupPropertyId?: string; rollupFunction?: string };
 const isComputed = (property: Property) => property.type === 'formula' || property.type === 'rollup';
@@ -112,7 +112,7 @@ export function DatabasesWorkspace() {
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${apiBase}${path}`, {
+    const response = await apiFetch(`${apiBase}${path}`, {
       ...options,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers },
     });

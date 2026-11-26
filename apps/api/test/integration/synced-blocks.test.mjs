@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { boot, skip } from './harness.mjs';
 
 describe('synced blocks', { skip }, () => {
   let t; let W; let O;
-  const id = '5e0d1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b';
+  const id = randomUUID(); // a fixed id stayed behind in a reused test database and belonged to an earlier run's workspace
   before(async () => {
     t = await boot(); for (const n of ['syl', 'sam', 'sue', 'sid']) await t.user(n);
     W = await t.workspace('syl'); await t.member(W.id, 'sam', 'MEMBER'); await t.member(W.id, 'sue', 'GUEST'); O = await t.workspace('sid');

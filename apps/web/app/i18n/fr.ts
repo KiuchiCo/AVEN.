@@ -2089,6 +2089,7 @@ export const fr: Dictionary = {
   'shell.expandNav': "Développer la barre latérale",
   'shell.loading': "Chargement",
   'shell.skip': "Aller au contenu",
+  'err.network': "AVEN ne parvient pas à joindre le serveur. Vérifiez votre connexion et réessayez.",
   'inv.invalid': "Cette invitation est invalide, a expiré ou a déjà été utilisée.",
   'shell.navAria': "Navigation de l’espace de travail",
   'shell.history': "Historique",

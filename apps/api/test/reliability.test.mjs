@@ -86,3 +86,16 @@ test('security: an error on a share-link or invitation address is logged without
   assert.equal(lines.length, 2);
   assert.ok(lines.every((line) => !line.includes('SECRET-TOKEN-123') && line.includes(':token')), lines.join('\n'));
 });
+
+test('a database uniqueness clash or a record deleted mid-request is a clear 409 or 404, never a 500, and leaks nothing', () => {
+  const prismaError = (code) => Object.assign(new Error(`Invalid prisma.task.update() invocation: secret detail ${code}`), { name: 'PrismaClientKnownRequestError', code });
+  let { out, host } = httpHost();
+  new AllExceptionsFilter().catch(prismaError('P2002'), host);
+  assert.equal(out.status, 409); assert.doesNotMatch(JSON.stringify(out.body), /prisma|secret/i); assert.equal(out.body.requestId, 'req-12345678');
+  ({ out, host } = httpHost());
+  new AllExceptionsFilter().catch(prismaError('P2025'), host);
+  assert.equal(out.status, 404); assert.doesNotMatch(JSON.stringify(out.body), /prisma|secret/i);
+  ({ out, host } = httpHost());
+  new AllExceptionsFilter().catch(prismaError('P1001'), host);
+  assert.equal(out.status, 500, 'other database failures stay a generic 500');
+});

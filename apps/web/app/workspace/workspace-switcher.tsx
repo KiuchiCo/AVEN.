@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceSession } from './layout';
+import { apiFetch } from './connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 type WorkspaceOption = { id: string; name: string; role: string; memberCount: number; isPersonal: boolean };
@@ -26,7 +27,7 @@ export function WorkspaceSwitcher({ session }: { session: WorkspaceSession }) {
     void (async () => {
       try {
         const token = await getToken();
-        const response = await fetch(`${apiBase}/session/workspaces`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+        const response = await apiFetch(`${apiBase}/session/workspaces`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
         if (response.ok && !cancelled) setItems(await response.json() as WorkspaceOption[]);
       } catch { if (!cancelled) setError('Could not load your workspaces.'); }
     })();
@@ -58,7 +59,7 @@ export function WorkspaceSwitcher({ session }: { session: WorkspaceSession }) {
     event.preventDefault(); setBusy(true); setError('');
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/session/workspaces`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      const response = await apiFetch(`${apiBase}/session/workspaces`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message ?? 'Could not create workspace.');
       await switchWorkspace(result.id);

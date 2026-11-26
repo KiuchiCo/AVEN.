@@ -183,7 +183,7 @@ describe('calendar sync', { skip }, () => {
 
   test('background sync: a due connection is synced with nobody pressing Sync now, a recent one is left alone, and failures back off', async () => {
     const c = await google(); await idle(c.id); stub.addGoogle('b1', 'Background one', soon(11), soon(11, 11));
-    await makeDue(c.id); assert.ok(await svc.syncDue() >= 1); assert.ok((await titles()).includes('Background one'));
+    await makeDue(c.id, 1e7); assert.ok(await svc.syncDue() >= 1); assert.ok((await titles()).includes('Background one')); // longest-waiting, so ahead of earlier runs' connections in a reused database
     stub.addGoogle('b2', 'Background two', soon(12), soon(12, 11)); assert.equal(await svc.syncDue(), 0, 'just synced, so not due');
     assert.ok(!(await titles()).includes('Background two'));
     // Google is busy: the failure is recorded and the next attempt is pushed back, not hammered
@@ -196,6 +196,18 @@ describe('calendar sync', { skip }, () => {
     assert.ok((await titles()).includes('Background two'), 'recovered and caught up');
     const { retryDelayMs } = await import('../../dist/calendar-sync/calendar-sync.service.js');
     assert.deepEqual([1, 2, 3, 4, 10].map(retryDelayMs), [300_000, 600_000, 1_200_000, 2_400_000, 3_600_000]);
+  });
+
+  test('a connection whose connector is no longer an owner or administrator is set aside to reconnect, so it cannot hold up the queue', async () => {
+    const c = await google(); await idle(c.id);
+    const member = await t.prisma.workspaceMember.findFirstOrThrow({ where: { workspaceId: W.id, role: 'MEMBER' }, select: { userId: true } });
+    await t.prisma.calendarConnection.update({ where: { id: c.id }, data: { connectedById: member.userId, lastSyncedAt: new Date(0), nextAttemptAt: null } });
+    await svc.syncDue(100);
+    const row = await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } });
+    assert.equal(row.status, 'NEEDS_ATTENTION'); assert.match(row.lastError, /Reconnect to resume/);
+    const again = await t.prisma.calendarConnection.findMany({ where: { id: c.id, status: 'ACTIVE' } });
+    assert.equal(again.length, 0, 'no longer picked by the background queue');
+    await t.prisma.calendarConnection.update({ where: { id: c.id }, data: { connectedById: c.connectedById, status: 'ACTIVE', lastError: null } });
   });
 
   test('after repeated failures background syncing stops and asks to reconnect; reconnecting restores it', async () => {

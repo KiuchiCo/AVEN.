@@ -9,6 +9,7 @@ import type { FileRecord } from '../../files/types';
 import { addColumn, addRow, applyCellOp, cleanRows, removeColumn, removeRow, setCell, tableLimits, type CellOp, type Rows } from './table-rules';
 import { EditorIcon } from './editor-icons';
 import type { Key } from '../../../i18n/en';
+import { apiFetch } from '../../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const imageTypes = /^image\/(png|jpeg|gif|webp)$/;
@@ -56,7 +57,7 @@ function StoredImage({ fileId, alt }: { fileId: string; alt: string }) {
     void (async () => {
       try {
         const token = await getToken();
-        const response = await fetch(`${apiBase}/workspaces/${workspace.id}/files/${fileId}/download?inline=1`, { headers: { Authorization: `Bearer ${token}` } });
+        const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/files/${fileId}/download?inline=1`, { headers: { Authorization: `Bearer ${token}` } });
         if (!response.ok) throw new Error('missing');
         created = URL.createObjectURL(await response.blob());
         if (live) setUrl(created);

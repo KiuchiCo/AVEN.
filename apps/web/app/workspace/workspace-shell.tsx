@@ -15,6 +15,7 @@ import { TaskSyncBanner, TaskSyncProvider } from './task-sync';
 import { WorkspaceSwitcher } from './workspace-switcher';
 import { MobileTabBar } from '../mobile/mobile-tab-bar';
 import { NativeEvents } from '../mobile/native-events';
+import { apiFetch } from './connection-error';
 
 const WorkspaceContext = createContext<WorkspaceSession | null>(null);
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
@@ -66,7 +67,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
     void (async () => {
       const token = await getToken(); if (!token || !apiBase) return;
       const headers = { Authorization: `Bearer ${token}` };
-      const [dashboard, billing] = await Promise.all([fetch(`${apiBase}/workspaces/${session.workspace.id}/dashboard`, { headers, cache: 'no-store' }), fetch(`${apiBase}/workspaces/${session.workspace.id}/billing`, { headers, cache: 'no-store' })]);
+      const [dashboard, billing] = await Promise.all([apiFetch(`${apiBase}/workspaces/${session.workspace.id}/dashboard`, { headers, cache: 'no-store' }), apiFetch(`${apiBase}/workspaces/${session.workspace.id}/billing`, { headers, cache: 'no-store' })]);
       if (!live) return;
       if (dashboard.ok) setUnread(Number((await dashboard.json() as { unreadInbox?: number }).unreadInbox ?? 0));
       if (billing.ok) setPlanName(String((await billing.json() as { plan?: { name?: string } }).plan?.name ?? ''));

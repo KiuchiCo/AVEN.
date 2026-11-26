@@ -10,7 +10,7 @@ import type { Key } from '../../i18n/en';
 import { FavouriteStar } from '../favourites';
 import { attachArrows, clampSize, normalizeBox, toWorld, zoomAt, type View } from './board-geometry';
 import { colorNames, defaults, palette, uid, type BoardDetail, type BoardElement, type Color, type EntityType, type Tool } from './board-types';
-import { connectionError } from '../connection-error';
+import { connectionError, apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const tools: Tool[] = ['select', 'sticky', 'rect', 'ellipse', 'text', 'arrow', 'pen', 'card'];
@@ -53,7 +53,7 @@ export function BoardEditor({ boardId }: { boardId: string }) {
   const call = useCallback(async (path: string, method = 'GET', body?: unknown) => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${apiBase}/workspaces/${workspace.id}/whiteboards/${boardId}${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/whiteboards/${boardId}${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
     const json = await response.json().catch(() => null);
     return { response, json };
   }, [getToken, workspace.id, boardId]);
@@ -192,7 +192,7 @@ export function BoardEditor({ boardId }: { boardId: string }) {
     setPick({ type, items: [], filter: '', loading: true });
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/${entityPaths[type].path}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/${entityPaths[type].path}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       const rows = response.ok ? await response.json() as { id: string; title?: string; name?: string }[] : [];
       setPick((current) => (current && current.type === type ? { ...current, loading: false, items: rows.map((row) => ({ id: row.id, title: row.title ?? row.name ?? t('wbe.untitled') })).slice(0, 200) } : current));
     } catch { setPick((current) => (current ? { ...current, loading: false } : current)); }

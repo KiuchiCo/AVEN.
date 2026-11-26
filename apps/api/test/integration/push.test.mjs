@@ -91,7 +91,7 @@ describe('browser push notifications', { skip }, () => {
   test('re-subscribing on a shared browser moves the device to the signed-in person', async () => {
     await t.call('bob', 'POST', '/push/subscriptions', sub);
     await t.call('cat', 'POST', '/push/subscriptions', sub);
-    const rows = await t.prisma.pushSubscription.findMany({});
+    const rows = await t.prisma.pushSubscription.findMany({ where: { endpoint: sub.endpoint } }); // only this run's device: a reused database holds earlier runs' rows
     assert.equal(rows.length, 1); assert.equal(rows[0].userId, users.cat.id);
   });
 

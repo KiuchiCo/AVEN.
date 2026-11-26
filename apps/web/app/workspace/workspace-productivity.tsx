@@ -12,7 +12,7 @@ import { TaskBadges } from './task-badges';
 import { Icon, type IconName } from './home-icons';
 import { EmptyState, PageHeader, Panel, PillTabs, Pill, StatCard, StatRow } from './ui';
 import { ago } from './relative-time';
-import { connectionError } from './connection-error';
+import { connectionError, apiFetch } from './connection-error';
 
 type TaskRecord = {
   id: string;
@@ -52,7 +52,7 @@ function useWorkspaceProductivity() {
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${apiBase}${path}`, {
+    const response = await apiFetch(`${apiBase}${path}`, {
       ...options,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers },
     });
@@ -272,7 +272,7 @@ export function InboxWorkspace() {
   const fetchUpdates = useCallback(async () => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/inbox`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+    const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/activity/inbox`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
     if (!response.ok) throw new Error('Could not load workspace updates.');
     return response.json();
   }, [getToken, workspace.id]);
@@ -289,7 +289,7 @@ export function InboxWorkspace() {
     setUpdatesBusy(true); setUpdatesError('');
     try {
       const token = await getToken();
-      const responses = await Promise.all(activityIds.map((activityId) => fetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/read`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ read }) })));
+      const responses = await Promise.all(activityIds.map((activityId) => apiFetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/read`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ read }) })));
       if (responses.some((response) => !response.ok)) throw new Error('Could not update this notification.');
       await reloadUpdates();
     } catch (reason) { setUpdatesError(reason instanceof Error ? reason.message : 'Could not update this notification.'); }
@@ -300,7 +300,7 @@ export function InboxWorkspace() {
     setUpdatesBusy(true); setUpdatesError('');
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/read-all`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/activity/read-all`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error('Could not mark updates as read.');
       await reloadUpdates();
     } catch (reason) { setUpdatesError(reason instanceof Error ? reason.message : 'Could not mark updates as read.'); }
@@ -311,7 +311,7 @@ export function InboxWorkspace() {
     setUpdatesBusy(true); setUpdatesError('');
     try {
       const token = await getToken();
-      const responses = await Promise.all(activityIds.map((activityId) => fetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/dismiss`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })));
+      const responses = await Promise.all(activityIds.map((activityId) => apiFetch(`${apiBase}/workspaces/${workspace.id}/activity/${activityId}/dismiss`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })));
       if (responses.some((response) => !response.ok)) throw new Error('Could not dismiss this notification.');
       await reloadUpdates();
     } catch (reason) { setUpdatesError(reason instanceof Error ? reason.message : 'Could not dismiss this notification.'); }

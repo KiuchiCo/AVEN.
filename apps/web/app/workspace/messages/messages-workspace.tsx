@@ -12,7 +12,7 @@ import { MessageBody } from './message-body';
 import { readEvents } from './sse';
 import { Icon } from '../home-icons';
 import { Avatar, EmptyState, PillTabs } from '../ui';
-import { connectionError } from '../connection-error';
+import { connectionError, apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export type Channel = { id: string; kind: 'CHANNEL' | 'DIRECT' | 'GROUP'; name: string | null; topic: string; unread: number; participants: Participant[] };
@@ -53,7 +53,7 @@ export function MessagesWorkspace() {
   const call = useCallback(async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${apiBase}/workspaces/${workspace.id}/channels${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/channels${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
     const json = await response.json().catch(() => null);
     if (!response.ok) throw new Error(json?.message ?? 'AVEN could not complete that request.');
     return json as T;
@@ -68,7 +68,7 @@ export function MessagesWorkspace() {
   useEffect(() => {
     void (async () => {
       const token = await getToken(); if (!token || !apiBase) return;
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/members`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/members`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       if (response.ok) setMembers(await response.json() as Member[]);
     })().catch(() => undefined);
   }, [getToken, workspace.id]);
@@ -111,7 +111,7 @@ export function MessagesWorkspace() {
       while (!abort.signal.aborted) {
         try {
           const token = await getToken();
-          const response = await fetch(`${apiBase}/workspaces/${workspace.id}/channels/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
+          const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/channels/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
           if (!response.ok || !response.body) throw new Error('stream refused');
           setLive(true);
           if (!first) { void loadChannels(); if (active.current) void loadMessages(active.current); if (openThread.current && active.current) void loadThread(active.current, openThread.current); }
@@ -134,10 +134,13 @@ export function MessagesWorkspace() {
       else setMessages((list) => (list.some((item) => item.id === message.id) ? list : [...list, message]));
     } catch (reason) { fail(reason); throw reason; }
   }
+  const creatingChannel = useRef(false);
   async function createChannel(event: FormEvent) {
-    event.preventDefault(); setError('');
+    event.preventDefault(); if (creatingChannel.current) return; setError('');
+    creatingChannel.current = true;
     try { const channel = await call<Channel>('', 'POST', { name: newChannel }); setNewChannel(''); setChannels((list) => (list.some((item) => item.id === channel.id) ? list : [...list, channel])); setActiveId(channel.id); }
     catch (reason) { fail(reason); }
+    finally { creatingChannel.current = false; }
   }
   async function startConversation() {
     if (!picking?.length) return; setError('');

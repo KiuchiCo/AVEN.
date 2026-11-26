@@ -9,7 +9,7 @@ import type { Key } from '../i18n/en';
 import { Icon } from './home-icons';
 import { ago } from './relative-time';
 import { useWorkspaceSession } from './workspace-shell';
-import { connectionError } from './connection-error';
+import { connectionError, apiFetch } from './connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -63,7 +63,7 @@ export function HomeDashboard() {
   const request = useCallback(async (path: string, init?: RequestInit) => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${apiBase}${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, cache: 'no-store' });
+    const response = await apiFetch(`${apiBase}${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, cache: 'no-store' });
     const body = await response.json().catch(() => null);
     if (!response.ok) throw new Error(body?.message ?? 'AVEN could not complete that request.');
     return body;

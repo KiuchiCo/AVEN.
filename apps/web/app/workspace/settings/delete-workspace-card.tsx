@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
+import { apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -23,7 +24,7 @@ export function DeleteWorkspaceCard() {
     event.preventDefault(); setBusy(true); setError('');
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: typed }) });
+      const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: typed }) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message ?? 'Could not delete the workspace.');
       await fetch('/api/active-workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });

@@ -24,7 +24,7 @@ import { isLocalId, readLocalDocument, removeLocalDocument } from './local-docum
 import { draftKey, readDraft, removeDraft, writeDraft } from './offline-draft';
 
 import type { Block } from './editor-model';
-import { connectionError } from '../../connection-error';
+import { connectionError, apiFetch } from '../../connection-error';
 type Document = { id: string; title: string; content: string; updatedAt: string; project: { id: string; name: string } | null };
 type Version = { id: string; title: string; label: string | null; createdAt: string; createdBy: { displayName: string } };
 type Comment = { id: string; body: string; createdAt: string; resolvedAt: string | null; blockId: string | null; quote: string | null; parentId: string | null; createdBy: { id: string; displayName: string } };
@@ -106,7 +106,7 @@ export default function DocumentEditorPage() {
     if (!token && typeof navigator !== 'undefined' && !navigator.onLine) throw new OfflineError('offline');
     if (!token || !apiBase) throw connectionError(token);
     let response: Response;
-    try { response = await fetch(`${apiBase}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } }); }
+    try { response = await apiFetch(`${apiBase}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } }); }
     catch { throw new OfflineError('offline'); }
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string; current?: Document } | null;
@@ -198,7 +198,7 @@ export default function DocumentEditorPage() {
       while (!abort.signal.aborted && failures < 6) {
         try {
           const token = await getToken();
-          const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
+          const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
           if (!response.ok || !response.body) { if (response.status < 500 && response.status !== 429) return; throw new Error('stream refused'); }
           failures = 0;
           if (reconnecting) liveEngine.current?.resyncAll(); // events may have been missed while the connection was down
@@ -587,7 +587,7 @@ export default function DocumentEditorPage() {
       for (let wait = 0; wait < 40 && (live.current.saving || liveEngine.current?.unsettled); wait += 1) await new Promise((resolve) => window.setTimeout(resolve, 250));
       if (live.current.dirty && !(await saveDocument()) && live.current.dirty) throw new Error(t('ed.exportUnsaved'));
       const token = await getToken();
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/export?format=${format}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/export?format=${format}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       if (!response.ok) { const body = await response.json().catch(() => null) as { message?: string } | null; throw new Error(body?.message ?? t('ed.exportFailed')); }
       const disposition = response.headers.get('content-disposition') ?? '';
       const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];

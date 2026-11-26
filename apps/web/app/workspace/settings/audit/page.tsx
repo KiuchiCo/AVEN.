@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../../../i18n';
 import type { Key } from '../../../i18n/en';
 import { useWorkspaceSession } from '../../workspace-shell';
+import { apiFetch } from '../../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 type Entry = { id: string; createdAt: string; entityType: string; entityId: string; message: string; actor: { id: string; displayName: string; email: string } };
@@ -33,7 +34,7 @@ export default function AuditLogPage() {
   const query = useCallback((values: typeof filters, extra: Record<string, string> = {}) => new URLSearchParams(Object.entries({ ...values, ...extra }).filter(([, value]) => value)).toString(), []);
   const request = useCallback(async (path: string) => {
     const token = await getToken();
-    return fetch(`${apiBase}/workspaces/${workspace.id}/audit${path}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+    return apiFetch(`${apiBase}/workspaces/${workspace.id}/audit${path}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
   }, [getToken, workspace.id]);
 
   useEffect(() => {

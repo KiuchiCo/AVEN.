@@ -14,6 +14,7 @@ import { TaskDetailLoading } from './components/task-detail-loading';
 import { TaskDetailView } from './components/task-detail-view';
 import { useTaskDetail } from './hooks/use-task-detail';
 import { useTaskMembers } from './hooks/use-task-members';
+import { apiFetch } from '../../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export default function TaskDetailPage() {
@@ -26,7 +27,7 @@ export default function TaskDetailPage() {
       try {
         const token = await getToken();
         if (!token || !apiBase) return;
-        const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks`, { headers: { Authorization: `Bearer ${token}` } });
+        const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/tasks`, { headers: { Authorization: `Bearer ${token}` } });
         if (!response.ok) throw new Error(t('td.err.loadProject'));
         const rows = await response.json();
         if (live) setProjectTasks(rows);
@@ -39,7 +40,7 @@ export default function TaskDetailPage() {
     const token = await getToken(); if (!token || !apiBase) return false;
     setBusy(true); setErrorMessage('');
     try {
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
       if (!response.ok) { const problem = await response.json().catch(() => null) as { message?: string } | null; throw new Error(problem?.message ?? fallback); }
       await reload();
       return true;
@@ -67,9 +68,9 @@ export default function TaskDetailPage() {
   }
   const addSubtask = (title: string) => send('POST', '/tasks', { title, parentId: taskId }, t('td.err.addSubtask'));
   const toggleSubtask = (subtaskId: string, completed: boolean) => { void send('PATCH', `/tasks/${subtaskId}`, { status: completed ? 'COMPLETED' : 'TODO' }, t('td.err.updateSubtask')); };
-  async function duplicateTask() { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}/duplicate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => null) as { id?: string; message?: string } | null; if (!response.ok || !body?.id) throw new Error(body?.message ?? t('td.err.duplicate')); router.push(`/workspace/tasks/${body.id}`); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : t('td.err.duplicate')); } finally { setBusy(false); } }
-  async function deleteTask() { if (!window.confirm(t('td.deleteConfirm'))) return; const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => null) as { message?: string } | null; if (!response.ok) throw new Error(body?.message ?? t('td.err.delete')); router.push(task?.project ? `/workspace/projects/${task.project.id}` : '/workspace/tasks'); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : t('td.err.delete')); } finally { setBusy(false); } }
-  async function saveDependencies(ids: string[]) { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}/dependencies`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ dependsOnTaskIds: ids }) }); const body = await response.json().catch(() => null) as { message?: string } | null; if (!response.ok) throw new Error(body?.message ?? t('td.err.prereqs')); await reload(); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : t('td.err.prereqs')); } finally { setBusy(false); } }
+  async function duplicateTask() { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}/duplicate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => null) as { id?: string; message?: string } | null; if (!response.ok || !body?.id) throw new Error(body?.message ?? t('td.err.duplicate')); router.push(`/workspace/tasks/${body.id}`); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : t('td.err.duplicate')); } finally { setBusy(false); } }
+  async function deleteTask() { if (!window.confirm(t('td.deleteConfirm'))) return; const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); const body = await response.json().catch(() => null) as { message?: string } | null; if (!response.ok) throw new Error(body?.message ?? t('td.err.delete')); router.push(task?.project ? `/workspace/projects/${task.project.id}` : '/workspace/tasks'); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : t('td.err.delete')); } finally { setBusy(false); } }
+  async function saveDependencies(ids: string[]) { const token = await getToken(); if (!token || !apiBase) return; setBusy(true); setErrorMessage(''); try { const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}/dependencies`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ dependsOnTaskIds: ids }) }); const body = await response.json().catch(() => null) as { message?: string } | null; if (!response.ok) throw new Error(body?.message ?? t('td.err.prereqs')); await reload(); } catch (reason) { setErrorMessage(reason instanceof Error ? reason.message : t('td.err.prereqs')); } finally { setBusy(false); } }
   if (loading) return <TaskDetailLoading />;
   if (error || !task) return <div className="workspace-section-page task-detail"><TaskDetailError message={error || errorMessage || t('td.unavailable')} /><Link href="/workspace/tasks">{t('td.backToMy')}</Link></div>;
   return <TaskDetailView task={task} currentUserId={user.id} members={members} projectTasks={projectTasks} busy={busy} errorMessage={errorMessage} onUpdate={(fields) => void updateTask(fields)} onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onDuplicate={() => void duplicateTask()} onDelete={() => void deleteTask()} onSaveDependencies={(ids) => void saveDependencies(ids)} />;

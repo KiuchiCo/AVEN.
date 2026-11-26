@@ -14,6 +14,7 @@ import { PushCard } from './push-card';
 import { ThemeCard } from './theme-card';
 import { TimeZoneCard } from './time-zone-card';
 import { PageHeader } from '../ui';
+import { apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -29,7 +30,7 @@ function AccountSettings() {
 
   async function request(method: 'GET' | 'PATCH', body?: Partial<Profile>) {
     const token = await getToken();
-    const response = await fetch(`${apiBase}/session/me`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    const response = await apiFetch(`${apiBase}/session/me`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.message ?? 'Could not update your settings.');
     return result as Profile;
@@ -96,7 +97,7 @@ export default function WorkspaceSettingsPage() {
     event.preventDefault(); setBusy(true); setStatus('');
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/session/workspaces/${session.workspace.id}`, {
+      const response = await apiFetch(`${apiBase}/session/workspaces/${session.workspace.id}`, {
         method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
       });
       const result = await response.json().catch(() => ({}));

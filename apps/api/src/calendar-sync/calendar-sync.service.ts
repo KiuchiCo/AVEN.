@@ -159,7 +159,11 @@ export class CalendarSyncService {
     for (const { id, workspaceId, connectedById } of due) {
       try {
         const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: connectedById } }, select: { role: true } });
-        if (!member || !['OWNER', 'ADMINISTRATOR'].includes(member.role)) continue;
+        if (!member || !['OWNER', 'ADMINISTRATOR'].includes(member.role)) {
+          // Left untouched, this connection would stay oldest-first in the queue forever and, ten of them, stop background sync for everyone.
+          await this.prisma.calendarConnection.update({ where: { id }, data: { status: 'NEEDS_ATTENTION', lastError: 'The person who connected this calendar is no longer an owner or administrator here. Reconnect to resume syncing.' } });
+          continue;
+        }
         if (await this.syncConnection(id)) done += 1;
       } catch (error) { reportIntegrationFailure('calendar', error); this.logger.warn(`Sync of ${id} failed: ${error instanceof Error ? error.message : error}`); }
     }

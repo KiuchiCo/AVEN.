@@ -135,9 +135,9 @@ describe('plans, limits and billing', { skip }, () => {
   test('an invoice that arrives before its subscription event is still filed, and cannot be filed against another customer’s workspace', async () => {
     const early = await t.call('olive', 'POST', '/session/workspaces', { name: `Early invoice ${t.run}` });
     const E = early.body.id; const invoice = (id, customer, workspaceId) => event('invoice.paid', { id, object: 'invoice', customer, status: 'paid', total: 999, amount_due: 999, amount_paid: 999, currency: 'aud', number: 'AVEN-0001', created: Math.floor(Date.now() / 1000), parent: { type: 'subscription_details', subscription_details: { subscription: 'sub_x', metadata: { workspaceId, plan: 'PLUS' } } } });
-    assert.equal((await hook(invoice(`in_${t.run}_1`, 'cus_early', E))).status, 200);
+    assert.equal((await hook(invoice(`in_${t.run}_1`, `cus_early_${t.run}`, E))).status, 200);
     assert.equal(await t.prisma.billingInvoice.count({ where: { workspaceId: E } }), 1, 'filed under the workspace the invoice names, before any subscription exists');
-    await t.prisma.subscription.create({ data: { workspaceId: E, planKey: 'PLUS', status: 'ACTIVE', seats: 1, providerCustomerId: 'cus_early' } });
+    await t.prisma.subscription.create({ data: { workspaceId: E, planKey: 'PLUS', status: 'ACTIVE', seats: 1, providerCustomerId: `cus_early_${t.run}` } });
     assert.equal((await hook(invoice(`in_${t.run}_2`, 'cus_someone_else', E))).status, 200);
     assert.equal(await t.prisma.billingInvoice.count({ where: { workspaceId: E } }), 1, 'an invoice for a different customer is not filed under this workspace');
     assert.equal((await hook(invoice(`in_${t.run}_3`, 'cus_nobody', '00000000-0000-4000-8000-000000000000'))).status, 200);

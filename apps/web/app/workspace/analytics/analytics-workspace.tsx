@@ -11,6 +11,7 @@ import { ActivityChart, Donut, HorizontalBars, Sparkline, VelocityChart } from '
 import { Icon } from '../home-icons';
 import { EmptyState, PageHeader, Panel, PillTabs, StatCard, StatRow } from '../ui';
 import { ago } from '../relative-time';
+import { apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 type ProjectRow = { id: string; name: string; status: string; updatedAt: string };
@@ -46,7 +47,7 @@ export function AnalyticsWorkspace() {
   const fetchAnalytics = useCallback(async (): Promise<{ data?: Data; locked?: string; error?: string }> => {
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/analytics?days=${days}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/analytics?days=${days}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       const body = await response.json().catch(() => null);
       if (response.status === 402) return { locked: body?.message ?? 'Analytics isn’t included in your plan.' };
       if (!response.ok) return { error: body?.message ?? 'Could not load analytics.' };
@@ -65,7 +66,7 @@ export function AnalyticsWorkspace() {
     void (async () => {
       try {
         const token = await getToken(); const headers = { Authorization: `Bearer ${token}` };
-        const [projectRows, taskRows] = await Promise.all([fetch(`${apiBase}/workspaces/${workspace.id}/projects`, { headers }).then((response) => response.ok ? response.json() : []), fetch(`${apiBase}/workspaces/${workspace.id}/tasks`, { headers }).then((response) => response.ok ? response.json() : [])]) as [ProjectRow[], TaskRow[]];
+        const [projectRows, taskRows] = await Promise.all([apiFetch(`${apiBase}/workspaces/${workspace.id}/projects`, { headers }).then((response) => response.ok ? response.json() : []), apiFetch(`${apiBase}/workspaces/${workspace.id}/tasks`, { headers }).then((response) => response.ok ? response.json() : [])]) as [ProjectRow[], TaskRow[]];
         if (live) { setProjects(projectRows); setTasks(taskRows); }
       } catch { /* the charts above still work without the project table */ }
     })();

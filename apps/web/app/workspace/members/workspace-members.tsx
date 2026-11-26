@@ -7,7 +7,7 @@ import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
 import { Avatar, EmptyState, PageHeader, Panel, Pill, PillTabs } from '../ui';
 import { Icon } from '../home-icons';
-import { connectionError } from '../connection-error';
+import { connectionError, apiFetch } from '../connection-error';
 
 type Member = { userId: string; displayName: string; email: string; role: string; createdAt: string };
 type Invitation = { id: string; email: string; role: string; expiresAt: string; createdAt: string };
@@ -43,7 +43,7 @@ export function WorkspaceMembers() {
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${apiBase}${path}`, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers } });
+    const response = await apiFetch(`${apiBase}${path}`, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers } });
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string } | null;
       throw new Error(body?.message ?? 'AVEN could not complete this request.');

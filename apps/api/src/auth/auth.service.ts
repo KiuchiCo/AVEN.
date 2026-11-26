@@ -6,6 +6,9 @@ import { PrismaService } from '../database/prisma.service.js';
 import type { AuthenticatedIdentity } from './auth.types.js';
 import { parseProfileUpdate, profileSelect } from './profile.js';
 import { readApiEnvironment } from '../config/api-environment.js';
+import { ProfileCache } from './profile-cache.js';
+
+const profiles = new ProfileCache();
 
 @Injectable()
 export class AuthService {
@@ -17,19 +20,24 @@ export class AuthService {
       throw new ServiceUnavailableException('Clerk profile access is not configured.');
     }
 
-    let providerUser: Awaited<ReturnType<ReturnType<typeof createClerkClient>['users']['getUser']>>;
-    try { providerUser = await withTimeout(createClerkClient({ secretKey }).users.getUser(identity.subject), 10_000, 'The sign-in service did not answer in time.'); }
-    catch (error) { reportIntegrationFailure('clerk', error); throw new ServiceUnavailableException('The sign-in service is not answering right now. Please try again in a moment.'); }
-    const primaryEmail = providerUser.emailAddresses.find(
-      (address) => address.id === providerUser.primaryEmailAddressId,
-    );
+    let profile = profiles.get(identity.subject);
+    if (!profile) {
+      let providerUser: Awaited<ReturnType<ReturnType<typeof createClerkClient>['users']['getUser']>>;
+      try { providerUser = await withTimeout(createClerkClient({ secretKey }).users.getUser(identity.subject), 10_000, 'The sign-in service did not answer in time.'); }
+      catch (error) { reportIntegrationFailure('clerk', error); throw new ServiceUnavailableException('The sign-in service is not answering right now. Please try again in a moment.'); }
+      const primaryEmail = providerUser.emailAddresses.find(
+        (address) => address.id === providerUser.primaryEmailAddressId,
+      );
 
-    if (!primaryEmail || primaryEmail.verification?.status !== 'verified') {
-      throw new UnauthorizedException('Verify your primary email address before continuing.');
+      if (!primaryEmail || primaryEmail.verification?.status !== 'verified') {
+        throw new UnauthorizedException('Verify your primary email address before continuing.');
+      }
+      profile = { email: primaryEmail.emailAddress.trim().toLowerCase(), fullName: providerUser.fullName?.trim() || null };
+      profiles.set(identity.subject, profile);
     }
 
-    const email = primaryEmail.emailAddress.trim().toLowerCase();
-    const displayName = (providerUser.fullName?.trim() || email.split('@')[0] || 'AVEN user').slice(0, 120);
+    const email = profile.email;
+    const displayName = (profile.fullName || email.split('@')[0] || 'AVEN user').slice(0, 120);
     const workspaceName = `${displayName}'s Workspace`.slice(0, 120);
 
     for (let attempt = 0; attempt < 3; attempt += 1) {

@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Panel } from '../app/workspace/ui';
 import { LanguageProvider } from '../app/i18n';
-import { connectionError } from '../app/workspace/connection-error';
+import { apiFetch, connectionError, NetworkError } from '../app/workspace/connection-error';
 import { validateComment } from '../app/workspace/tasks/[taskId]/lib/comment-validation';
 
 describe('Panel', () => {
@@ -29,5 +29,26 @@ describe('validateComment', () => {
     expect(validateComment('x'.repeat(2001), 0)).toBe('td.err.long');
     expect(validateComment('ok', 21)).toBe('td.err.mentions');
     expect(validateComment('ok', 1)).toBe('');
+  });
+});
+
+describe('apiFetch', () => {
+  it('turns a failed connection into a clear, translated network error that still counts as a TypeError', async () => {
+    render(<LanguageProvider language="en"><p>en</p></LanguageProvider>);
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
+    const failure = await apiFetch('http://api.test/x').catch((reason: unknown) => reason);
+    expect(failure).toBeInstanceOf(NetworkError);
+    expect(failure).toBeInstanceOf(TypeError);
+    expect((failure as Error).message).toMatch(/can’t reach the server/);
+    vi.unstubAllGlobals();
+  });
+
+  it('passes responses through untouched, including error statuses, and keeps cancellations as cancellations', async () => {
+    const response = new Response('{}', { status: 409 });
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response)));
+    expect(await apiFetch('http://api.test/x')).toBe(response);
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new DOMException('aborted', 'AbortError'))));
+    await expect(apiFetch('http://api.test/x')).rejects.toMatchObject({ name: 'AbortError' });
+    vi.unstubAllGlobals();
   });
 });

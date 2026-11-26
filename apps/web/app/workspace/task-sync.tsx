@@ -6,6 +6,7 @@ import { useT } from '../i18n';
 import type { Key } from '../i18n/en';
 import { useWorkspaceSession } from './workspace-shell';
 import { addChange, parseProblems, parseQueue, queueKey, splitConflict, currentValue, type Problem, type QueuedChange, type TaskFields } from './task-offline';
+import { apiFetch } from './connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const CHANGED = 'aven-task-sync';
@@ -48,7 +49,7 @@ export function TaskSyncProvider({ children }: { children: ReactNode }) {
     try {
       const token = await getToken();
       if (!token || !apiBase) return null;
-      const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
       return { ok: response.ok, status: response.status, body: await response.json().catch(() => null) };
     } catch { return null; }
   }, [getToken, workspace.id]);

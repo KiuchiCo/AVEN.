@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { useT } from '../../i18n';
 import { timeZoneCookieValue } from '../../time-zone-script';
 import { useWorkspaceSession } from '../workspace-shell';
+import { apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -25,7 +26,7 @@ export function TimeZoneCard() {
     setBusy(true); setStatus('');
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/session/me`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ timeZone: zone || null }) });
+      const response = await apiFetch(`${apiBase}/session/me`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ timeZone: zone || null }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message ?? 'Could not save your time zone.');
       document.cookie = timeZoneCookieValue(zone || null);

@@ -10,7 +10,7 @@ import { TaskLabels } from '../task-labels';
 import { WorkflowsWorkspace } from './workflows-workspace';
 import { EmptyState, PageHeader, Panel, StatCard, StatRow } from '../ui';
 import { Icon } from '../home-icons';
-import { connectionError } from '../connection-error';
+import { connectionError, apiFetch } from '../connection-error';
 
 type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'COMPLETED' | 'CANCELLED';
 type Rule = { id: string; name: string; fromStatus: TaskStatus | null; toStatus: TaskStatus; action: 'SET_TASK_PRIORITY' | 'ADD_ACTIVITY_NOTE'; priority: string | null; activityMessage: string | null; enabled: boolean; createdAt: string; createdBy: { displayName: string }; _count: { runs: number } };
@@ -45,7 +45,7 @@ export function AutomationsWorkspace() {
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${apiBase}${path}`, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers } });
+    const response = await apiFetch(`${apiBase}${path}`, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers } });
     if (!response.ok) { const body = await response.json().catch(() => null) as { message?: string } | null; throw new Error(body?.message ?? 'AVEN could not complete that request.'); }
     return response.json();
   }, [getToken]);

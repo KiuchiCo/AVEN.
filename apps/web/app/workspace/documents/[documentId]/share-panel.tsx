@@ -4,6 +4,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../../../i18n';
 import { useWorkspaceSession } from '../../workspace-shell';
+import { apiFetch } from '../../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 type Share = { id: string; createdAt: string; expiresAt: string | null; revokedAt: string | null; viewCount: number; lastViewedAt: string | null; state: 'ACTIVE' | 'EXPIRED' | 'REVOKED'; allowDownload: boolean; allowPrint: boolean; includeEmbeds: boolean; createdBy: { displayName: string } };
@@ -30,7 +31,7 @@ export function SharePanel({ documentId }: { documentId: string }) {
 
   const call = useCallback(async <T,>(path = '', method = 'GET', body?: unknown): Promise<T> => {
     const token = await getToken();
-    const response = await fetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/shares${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/documents/${documentId}/shares${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
     const json = await response.json().catch(() => null);
     if (!response.ok) throw new Error(json?.message ?? 'AVEN could not complete that request.');
     return json as T;

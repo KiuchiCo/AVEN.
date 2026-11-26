@@ -5,6 +5,7 @@ import { useState, type FormEvent } from 'react';
 import { useT } from '../../i18n';
 import { Modal } from '../projects/project-ui';
 import { useWorkspaceSession } from '../workspace-shell';
+import { apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const sizeOf = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
@@ -27,7 +28,7 @@ export function MyDataCard() {
   async function download() {
     setExporting('busy'); setExportStatus({ kind: 'status', text: t('acct.data.preparing') });
     try {
-      const response = await fetch(`${apiBase}/session/export`, { headers: { Authorization: `Bearer ${await getToken()}` } });
+      const response = await apiFetch(`${apiBase}/session/export`, { headers: { Authorization: `Bearer ${await getToken()}` } });
       if (!response.ok) throw new Error('export refused');
       const blob = await response.blob();
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'aven-my-data.json';
@@ -42,7 +43,7 @@ export function MyDataCard() {
   async function remove(event: FormEvent) {
     event.preventDefault(); setDeleting(true); setDeleteError('');
     try {
-      const response = await fetch(`${apiBase}/session/delete-account`, { method: 'POST', headers: { Authorization: `Bearer ${await getToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmEmail: typed, alsoDeleteSignIn: alsoSignIn }) });
+      const response = await apiFetch(`${apiBase}/session/delete-account`, { method: 'POST', headers: { Authorization: `Bearer ${await getToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmEmail: typed, alsoDeleteSignIn: alsoSignIn }) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof body.message === 'string' ? body.message : t('acct.del.failed'));
       setDeleted(true);

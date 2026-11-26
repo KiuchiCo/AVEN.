@@ -2088,6 +2088,7 @@ export const en = {
   'shell.expandNav': "Expand sidebar",
   'shell.loading': "Loading",
   'shell.skip': "Skip to content",
+  'err.network': "AVEN can’t reach the server. Check your connection and try again.",
   'inv.invalid': "This invitation is invalid, expired, or has already been used.",
   'shell.navAria': "Workspace navigation",
   'shell.history': "History",

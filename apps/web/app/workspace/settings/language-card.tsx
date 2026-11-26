@@ -4,6 +4,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useState } from 'react';
 import { isLanguage, languages, useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
+import { apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -20,7 +21,7 @@ export function LanguageCard() {
     setValue(next as typeof value); setBusy(true); setStatus('');
     try {
       const token = await getToken();
-      const response = await fetch(`${apiBase}/session/me`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ language: next === 'en' ? null : next }) });
+      const response = await apiFetch(`${apiBase}/session/me`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ language: next === 'en' ? null : next }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message ?? 'Could not save your language.');
       setStatus(t('settings.language.saved'));

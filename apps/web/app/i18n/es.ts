@@ -2089,6 +2089,7 @@ export const es: Dictionary = {
   'shell.expandNav': "Expandir la barra lateral",
   'shell.loading': "Cargando",
   'shell.skip': "Saltar al contenido",
+  'err.network': "AVEN no puede conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.",
   'inv.invalid': "Esta invitación no es válida, ha caducado o ya se ha usado.",
   'shell.navAria': "Navegación del espacio de trabajo",
   'shell.history': "Historial",

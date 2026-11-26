@@ -7,7 +7,7 @@ import { useT } from '../../i18n';
 import type { Key } from '../../i18n/en';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
-import { connectionError } from '../connection-error';
+import { connectionError, apiFetch } from '../connection-error';
 
 type SearchResult = { id: string; type: string; title: string; detail: string; href: string; updatedAt: string; labels?: string[] };
 type SearchResponse = { query: string; results: SearchResult[] };
@@ -36,7 +36,7 @@ export default function WorkspaceSearchPage() {
       try {
         const token = await getToken();
         if (!token || !apiBase) return;
-        const response = await fetch(`${apiBase}/workspaces/${workspace.id}/search/semantic/status`, { headers: { Authorization: `Bearer ${token}` } });
+        const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/search/semantic/status`, { headers: { Authorization: `Bearer ${token}` } });
         if (response.ok && !cancelled) setStatus(await response.json() as SemanticStatus);
       } catch { /* The note about search by meaning is optional. */ }
     })();
@@ -53,7 +53,7 @@ export default function WorkspaceSearchPage() {
         try {
           const token = await getToken();
           if (!token || !apiBase) return;
-          const response = await fetch(`${apiBase}/workspaces/${workspace.id}/search/semantic?q=${encodeURIComponent(trimmed)}`, { headers: { Authorization: `Bearer ${token}` } });
+          const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/search/semantic?q=${encodeURIComponent(trimmed)}`, { headers: { Authorization: `Bearer ${token}` } });
           if (!response.ok) throw new Error('unavailable');
           const data = await response.json() as { results: SearchResult[]; pending: number };
           if (!cancelled) setSemantic({ results: data.results, pending: data.pending, failed: false });
@@ -74,7 +74,7 @@ export default function WorkspaceSearchPage() {
         try {
           const token = await getToken();
           if (!token || !apiBase) throw connectionError(token);
-          const response = await fetch(`${apiBase}/workspaces/${workspace.id}/search?q=${encodeURIComponent(trimmed)}`, { headers: { Authorization: `Bearer ${token}` } });
+          const response = await apiFetch(`${apiBase}/workspaces/${workspace.id}/search?q=${encodeURIComponent(trimmed)}`, { headers: { Authorization: `Bearer ${token}` } });
           if (!response.ok) {
             const body = await response.json().catch(() => null) as { message?: string } | null;
             throw new Error(body?.message ?? 'Search could not be completed.');
@@ -109,7 +109,7 @@ export default function WorkspaceSearchPage() {
 
       <section className="workspace-search-results" aria-live="polite" aria-busy={query.trim().length >= 2 && loading}>
         <div className="workspace-search-filters" role="group" aria-label={t('srch.filterAria')}>{filters.map((item) => <button key={item} type="button" aria-pressed={filter === item} className={filter === item ? 'workspace-search-filter--active' : ''} onClick={() => setFilter(item)}>{t(filterKeys[item])}</button>)}</div>
-        {query.trim().length < 2 ? <p className="productivity-message">{t('srch.min')}</p> : loading ? <p className="productivity-message">{t('srch.searching')}</p> : visibleResults.length === 0 ? <p className="productivity-message">{filter === 'All' ? t('srch.noneAll', { q: query.trim() }) : t('srch.noneType', { type: t(filterKeys[filter]).toLocaleLowerCase(), q: query.trim() })}</p> : (
+        {query.trim().length < 2 ? <p className="productivity-message">{t('srch.min')}</p> : loading ? <p className="productivity-message">{t('srch.searching')}</p> : error ? null : visibleResults.length === 0 ? <p className="productivity-message">{filter === 'All' ? t('srch.noneAll', { q: query.trim() }) : t('srch.noneType', { type: t(filterKeys[filter]).toLocaleLowerCase(), q: query.trim() })}</p> : (
           <div className="workspace-search-list">{visibleResults.map((item) => <Link className="workspace-search-result" key={`${item.type}-${item.id}`} href={item.href}>
             <span className="workspace-search-result__type">{typeKeys[item.type] ? t(typeKeys[item.type]).replace(/^./, (c) => c.toLocaleUpperCase()) : item.type}</span><span className="workspace-search-result__body"><strong>{item.title}</strong><small>{item.detail}</small>{item.type === 'Task' && item.labels && <TaskLabels labels={item.labels} compact />}</span><time dateTime={item.updatedAt}>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(item.updatedAt))}</time><span aria-hidden="true">→</span>
           </Link>)}</div>

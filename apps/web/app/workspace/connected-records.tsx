@@ -10,7 +10,7 @@ import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabels } from './task-labels';
 import { Icon } from './home-icons';
 import { PageHeader } from './ui';
-import { connectionError } from './connection-error';
+import { connectionError, apiFetch } from './connection-error';
 
 type Project = { id: string; name: string };
 type Task = { id: string; title: string; status: string; labels: string[]; dueAt: string | null };
@@ -130,7 +130,7 @@ export function CalendarWorkspace() {
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
     if (!token || !apiBase) throw connectionError(token);
-    const response = await fetch(`${apiBase}${path}`, {
+    const response = await apiFetch(`${apiBase}${path}`, {
       ...options,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers },
     });
