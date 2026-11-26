@@ -1244,3 +1244,11 @@ button:hover > .block-icon, button.is-active > .block-icon, button[aria-selected
   .et-group--end { position: static; margin-left: auto; box-shadow: none; }
   .et-spacer { display: none; }
 }
+
+/* The "/" menu: the highlighted row runs from edge to edge of the menu instead of sitting inset with rounded corners. */
+.document-slash { padding: 0; overflow-x: hidden; overflow-y: auto; }
+.document-slash [role="option"] { width: 100%; border-radius: 0; padding: 10px 16px; }
+.document-slash [role="option"].is-active, .document-slash [role="option"][aria-selected="true"] { background: var(--m-chip); }
+
+/* Keep the top bar clear of the status bar / notch on phones and tablets (the insets are 0 in a normal browser). Placed last so it wins over the fixed header height above. */
+.workspace-topbar { box-sizing: border-box; padding-top: env(safe-area-inset-top); height: calc(var(--ds-header-h) + env(safe-area-inset-top)); min-height: calc(var(--ds-header-h) + env(safe-area-inset-top)); }

@@ -25,12 +25,13 @@ export type ApiEnvironment = {
   storageDir: string;
   maxUploadBytes: number;
   storageQuotaBytes: number;
+  aiProvider: 'gemini' | 'anthropic';
   aiApiKey?: string;
   /** Browser push (VAPID). Absent means push is off. */
   push?: { publicKey: string; privateKey: string; subject: string };
   /** Apple Push Notification service, for the iPhone and iPad app. Absent means native push is off. `baseUrl` exists for tests (a local stand-in). */
   apns?: { keyId: string; teamId: string; privateKey: string; bundleId: string; baseUrl?: string };
-  /** Optional web search for AVEN Intelligence (Brave Search API). */
+  /** Optional web search for AVEN Intelligence (Tavily Search API). */
   webSearch?: { apiKey: string; baseUrl: string };
   /** Optional embeddings for semantic search, from any OpenAI-compatible /embeddings endpoint. */
   embeddings?: { apiKey: string; baseUrl: string; model: string };
@@ -47,6 +48,8 @@ export type ApiEnvironment = {
   stripeSecretKey?: string;
   stripeWebhookSecret?: string;
   stripeBaseUrl: string;
+  /** Stripe Managed Payments (Stripe handles indirect tax, fraud and order support). Off unless STRIPE_MANAGED_PAYMENTS=true. */
+  stripeManagedPayments: boolean;
   stripePrices: Partial<Record<'PLUS' | 'PRO' | 'BUSINESS', string>>;
   calendar: { tokenKey?: Buffer; apiPublicUrl: string; google?: CalendarOAuth; microsoft?: CalendarOAuth; syncDisabled: boolean };
 };
@@ -147,7 +150,10 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   const storageQuotaBytes = byteSetting('WORKSPACE_STORAGE_QUOTA_BYTES', 500 * 1024 * 1024, 10 * 1024 ** 4);
   const storageDir = source.STORAGE_DIR?.trim() || '.storage';
 
-  const aiApiKey = source.ANTHROPIC_API_KEY?.trim() || undefined;
+  const aiProvider = source.AI_PROVIDER?.trim() || 'gemini';
+  if (aiProvider !== 'gemini' && aiProvider !== 'anthropic') errors.push('AI_PROVIDER must be “gemini” or “anthropic”');
+  // Only the chosen provider's key is read, so a stray key for the other one never switches providers by accident.
+  const aiApiKey = (aiProvider === 'anthropic' ? source.ANTHROPIC_API_KEY : source.GOOGLE_AI_API_KEY)?.trim() || undefined;
   const vapidPublic = source.VAPID_PUBLIC_KEY?.trim() || undefined, vapidPrivate = source.VAPID_PRIVATE_KEY?.trim() || undefined;
   let push: ApiEnvironment['push'];
   if (vapidPublic || vapidPrivate) {
@@ -157,9 +163,9 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
     else if (!/^(mailto:[^\s@]+@[^\s@]+|https:\/\/\S+)$/.test(subject)) errors.push('VAPID_SUBJECT must be a mailto: address or an https URL');
     else push = { publicKey: vapidPublic, privateKey: vapidPrivate, subject };
   }
-  const webSearchKey = source.WEB_SEARCH_API_KEY?.trim() || undefined;
-  const webSearchBase = source.WEB_SEARCH_BASE_URL?.trim() || 'https://api.search.brave.com';
-  try { const parsed = new URL(webSearchBase); if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname))) errors.push('WEB_SEARCH_BASE_URL must be an https address'); } catch { errors.push('WEB_SEARCH_BASE_URL must be a valid URL'); }
+  const webSearchKey = source.TAVILY_API_KEY?.trim() || undefined;
+  const webSearchBase = source.TAVILY_BASE_URL?.trim() || 'https://api.tavily.com';
+  try { const parsed = new URL(webSearchBase); if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname))) errors.push('TAVILY_BASE_URL must be an https address'); } catch { errors.push('TAVILY_BASE_URL must be a valid URL'); }
   const webSearch = webSearchKey ? { apiKey: webSearchKey, baseUrl: webSearchBase } : undefined;
   const embeddingsKey = source.EMBEDDINGS_API_KEY?.trim() || undefined;
   const embeddingsBase = (source.EMBEDDINGS_BASE_URL?.trim() || 'https://api.openai.com/v1').replace(/\/+$/, '');
@@ -167,9 +173,9 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   try { const parsed = new URL(embeddingsBase); if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname))) errors.push('EMBEDDINGS_BASE_URL must be an https address'); } catch { errors.push('EMBEDDINGS_BASE_URL must be a valid URL'); }
   if (embeddingsModel.length > 100 || !/^[\w.:/-]+$/.test(embeddingsModel)) errors.push('EMBEDDINGS_MODEL must be a model identifier');
   const embeddings = embeddingsKey ? { apiKey: embeddingsKey, baseUrl: embeddingsBase, model: embeddingsModel } : undefined;
-  const aiModel = source.AI_MODEL?.trim() || 'claude-sonnet-5-5';
+  const aiModel = source.AI_MODEL?.trim() || (aiProvider === 'anthropic' ? 'claude-sonnet-5-5' : 'gemini-flash-latest');
   if (aiModel.length > 100 || !/^[\w.:-]+$/.test(aiModel)) errors.push('AI_MODEL must be a model identifier');
-  const aiBaseUrl = source.AI_BASE_URL?.trim() || 'https://api.anthropic.com';
+  const aiBaseUrl = source.AI_BASE_URL?.trim() || (aiProvider === 'anthropic' ? 'https://api.anthropic.com' : 'https://generativelanguage.googleapis.com');
   try {
     const url = new URL(aiBaseUrl);
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
@@ -199,6 +205,9 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   const stripeWebhookSecret = source.STRIPE_WEBHOOK_SECRET?.trim() || undefined;
   if (stripeSecretKey && !stripeWebhookSecret) errors.push('STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set');
   const stripeBaseUrl = source.STRIPE_BASE_URL?.trim() || 'https://api.stripe.com';
+  const stripeManagedPaymentsRaw = source.STRIPE_MANAGED_PAYMENTS?.trim() || 'false';
+  if (stripeManagedPaymentsRaw !== 'true' && stripeManagedPaymentsRaw !== 'false') errors.push('STRIPE_MANAGED_PAYMENTS must be “true” or “false”');
+  const stripeManagedPayments = stripeManagedPaymentsRaw === 'true';
   try {
     const url = new URL(stripeBaseUrl);
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
@@ -236,5 +245,21 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   if (isProduction && (!clerkIssuer || (!clerkSecretKey && !clerkJwtKey))) errors.push('production requires CLERK_ISSUER and a Clerk verification key');
   if (errors.length) throw new Error(`Invalid API environment: ${errors.join('; ')}.`);
 
-  return { apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, apns, rateLimitStore: rateLimitRaw === 'postgres' ? 'postgres' : 'memory', realtimeBus: realtimeRaw === 'postgres' ? 'postgres' : 'memory', monitoring: { errorTrackingDsn, errorTrackingEnvironment: source.ERROR_TRACKING_ENVIRONMENT?.trim() || source.NODE_ENV || 'production', release: source.APP_RELEASE?.trim() || undefined, metricsToken }, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, embeddings, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+  return { stripeManagedPayments, aiProvider: aiProvider === 'anthropic' ? 'anthropic' : 'gemini', apiPort, webOrigins, databaseUrl, clerkSecretKey, clerkJwtKey, clerkIssuer, isProduction, trustProxy, apns, rateLimitStore: rateLimitRaw === 'postgres' ? 'postgres' : 'memory', realtimeBus: realtimeRaw === 'postgres' ? 'postgres' : 'memory', monitoring: { errorTrackingDsn, errorTrackingEnvironment: source.ERROR_TRACKING_ENVIRONMENT?.trim() || source.NODE_ENV || 'production', release: source.APP_RELEASE?.trim() || undefined, metricsToken }, storageDriver: storageDriver === 's3' ? 's3' : 'local', s3, storageDir, maxUploadBytes, storageQuotaBytes, aiApiKey, push, webSearch, embeddings, aiModel, aiBaseUrl, aiMonthlyCredits, aiMaxOutputTokens, workflowAllowPrivateWebhooks, emailApiKey, emailFrom, emailBaseUrl, webBaseUrl: webOrigins[0] ?? 'http://localhost:3000', billingPlanOverrides: parsedOverrides.overrides, calendar, stripeSecretKey, stripeWebhookSecret, stripeBaseUrl, stripePrices };
+}
+
+
+/** Which optional integrations are configured, by name only (never a key or other value), for one line in the startup log. */
+export function integrationStatus(env: ApiEnvironment): { name: string; on: boolean; needs: string }[] {
+  return [
+    { name: 'AVEN Intelligence', on: Boolean(env.aiApiKey), needs: env.aiProvider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'GOOGLE_AI_API_KEY' },
+    { name: 'Web search', on: Boolean(env.webSearch), needs: 'TAVILY_API_KEY' },
+    { name: 'Email', on: Boolean(env.emailApiKey), needs: 'EMAIL_API_KEY and EMAIL_FROM' },
+    { name: 'Payments', on: Boolean(env.stripeSecretKey), needs: 'STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET' },
+    { name: 'Browser push', on: Boolean(env.push), needs: 'VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT' },
+    { name: 'iPhone and iPad push', on: Boolean(env.apns), needs: 'APNS_KEY_ID, APNS_TEAM_ID and APNS_PRIVATE_KEY' },
+    { name: 'Google Calendar', on: Boolean(env.calendar.google && env.calendar.tokenKey), needs: 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and TOKEN_ENCRYPTION_KEY' },
+    { name: 'Outlook Calendar', on: Boolean(env.calendar.microsoft && env.calendar.tokenKey), needs: 'MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET and TOKEN_ENCRYPTION_KEY' },
+    { name: 'Cloud file storage', on: env.storageDriver === 's3', needs: 'STORAGE_DRIVER=s3 with S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (files are kept on this server\'s disk until then)' },
+  ];
 }

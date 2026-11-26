@@ -143,7 +143,7 @@ export function AssistantChat() {
   if (status && !status.configured) return <section className="assistant assistant--off" aria-label={t('as.askAven')}>
     <p className="workspace-eyebrow">{t('as.askAven')}</p><h2>{t('as.off')}</h2>
     <p>{t('as.offBody')}</p>
-    <pre>ANTHROPIC_API_KEY=your-key-here</pre>
+    <pre>GOOGLE_AI_API_KEY=your-key-here</pre>
     <p className="assistant__note">{t('as.offNote', { names: 'AI_MODEL, AI_MONTHLY_CREDITS, AI_MAX_OUTPUT_TOKENS' })}</p>
   </section>;
 

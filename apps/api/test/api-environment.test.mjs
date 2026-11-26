@@ -65,8 +65,8 @@ test('web search is optional and needs a safe base URL', async () => {
   assert.deepEqual(readApiEnvironment({ ...base, EMBEDDINGS_API_KEY: 'k' }).embeddings, { apiKey: 'k', baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-small' });
   assert.throws(() => readApiEnvironment({ ...base, EMBEDDINGS_API_KEY: 'k', EMBEDDINGS_BASE_URL: 'http://example.com/v1' }), /EMBEDDINGS_BASE_URL/);
   assert.equal(readApiEnvironment(base).webSearch, undefined);
-  assert.equal(readApiEnvironment({ ...base, WEB_SEARCH_API_KEY: 'k' }).webSearch.baseUrl, 'https://api.search.brave.com');
-  assert.throws(() => readApiEnvironment({ ...base, WEB_SEARCH_API_KEY: 'k', WEB_SEARCH_BASE_URL: 'http://example.com' }), /https/);
+  assert.equal(readApiEnvironment({ ...base, TAVILY_API_KEY: 'k' }).webSearch.baseUrl, 'https://api.tavily.com');
+  assert.throws(() => readApiEnvironment({ ...base, TAVILY_API_KEY: 'k', TAVILY_BASE_URL: 'http://example.com' }), /https/);
 });
 
 test('push needs a matching VAPID key pair and subject', async () => {
@@ -78,4 +78,23 @@ test('push needs a matching VAPID key pair and subject', async () => {
   assert.throws(() => readApiEnvironment({ ...base, VAPID_PUBLIC_KEY: 'abc', VAPID_PRIVATE_KEY: 'def', VAPID_SUBJECT: 'mailto:a@b.co' }), /P-256/);
   assert.throws(() => readApiEnvironment({ ...base, VAPID_PUBLIC_KEY: k.publicKey, VAPID_PRIVATE_KEY: k.privateKey, VAPID_SUBJECT: 'http://x' }), /VAPID_SUBJECT/);
   assert.equal(readApiEnvironment({ ...base, VAPID_PUBLIC_KEY: k.publicKey, VAPID_PRIVATE_KEY: k.privateKey, VAPID_SUBJECT: 'mailto:ops@aven.test' }).push.subject, 'mailto:ops@aven.test');
+});
+
+test('the integration summary names what is on and what each missing one needs, and never contains a value', async () => {
+  const { integrationStatus } = await import('../dist/config/api-environment.js');
+  const base = { DATABASE_URL: 'postgresql://aven:x@localhost:5432/aven' };
+  const off = integrationStatus(readApiEnvironment(base));
+  assert.ok(off.every((item) => item.on === false || item.name === 'Cloud file storage'), 'nothing is on with no keys');
+  assert.equal(off.find((item) => item.name === 'AVEN Intelligence').needs, 'GOOGLE_AI_API_KEY');
+  const on = integrationStatus(readApiEnvironment({ ...base, GOOGLE_AI_API_KEY: 'g-secret-value', TAVILY_API_KEY: 'tv-secret-value' }));
+  assert.deepEqual(on.filter((item) => item.on).map((item) => item.name), ['AVEN Intelligence', 'Web search']);
+  assert.ok(!JSON.stringify(on).includes('secret-value'));
+});
+
+test('Cloudflare R2 is configured through the S3 settings: region auto and the account endpoint', () => {
+  const base = { DATABASE_URL: 'postgresql://aven:x@localhost:5432/aven' };
+  const r2 = readApiEnvironment({ ...base, STORAGE_DRIVER: 's3', S3_BUCKET: 'aven-files', S3_REGION: 'auto', S3_ACCESS_KEY_ID: 'id', S3_SECRET_ACCESS_KEY: 'secret', S3_ENDPOINT: 'https://0123abcd.r2.cloudflarestorage.com' });
+  assert.deepEqual([r2.storageDriver, r2.s3.region, r2.s3.endpoint], ['s3', 'auto', 'https://0123abcd.r2.cloudflarestorage.com']);
+  assert.throws(() => readApiEnvironment({ ...base, STORAGE_DRIVER: 's3', S3_BUCKET: 'b' }), /S3_ACCESS_KEY_ID/);
+  assert.equal(readApiEnvironment(base).storageDriver, 'local', 'with nothing set, files stay on local disk');
 });

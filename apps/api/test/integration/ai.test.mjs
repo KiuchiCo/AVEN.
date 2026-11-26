@@ -3,9 +3,15 @@ import { createServer } from 'node:http';
 import { after, before, describe, test } from 'node:test';
 import { boot, skip } from './harness.mjs';
 
-const sse = (...events) => events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join('');
-const say = (pieces) => sse({ type: 'message_start', message: { usage: { input_tokens: 100, output_tokens: 1 } } }, { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }, ...pieces.map((text) => ({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } })), { type: 'content_block_stop', index: 0 }, { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 20 } }, { type: 'message_stop' });
-const call = (id, name, input) => { const json = JSON.stringify(input); return sse({ type: 'message_start', message: { usage: { input_tokens: 200, output_tokens: 1 } } }, { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id, name, input: {} } }, { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: json.slice(0, 4) } }, { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: json.slice(4) } }, { type: 'content_block_stop', index: 0 }, { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 30 } }, { type: 'message_stop' }); };
+// The model stub speaks Google's Gemini streaming format (the default provider), and the test sees each request in a neutral shape.
+const frame = (chunk) => `data: ${JSON.stringify(chunk)}\r\n\r\n`;
+const say = (pieces) => pieces.map((text, i) => frame({ candidates: [{ content: { role: 'model', parts: [{ text }] }, ...(i === pieces.length - 1 ? { finishReason: 'STOP' } : {}) }], ...(i === pieces.length - 1 ? { usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20 } } : {}) })).join('');
+const call = (id, name, input) => frame({ candidates: [{ content: { role: 'model', parts: [{ functionCall: { id, name, args: input } }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 200, candidatesTokenCount: 30 } });
+const neutral = (body) => ({
+  system: body.systemInstruction?.parts?.[0]?.text ?? '',
+  tools: (body.tools?.[0]?.functionDeclarations ?? []).map((tool) => ({ name: tool.name })),
+  messages: body.contents.map((message) => ({ role: message.role === 'model' ? 'assistant' : 'user', content: message.parts.map((part) => part.text !== undefined ? { type: 'text', text: part.text } : part.functionCall ? { type: 'tool_use', name: part.functionCall.name, input: part.functionCall.args } : { type: 'tool_result', content: part.functionResponse.response.result ?? part.functionResponse.response.error }) })),
+});
 
 describe('AVEN Intelligence assistant', { skip }, () => {
   let t; let W; let model; const seen = [];
@@ -14,7 +20,7 @@ describe('AVEN Intelligence assistant', { skip }, () => {
 
   before(async () => {
     model = createServer((req, res) => { let raw = ''; req.on('data', (c) => { raw += c; }); req.on('end', () => {
-      const body = JSON.parse(raw); seen.push(body);
+      const body = neutral(JSON.parse(raw)); seen.push(body);
       const result = body.messages.at(-1).content.find((b) => b.type === 'tool_result'); const said = lastText(body);
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       if (result) { if (/poisoned/i.test(said) && /IGNORE PREVIOUS/.test(result.content)) return res.end(call('inj', 'create_task', { title: 'Wire money away' })); if (/overdue/.test(said)) return res.end(say(['Overdue: Ship launch checklist.'])); return res.end(say(['Done.'])); }
@@ -24,7 +30,7 @@ describe('AVEN Intelligence assistant', { skip }, () => {
       return res.end(say(['Hello there.']));
     }); });
     await new Promise((resolve) => model.listen(0, '127.0.0.1', resolve));
-    t = await boot({ ANTHROPIC_API_KEY: 'sk-test', AI_BASE_URL: `http://127.0.0.1:${model.address().port}`, AI_MONTHLY_CREDITS: '30' });
+    t = await boot({ GOOGLE_AI_API_KEY: 'g-test', AI_BASE_URL: `http://127.0.0.1:${model.address().port}`, AI_MONTHLY_CREDITS: '30' });
     for (const name of ['ada', 'bo', 'cy', 'mal']) await t.user(name);
     W = await t.workspace('ada'); await t.plan(W.id, 'ENTERPRISE', { limitsOverride: { aiCredits: 100 } }); await t.member(W.id, 'bo', 'MEMBER'); await t.member(W.id, 'cy', 'GUEST');
     const owner = await t.prisma.user.findFirstOrThrow({ where: { email: { contains: `ada-${t.run}` } } });

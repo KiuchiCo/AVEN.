@@ -12,8 +12,9 @@ import { securityHeaders } from './common/security-headers.js';
 import { compress } from './common/compress.js';
 import { requestLogging } from './common/request-logging.js';
 import { reporter } from './observability/error-reporter.js';
+import { Logger } from '@nestjs/common';
 import { JsonLogger } from './observability/json-logger.js';
-import { readApiEnvironment } from './config/api-environment.js';
+import { integrationStatus, readApiEnvironment } from './config/api-environment.js';
 
 config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)) });
 
@@ -39,6 +40,8 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
   await app.listen(environment.apiPort);
+  const status = integrationStatus(environment);
+  Logger.log(`Optional integrations on: ${status.filter((item) => item.on).map((item) => item.name).join(', ') || 'none'}. Off (set the named variables to enable): ${status.filter((item) => !item.on).map((item) => `${item.name} [${item.needs}]`).join('; ') || 'none'}.`, 'Integrations');
 }
 
 void bootstrap();

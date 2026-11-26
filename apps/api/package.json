@@ -11,6 +11,7 @@
     "prestart:dev": "tsc -p ../../packages/collab/tsconfig.json",
     "start:dev": "nest start --watch",
     "vapid:generate": "node scripts/vapid.mjs",
+    "billing:create-plan-products": "node scripts/create-plan-products.mjs",
     "pretypecheck": "tsc -p ../../packages/collab/tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "db:generate": "prisma generate",

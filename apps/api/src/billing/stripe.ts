@@ -21,18 +21,23 @@ export function verifyStripeSignature(rawBody: Buffer, header: string | undefine
   return signatures.some((signature) => { const given = Buffer.from(signature, 'hex'); return given.length === expected.length && timingSafeEqual(given, expected); });
 }
 
-type Settings = { secretKey: string; baseUrl: string };
+/** The Stripe API version that Managed Payments needs. Only the requests that use it send this header; everything else leaves the version to the account default. */
+export const MANAGED_PAYMENTS_VERSION = '2026-02-25.preview';
+/** Stripe's tax code for the products AVEN sells through Managed Payments. */
+export const MANAGED_PAYMENTS_TAX_CODE = 'txcd_10103100';
+
+type Settings = { secretKey: string; baseUrl: string; /** Stripe becomes the seller of record: it handles sales tax, VAT and GST, fraud checks and order support. */ managedPayments?: boolean };
 
 /** The few Stripe calls AVEN needs, over plain fetch. Plan changes, cancellation and payment methods happen in Stripe's own billing portal. */
 export class StripeClient {
   constructor(private readonly settings: Settings) {}
 
-  private async request(method: 'GET' | 'POST', path: string, form?: Record<string, string>): Promise<Record<string, unknown>> {
+  private async request(method: 'GET' | 'POST', path: string, form?: Record<string, string>, apiVersion?: string): Promise<Record<string, unknown>> {
     let response: Response;
     try {
       response = await fetch(`${this.settings.baseUrl.replace(/\/$/, '')}${path}`, {
         method, signal: AbortSignal.timeout(20_000),
-        headers: { authorization: `Bearer ${this.settings.secretKey}`, ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
+        headers: { authorization: `Bearer ${this.settings.secretKey}`, ...(apiVersion ? { 'stripe-version': apiVersion } : {}), ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
         body: form ? new URLSearchParams(form).toString() : undefined,
       });
     } catch (error) { reportIntegrationFailure('stripe', error, { kind: 'network' }); throw new BillingProviderError('The payment provider could not be reached. Try again shortly.', true); }
@@ -53,7 +58,8 @@ export class StripeClient {
       success_url: input.successUrl, cancel_url: input.cancelUrl,
     };
     if (input.customerId) form.customer = input.customerId; else if (input.customerEmail) form.customer_email = input.customerEmail;
-    const session = await this.request('POST', '/v1/checkout/sessions', form);
+    if (this.settings.managedPayments) form['managed_payments[enabled]'] = 'true';
+    const session = await this.request('POST', '/v1/checkout/sessions', form, this.settings.managedPayments ? MANAGED_PAYMENTS_VERSION : undefined);
     if (typeof session.url !== 'string') throw new BillingProviderError('The payment provider did not return a checkout address.');
     return session.url;
   }
@@ -70,5 +76,19 @@ export class StripeClient {
     const item = ((subscription.items as { data?: Array<{ id?: string }> } | undefined)?.data ?? [])[0];
     if (!item?.id) throw new BillingProviderError('The subscription has no items to update.');
     await this.request('POST', `/v1/subscription_items/${encodeURIComponent(item.id)}`, { quantity: String(quantity), proration_behavior: 'create_prorations' });
+  }
+
+  /**
+   * Creates a subscription product with its monthly default price and the Managed Payments tax code. Returns the product and the price id
+   * to put in STRIPE_PRICE_<PLAN>. Used by the setup script (`npm run billing:create-plan-products`), never at request time.
+   */
+  async createPlanProduct(input: { name: string; planKey: string; currency: string; unitAmount: number }): Promise<{ productId: string; priceId: string }> {
+    const product = await this.request('POST', '/v1/products', {
+      name: input.name, tax_code: MANAGED_PAYMENTS_TAX_CODE, 'metadata[plan]': input.planKey,
+      'default_price_data[currency]': input.currency, 'default_price_data[unit_amount]': String(input.unitAmount), 'default_price_data[recurring][interval]': 'month',
+    }, MANAGED_PAYMENTS_VERSION);
+    const priceId = typeof product.default_price === 'string' ? product.default_price : (product.default_price as { id?: string } | undefined)?.id;
+    if (typeof product.id !== 'string' || !priceId) throw new BillingProviderError('The payment provider did not return the new product and price.');
+    return { productId: product.id, priceId };
   }
 }

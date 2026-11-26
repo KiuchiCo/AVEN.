@@ -118,7 +118,7 @@ export class AiService {
     const membership = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId } }, select: { role: true } });
     if (membership?.role === 'GUEST') throw new ForbiddenException('Guests cannot use AI writing actions.');
     const request = parseWritingRequest(body);
-    if (!this.provider) throw new ServiceUnavailableException('AVEN Intelligence needs a model provider. Set ANTHROPIC_API_KEY for the API and restart it.');
+    if (!this.provider) throw new ServiceUnavailableException('AVEN Intelligence needs a model provider. Set GOOGLE_AI_API_KEY for the API and restart it.');
     const creditLimit = await this.entitlements.limit(workspaceId, 'aiCredits');
     if (creditLimit !== null && await this.creditsUsed(workspaceId) >= creditLimit) throw new HttpException('This workspace has used its AI credits for the month. They reset at the start of next month.', 402);
     let prompt = request.text;
@@ -142,7 +142,7 @@ export class AiService {
   async prepare(identity: AuthenticatedIdentity, workspaceId: string, conversationId: string, body: unknown) {
     const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId);
     const text = parseUserMessage(body);
-    if (!this.provider) throw new ServiceUnavailableException('AVEN Intelligence needs a model provider. Set ANTHROPIC_API_KEY for the API and restart it.');
+    if (!this.provider) throw new ServiceUnavailableException('AVEN Intelligence needs a model provider. Set GOOGLE_AI_API_KEY for the API and restart it.');
     const conversation = await this.own(userId, workspaceId, conversationId);
     const creditLimit = await this.entitlements.limit(workspaceId, 'aiCredits');
     if (creditLimit !== null && await this.creditsUsed(workspaceId) >= creditLimit) throw new HttpException('This workspace has used its AI credits for the month. They reset at the start of next month.', 402);

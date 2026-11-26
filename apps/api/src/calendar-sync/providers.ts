@@ -15,6 +15,8 @@ export interface CalendarProvider {
   authUrl(state: string, redirectUri: string): string;
   exchange(code: string, redirectUri: string): Promise<Tokens & { email: string }>;
   refresh(refreshToken: string): Promise<Tokens>;
+  /** Best effort: tells the provider to forget this grant. Not every provider offers it. */
+  revoke?(refreshToken: string): Promise<void>;
   list(accessToken: string, window: Window): Promise<RemoteEvent[]>;
   create(accessToken: string, content: EventContent): Promise<{ id: string; etag: string }>;
   update(accessToken: string, id: string, content: EventContent, etag: string | null): Promise<{ etag: string }>;
@@ -66,6 +68,10 @@ export class GoogleCalendar implements CalendarProvider {
     const { body } = await call(this.config.tokenUrl, { method: 'POST', headers: FORM, body: form({ refresh_token: refreshToken, client_id: this.config.clientId, client_secret: this.config.clientSecret, grant_type: 'refresh_token' }) });
     if (!body?.access_token) throw new ProviderError('Google did not return a new access token.', 'auth');
     return { accessToken: body.access_token as string, refreshToken: (body.refresh_token as string | undefined) ?? refreshToken, expiresAt: expires(body.expires_in) };
+  }
+  /** Google's revocation endpoint sits beside its token endpoint. Failure is ignored: the tokens are deleted from AVEN either way. */
+  async revoke(refreshToken: string) {
+    try { await fetch(this.config.tokenUrl.replace(/\/token$/, '/revoke'), { method: 'POST', headers: FORM, body: form({ token: refreshToken }), signal: AbortSignal.timeout(8000) }); } catch { /* best effort */ }
   }
   private headers(token: string) { return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }; }
   private toRemote(item: Json): RemoteEvent {

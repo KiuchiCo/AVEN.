@@ -99,7 +99,11 @@ export class CalendarSyncService {
   /** Disconnecting stops syncing and forgets the tokens. Events already imported stay in AVEN; they just stop updating. */
   async disconnect(identity: AuthenticatedIdentity, workspaceId: string, connectionId: string) {
     await this.manager(identity, workspaceId); await this.owned(workspaceId, connectionId);
+    const connection = await this.prisma.calendarConnection.findUnique({ where: { id: connectionId }, select: { provider: true, refreshTokenEnc: true } });
     await this.prisma.calendarConnection.delete({ where: { id: connectionId } });
+    // Ask the provider to drop the grant too (Google supports it). Done after the delete so a slow provider can't keep a connection alive.
+    const provider = connection && this.byKey.get(connection.provider);
+    if (provider?.revoke && connection) { try { await provider.revoke(decryptToken(this.key(), connection.refreshTokenEnc)); } catch { /* best effort */ } }
     return { disconnected: true };
   }
 

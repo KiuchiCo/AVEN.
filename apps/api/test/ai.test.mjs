@@ -182,8 +182,14 @@ test('history drops a tool call whose result is missing, so the provider never s
 test('AI settings default safely, accept overrides, and reject unsafe values', () => {
   const base = { DATABASE_URL: 'postgresql://aven:x@localhost:5432/aven' };
   const defaults = readApiEnvironment(base);
-  assert.deepEqual([defaults.aiApiKey, defaults.aiModel, defaults.aiBaseUrl, defaults.aiMonthlyCredits, defaults.aiMaxOutputTokens], [undefined, 'claude-sonnet-5-5', 'https://api.anthropic.com', 200, 2048]);
-  assert.equal(readApiEnvironment({ ...base, ANTHROPIC_API_KEY: ' sk-x ', AI_MODEL: 'claude-opus-5-5', AI_BASE_URL: 'http://localhost:8080' }).aiApiKey, 'sk-x');
+  assert.deepEqual([defaults.aiApiKey, defaults.aiModel, defaults.aiBaseUrl, defaults.aiMonthlyCredits, defaults.aiMaxOutputTokens], [undefined, 'gemini-flash-latest', 'https://generativelanguage.googleapis.com', 200, 2048]);
+  assert.equal(defaults.aiProvider, 'gemini');
+  assert.equal(readApiEnvironment({ ...base, GOOGLE_AI_API_KEY: ' g-x ', AI_MODEL: 'gemini-2.5-pro', AI_BASE_URL: 'http://localhost:8080' }).aiApiKey, 'g-x');
+  // only the chosen provider's key counts, and the other provider keeps its own defaults
+  assert.equal(readApiEnvironment({ ...base, ANTHROPIC_API_KEY: 'sk-x' }).aiApiKey, undefined);
+  const anthropic = readApiEnvironment({ ...base, AI_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'sk-x' });
+  assert.deepEqual([anthropic.aiApiKey, anthropic.aiModel, anthropic.aiBaseUrl], ['sk-x', 'claude-sonnet-5-5', 'https://api.anthropic.com']);
+  assert.throws(() => readApiEnvironment({ ...base, AI_PROVIDER: 'openai' }), /AI_PROVIDER/);
   for (const bad of [{ AI_BASE_URL: 'http://example.com' }, { AI_BASE_URL: 'ftp://x' }, { AI_BASE_URL: 'nonsense' }, { AI_MODEL: 'bad model!' }, { AI_MONTHLY_CREDITS: '0' }, { AI_MAX_OUTPUT_TOKENS: '99999999' }]) assert.throws(() => readApiEnvironment({ ...base, ...bad }), /Invalid API environment/, JSON.stringify(bad));
 });
 
@@ -258,31 +264,40 @@ test('agent instructions follow the base rules and cannot override them', () => 
   assert.match(section, /confirmation/);
 });
 
-import { BraveWebSearch } from '../dist/ai/web-search.js';
+import { TavilyWebSearch, WebSearchError } from '../dist/ai/web-search.js';
 import { systemPrompt } from '../dist/ai/ai-rules.js';
 
 test('web search sends the key, strips markup, drops non-http links and caps results', async () => {
   let seen;
   const server = createServer((req, res) => {
-    seen = { url: req.url, token: req.headers['x-subscription-token'] };
-    res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ web: { results: [
-      { title: '<b>Fine</b> page', url: 'https://example.com/a', description: 'A <strong>good</strong>   snippet' },
-      { title: 'Bad', url: 'javascript:alert(1)', description: 'x' },
-      { title: 'Local', url: 'file:///etc/passwd', description: 'x' },
-      ...Array.from({ length: 10 }, (_, i) => ({ title: `T${i}`, url: `https://example.com/${i}`, description: 'd' })),
-    ] } }));
+    let body = ''; req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      seen = { url: req.url, method: req.method, auth: req.headers.authorization, body: JSON.parse(body) };
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ results: [
+        { title: '<b>Fine</b> page', url: 'https://example.com/a', content: 'A <strong>good</strong>   snippet' },
+        { title: 'Bad', url: 'javascript:alert(1)', content: 'x' },
+        { title: 'Local', url: 'file:///etc/passwd', content: 'x' },
+        ...Array.from({ length: 10 }, (_, i) => ({ title: `T${i}`, url: `https://example.com/${i}`, content: 'd' })),
+      ] }));
+    });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   try {
-    const search = new BraveWebSearch({ apiKey: 'k', baseUrl: `http://127.0.0.1:${server.address().port}` });
+    const search = new TavilyWebSearch({ apiKey: 'k', baseUrl: `http://127.0.0.1:${server.address().port}` });
     const results = await search.search('aven & friends');
-    assert.equal(seen.token, 'k'); assert.match(seen.url, /q=aven\+%26\+friends/);
+    assert.equal(seen.method, 'POST'); assert.equal(seen.url, '/search'); assert.equal(seen.auth, 'Bearer k'); assert.equal(seen.body.query, 'aven & friends');
     assert.deepEqual(results[0], { title: 'Fine page', url: 'https://example.com/a', snippet: 'A good snippet' });
     assert.equal(results.length, 6); assert.ok(results.every((r) => /^https?:/.test(r.url)));
   } finally { server.close(); }
-  const failing = new BraveWebSearch({ apiKey: 'k', baseUrl: 'http://x' }, async () => new Response('no', { status: 429 }));
-  await assert.rejects(failing.search('q'), /429/);
+});
+
+test('web search reports limits, a bad key and an unreachable service with messages that are safe to show', async () => {
+  const ask = (status) => new TavilyWebSearch({ apiKey: 'secret-key', baseUrl: 'http://x' }, async () => new Response('no', { status })).search('q');
+  for (const status of [429, 432, 433]) await assert.rejects(ask(status), (e) => e instanceof WebSearchError && /usage limit/.test(e.message));
+  await assert.rejects(ask(401), /TAVILY_API_KEY/);
+  await assert.rejects(ask(500), /failed \(500\)/);
+  await assert.rejects(new TavilyWebSearch({ apiKey: 'secret-key', baseUrl: 'http://x' }, async () => { throw new Error('connect ECONNREFUSED secret-key'); }).search('q'), (e) => e instanceof WebSearchError && !e.message.includes('secret-key'));
 });
 
 test('the web search tool validates its query and the prompt reflects whether it is available', () => {

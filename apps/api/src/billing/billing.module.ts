@@ -14,7 +14,7 @@ import { StripeClient } from './stripe.js';
   providers: [
     EntitlementsService, BillingService, PermissionsService, ClerkAuthGuard,
     // To use another payment provider, replace this with a client that has the same methods.
-    { provide: STRIPE, useFactory: () => { const { stripeSecretKey, stripeBaseUrl } = readApiEnvironment(); return stripeSecretKey ? new StripeClient({ secretKey: stripeSecretKey, baseUrl: stripeBaseUrl }) : null; } },
+    { provide: STRIPE, useFactory: () => { const { stripeSecretKey, stripeBaseUrl, stripeManagedPayments } = readApiEnvironment(); return stripeSecretKey ? new StripeClient({ secretKey: stripeSecretKey, baseUrl: stripeBaseUrl, managedPayments: stripeManagedPayments }) : null; } },
   ],
   exports: [EntitlementsService, BillingService, PermissionsService],
 })

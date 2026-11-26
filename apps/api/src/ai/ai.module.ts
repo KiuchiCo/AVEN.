@@ -7,7 +7,8 @@ import { AiAgentsService } from './ai-agents.service.js';
 import { AiController } from './ai.controller.js';
 import { AiService } from './ai.service.js';
 import { AI_SETTINGS, LLM_PROVIDER, WEB_SEARCH } from './tokens.js';
-import { BraveWebSearch } from './web-search.js';
+import { TavilyWebSearch } from './web-search.js';
+import { GeminiProvider } from './gemini.js';
 
 @Module({
   imports: [ProductivityModule],
@@ -17,8 +18,8 @@ import { BraveWebSearch } from './web-search.js';
     AiAgentsService,
     ClerkAuthGuard,
     // To use another provider, return a different LlmProvider here.
-    { provide: LLM_PROVIDER, useFactory: () => { const { aiApiKey, aiModel, aiBaseUrl } = readApiEnvironment(); return aiApiKey ? new AnthropicProvider({ apiKey: aiApiKey, model: aiModel, baseUrl: aiBaseUrl }) : null; } },
-    { provide: WEB_SEARCH, useFactory: () => { const { webSearch } = readApiEnvironment(); return webSearch ? new BraveWebSearch(webSearch) : null; } },
+    { provide: LLM_PROVIDER, useFactory: () => { const { aiProvider, aiApiKey, aiModel, aiBaseUrl } = readApiEnvironment(); if (!aiApiKey) return null; const settings = { apiKey: aiApiKey, model: aiModel, baseUrl: aiBaseUrl }; return aiProvider === 'anthropic' ? new AnthropicProvider(settings) : new GeminiProvider(settings); } },
+    { provide: WEB_SEARCH, useFactory: () => { const { webSearch } = readApiEnvironment(); return webSearch ? new TavilyWebSearch(webSearch) : null; } },
     { provide: AI_SETTINGS, useFactory: () => { const { aiModel, aiMonthlyCredits, aiMaxOutputTokens } = readApiEnvironment(); return { model: aiModel, monthlyCredits: aiMonthlyCredits, maxOutputTokens: aiMaxOutputTokens }; } },
   ],
   exports: [LLM_PROVIDER, AI_SETTINGS],
