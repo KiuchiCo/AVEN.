@@ -13,7 +13,7 @@ export default async function WorkspaceSectionPage({ params }: { params: Promise
 
   return (
     <div className="workspace-section-page">
-      <p className="workspace-eyebrow">MY WORKSPACE</p>
+      <p className="workspace-eyebrow">My workspace</p>
       <h1>{content.title}</h1>
       <p className="workspace-section-page__description">{content.description}</p>
       <section className="workspace-section-empty">

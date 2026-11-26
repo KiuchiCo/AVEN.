@@ -41,7 +41,7 @@ export default async function WorkspaceLayout({ children }: Readonly<{ children:
     return (
       <main className="workspace-unavailable">
         <Link className="auth-brand__wordmark" href="/" aria-label="AVEN home">AVEN<span>.</span></Link>
-        <p className="auth-setup__eyebrow">WORKSPACE SETUP</p>
+        <p className="auth-setup__eyebrow">Workspace setup</p>
         <h1>Your account is ready.</h1>
         <p>AVEN could not load your workspace. Check that the API and local database are running, then try again.</p>
         <Link className="workspace-unavailable__retry" href="/workspace">Try again</Link>

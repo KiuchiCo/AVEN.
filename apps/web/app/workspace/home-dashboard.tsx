@@ -50,7 +50,7 @@ export function HomeDashboard() {
   const { getToken } = useAuth();
   const router = useRouter();
   const t = useT();
-  const { user, workspace } = useWorkspaceSession();
+  const { workspace } = useWorkspaceSession();
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [now, setNow] = useState<Date | null>(null);
@@ -59,7 +59,6 @@ export function HomeDashboard() {
   const [saving, setSaving] = useState(false);
   const [recentTab, setRecentTab] = useState<'ALL' | 'DOCUMENTS' | 'PROJECTS'>('ALL');
   const [ask, setAsk] = useState('');
-  const firstName = user.displayName.trim().split(/\s+/)[0] || 'there';
 
   const request = useCallback(async (path: string, init?: RequestInit) => {
     const token = await getToken();
@@ -103,10 +102,10 @@ export function HomeDashboard() {
     ...(recentTab !== 'DOCUMENTS' ? summary.projects.map((item) => ({ key: `p${item.id}`, kind: 'folder' as const, title: item.name, note: `${item.completedTaskCount} of ${item.taskCount} tasks done`, href: `/workspace/projects/${item.id}` })) : []),
   ].slice(0, 4) : [];
   const tiles = briefing ? [
-    { icon: 'tasks' as const, label: t('home.tile.tasks'), value: briefing.summary.openTasks, caption: briefing.summary.overdueTasks ? t('home.cap.openOverdue', { n: briefing.summary.overdueTasks }) : t('home.cap.open'), href: '/workspace/tasks', tone: 'green' },
-    { icon: 'calendar' as const, label: t('home.tile.meetings'), value: todaysEvents.length, caption: t('home.cap.today'), href: '/workspace/calendar', tone: 'purple' },
-    { icon: 'flag' as const, label: t('home.tile.deadlines'), value: briefing.summary.dueThisWeek, caption: t('home.cap.thisWeek'), href: '/workspace/inbox', tone: 'amber' },
-    { icon: 'layers' as const, label: t('home.tile.projects'), value: briefing.summary.activeProjects, caption: t('home.cap.active'), href: '/workspace/projects', tone: 'blue' },
+    { icon: 'tasks' as const, label: t('home.tile.tasks'), value: briefing.summary.openTasks, caption: briefing.summary.overdueTasks ? t('home.cap.openOverdue', { n: briefing.summary.overdueTasks }) : t('home.cap.open'), href: '/workspace/tasks' },
+    { icon: 'calendar' as const, label: t('home.tile.meetings'), value: todaysEvents.length, caption: t('home.cap.today'), href: '/workspace/calendar' },
+    { icon: 'flag' as const, label: t('home.tile.deadlines'), value: briefing.summary.dueThisWeek, caption: t('home.cap.thisWeek'), href: '/workspace/inbox' },
+    { icon: 'layers' as const, label: t('home.tile.projects'), value: briefing.summary.activeProjects, caption: t('home.cap.active'), href: '/workspace/projects' },
   ] : [];
 
   return (
@@ -114,8 +113,7 @@ export function HomeDashboard() {
       <div className="home__main">
         <header className="home-hero">
           <div>
-            <p className="home-hero__date" suppressHydrationWarning>{longDate.format(today).toUpperCase()}</p>
-            <h1>{now ? t(now.getHours() < 12 ? 'home.greetMorning' : now.getHours() < 18 ? 'home.greetAfternoon' : 'home.greetEvening', { name: firstName }) : t('home.welcomeBack', { name: firstName })}</h1>
+            <h1 suppressHydrationWarning>{longDate.format(today)}</h1>
             <p className="home-hero__sub">{t('home.sub')}</p>
           </div>
           <button type="button" className="home-customise" aria-expanded={customising} onClick={() => setCustomising((open) => !open)} disabled={!summary}><Icon name="grid" size={18} />{customising ? t('home.done') : t('home.customise')}</button>
@@ -128,10 +126,9 @@ export function HomeDashboard() {
         {!error && (!briefing || !summary) && <p className="productivity-message">{t('home.loading')}</p>}
 
         {briefing && summary && <>
-          {shown('stats') && <div className="home-tiles">{tiles.map((tile) => <Link key={tile.label} href={tile.href} className={`home-tile home-tile--${tile.tone}`}>
+          {shown('stats') && <div className="home-tiles">{tiles.map((tile) => <Link key={tile.label} href={tile.href} className="home-tile">
             <span className="home-tile__label"><Icon name={tile.icon} size={24} />{tile.label}</span>
             <span className="home-tile__value"><strong>{tile.value}</strong><small>{tile.caption}</small></span>
-            <i aria-hidden="true" />
           </Link>)}</div>}
 
           {(shown('nextUp') || shown('events')) && <div className="home-row home-row--tasks">
@@ -145,9 +142,9 @@ export function HomeDashboard() {
             </article>}
             {shown('events') && <article className="home-card"><header><h2>{t('home.today')}</h2><Link href="/workspace/calendar" aria-label={t('home.openCalendar')}><Icon name="arrow" size={16} /></Link></header>
               {todaysEvents.length === 0 && upcoming.length === 0 ? <p className="home-empty">{t('home.noEvents')}</p> : <ul className="home-events">
-                {todaysEvents.map((event, index) => <li key={event.id}><time>{clock.format(new Date(event.startsAt))}</time><Link href="/workspace/calendar" className={`home-event home-event--${index % 3}`}>{event.title}</Link></li>)}
+                {todaysEvents.map((event) => <li key={event.id}><time>{clock.format(new Date(event.startsAt))}</time><Link href="/workspace/calendar" className="home-event">{event.title}</Link></li>)}
                 {todaysEvents.length === 0 && <li className="home-events__note">{t('home.nothingToday')}</li>}
-                {todaysEvents.length === 0 && upcoming.map((event, index) => <li key={event.id}><time>{shortDate.format(new Date(event.startsAt))}</time><Link href="/workspace/calendar" className={`home-event home-event--${index % 3}`}>{event.title}</Link></li>)}
+                {todaysEvents.length === 0 && upcoming.map((event) => <li key={event.id}><time>{shortDate.format(new Date(event.startsAt))}</time><Link href="/workspace/calendar" className="home-event">{event.title}</Link></li>)}
               </ul>}
             </article>}
           </div>}

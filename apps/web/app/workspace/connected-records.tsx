@@ -268,6 +268,8 @@ export function CalendarWorkspace() {
 
   function editEvent(event: CalendarEvent) {
     setEditingEvent(event);
+    // On phones the form sits below the calendar; bring it into view only when it is off-screen.
+    document.querySelector('.connected-compose')?.scrollIntoView({ block: 'nearest' });
     const timeZone = event.recurrenceTimeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     setStartValue(event.recurrence ? localDateTimeValueInZone(new Date(event.startsAt), timeZone) : localDateTimeValue(new Date(event.startsAt)));
     setEndValue(event.endsAt ? event.recurrence ? localDateTimeValueInZone(new Date(event.endsAt), timeZone) : localDateTimeValue(new Date(event.endsAt)) : '');

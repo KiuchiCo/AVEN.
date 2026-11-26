@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { Icon } from '../workspace/home-icons';
 
 type Details = { email: string; role: string; workspaceName: string; expiresAt: string };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
@@ -55,7 +56,7 @@ export function InviteAcceptance({ token }: { token: string }) {
   const signUpHref = `/sign-up?redirect_url=${encodeURIComponent(returnUrl)}`;
 
   return <main className="invite-page"><div className="auth-brand"><Link className="auth-brand__wordmark" href="/">AVEN<span>.</span></Link><p>Your entire world, organised.</p></div>
-    <section className="invite-card" aria-live="polite"><span className="invite-card__mark" aria-hidden="true">✉</span><p className="workspace-eyebrow">WORKSPACE INVITATION</p>
+    <section className="invite-card" aria-live="polite"><span className="invite-card__mark" aria-hidden="true"><Icon name="mail" size={20} /></span><p className="workspace-eyebrow">Workspace invitation</p>
       {loading || !isLoaded ? <><h1>Checking invitation</h1><p>One moment while AVEN checks this secure link.</p></> : error && !details ? <><h1>Invitation unavailable</h1><p>{error}</p><Link href="/">Return to AVEN →</Link></> : details ? <>
         <h1>{accepted ? 'You’re in.' : `Join ${details.workspaceName}`}</h1>
         <p>You’ve been invited as a <strong>{roleNames[details.role] ?? 'Member'}</strong>. This link was sent to <strong>{details.email}</strong> and expires {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(details.expiresAt))}.</p>

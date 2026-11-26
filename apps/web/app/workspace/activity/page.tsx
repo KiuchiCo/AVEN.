@@ -12,7 +12,6 @@ import { ago } from '../relative-time';
 
 type ActivityEntry = { id: string; entityType: string; entityId: string; message: string; createdAt: string; actor: { id?: string; displayName: string } };
 const typeIcons: Record<string, IconName> = { PROJECT: 'layers', TASK: 'tasks', TASK_COMMENT: 'chat', TASK_CHECKLIST: 'tasks', MILESTONE: 'flag', DOCUMENT: 'doc', KNOWLEDGE: 'doc', CALENDAR: 'calendar', WORKSPACE: 'users' };
-const typeTones: Record<string, 'neutral' | 'bronze' | 'blue' | 'green' | 'violet' | 'amber' | 'red'> = { PROJECT: 'bronze', TASK: 'green', TASK_COMMENT: 'green', TASK_CHECKLIST: 'green', MILESTONE: 'amber', DOCUMENT: 'bronze', KNOWLEDGE: 'violet', CALENDAR: 'red', WORKSPACE: 'blue' };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const activityTypes = ['ALL', 'PROJECT', 'TASK', 'TASK_COMMENT', 'TASK_CHECKLIST', 'MILESTONE', 'DOCUMENT', 'KNOWLEDGE', 'CALENDAR', 'MEMBERS'];
 const filterKeys: Record<string, Key> = { ALL: 'act.f.all', PROJECT: 'act.f.project', TASK: 'act.f.task', TASK_COMMENT: 'act.f.taskComment', TASK_CHECKLIST: 'act.f.taskChecklist', MILESTONE: 'act.f.milestone', DOCUMENT: 'act.f.document', KNOWLEDGE: 'act.f.knowledge', CALENDAR: 'act.f.calendar', MEMBERS: 'act.f.members' };
@@ -63,10 +62,10 @@ export default function ActivityPage() {
       {error && <p className="productivity-error" role="alert">{error}</p>}
       <StatRow columns={5} label={t('act.count', { n: scoped.length })}>
         <StatCard icon="hash" value={scoped.length} label={t('act.s.total')} />
-        <StatCard icon="doc" value={count('DOCUMENT')} label={t('act.s.documents')} tone="green" />
-        <StatCard icon="tasks" value={count('TASK', 'TASK_COMMENT', 'TASK_CHECKLIST')} label={t('act.s.tasks')} tone="blue" />
+        <StatCard icon="doc" value={count('DOCUMENT')} label={t('act.s.documents')} />
+        <StatCard icon="tasks" value={count('TASK', 'TASK_COMMENT', 'TASK_CHECKLIST')} label={t('act.s.tasks')} />
         <StatCard icon="folder" value={count('PROJECT', 'MILESTONE')} label={t('act.s.projects')} />
-        <StatCard icon="calendar" value={count('CALENDAR')} label={t('act.s.calendar')} tone="red" />
+        <StatCard icon="calendar" value={count('CALENDAR')} label={t('act.s.calendar')} />
       </StatRow>
       <div className="rd-grid rd-grid--aside">
         <div>
@@ -77,7 +76,7 @@ export default function ActivityPage() {
               <ol className="activity-feed__list rd-activity">{visibleEntries.map((entry) => <li key={entry.id}>
                 <span className="rd-tile rd-tile--round rd-tile--small" aria-hidden="true"><Icon name={typeIcons[entry.entityType] ?? 'sparkle'} size={18} /></span>
                 <div className="activity-feed__copy"><p><strong>{entry.actor.displayName}</strong> {entry.message}</p></div>
-                <Pill tone={typeTones[entry.entityType] ?? 'neutral'}>{entityLabel(entry.entityType).replace(/^./, (c) => c.toLocaleUpperCase())}</Pill>
+                <Pill>{entityLabel(entry.entityType).replace(/^./, (c) => c.toLocaleUpperCase())}</Pill>
                 <time dateTime={entry.createdAt} title={new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.createdAt))}>{ago(entry.createdAt)}</time>
                 <Link className="rd-iconbtn" href={entry.entityType === 'TASK_COMMENT' || entry.entityType === 'TASK_CHECKLIST' ? `/workspace/tasks/${entry.entityId}` : destinations[entry.entityType] ?? '/workspace'} aria-label={t('act.openArea', { type: entityLabel(entry.entityType) })}><Icon name="arrow" size={18} /></Link>
               </li>)}</ol>

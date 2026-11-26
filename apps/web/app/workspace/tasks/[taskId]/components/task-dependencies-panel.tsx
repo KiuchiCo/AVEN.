@@ -24,7 +24,7 @@ export function TaskDependenciesPanel({ task, tasks, busy, onSave }: { task: Tas
   const taskLink = (dependency: TaskDependency) => <li key={dependency.id}><Link href={`/workspace/tasks/${dependency.id}`}>{dependency.title}</Link><span className={`task-dependency-status task-dependency-status--${dependency.status.toLowerCase()}`}>{dependency.status.replaceAll('_', ' ').toLowerCase()}</span></li>;
 
   return <section className="task-dependencies-panel">
-    <p className="workspace-eyebrow">TASK FLOW</p>
+    <p className="workspace-eyebrow">Task flow</p>
     <h2>Dependencies</h2>
     <p className="task-dependencies-panel__hint">Prerequisites must be completed before this task can be completed.</p>
     {task.dependsOn.length > 0 && <div className="task-dependencies-panel__group"><h3>Blocked by</h3><ul>{task.dependsOn.map(taskLink)}</ul></div>}

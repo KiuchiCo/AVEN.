@@ -51,7 +51,6 @@ export default function TasksTab() {
           <li><button type="button" onClick={() => setSelected(rows.slice(0, 500).map((task) => task.id))} disabled={!rows.length}><Icon name="checkCircle" size={16} />{t('pj.selectVisible')}</button></li>
           <li><button type="button" onClick={() => setDialog('labels')}><Icon name="tag" size={16} />{t('pj.wsLabels')}</button></li>
         </ul></div></details>
-      <button type="button" className="rd-btn" onClick={() => openTask(null)} disabled={archived}><Icon name="plus" size={18} />{t('pw.newTask')}</button>
     </div>
 
     {advanced && <section id="pw-filters" className="pw-filters" aria-label={t('pj.filtersAria')}>

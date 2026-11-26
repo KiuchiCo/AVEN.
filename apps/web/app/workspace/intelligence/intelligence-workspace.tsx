@@ -8,6 +8,7 @@ import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
 import { AssistantChat } from './assistant-chat';
 import { PageHeader, PillTabs } from '../ui';
+import { Icon } from '../home-icons';
 
 type Briefing = {
   generatedAt: string;
@@ -138,7 +139,7 @@ export function IntelligenceWorkspace() {
     <PillTabs label={t('in.tabsAria')} value={tab} onChange={setTab} items={[{ key: 'ASK', label: t('in.tab.ask'), icon: 'chat' }, { key: 'SEARCH', label: t('in.tab.search'), icon: 'search' }, { key: 'INSIGHTS', label: t('in.tab.insights'), icon: 'chart' }, { key: 'PLANNER', label: t('in.tab.planner'), icon: 'target' }]} />
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {tab === 'ASK' && <div className="intelligence-top"><AssistantChat /><section className="intelligence-ask" aria-labelledby="intelligence-ask-title">
-      <div><span className="intelligence-spark" aria-hidden="true">✧</span><p className="workspace-eyebrow">{t('in.quickSearch')}</p><h2 id="intelligence-ask-title">{t('in.findTitle')}</h2><p>{t('in.findHint')}</p></div>
+      <div><p className="workspace-eyebrow">{t('in.quickSearch')}</p><h2 id="intelligence-ask-title">{t('in.findTitle')}</h2><p>{t('in.findHint')}</p></div>
       <form onSubmit={(event) => void ask(event)}>
         <label className="sr-only" htmlFor="intelligence-question">{t('in.askLabel')}</label>
         <input id="intelligence-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder={t('in.askPh')} maxLength={100} />
@@ -148,7 +149,7 @@ export function IntelligenceWorkspace() {
       {answer && <div className="intelligence-answer" aria-live="polite"><p>{answer}</p>{results.length > 0 && <ul>{results.map((result) => <li key={`${result.type}-${result.id}`}><Link href={result.href}><span>{result.type}</span><strong>{result.title}</strong><small>{result.detail}</small></Link></li>)}</ul>}</div>}
     </section></div>}
     {tab === 'SEARCH' && <section className="intelligence-ask" aria-labelledby="intelligence-ask-title">
-      <div><span className="intelligence-spark" aria-hidden="true">✧</span><p className="workspace-eyebrow">{t('in.quickSearch')}</p><h2 id="intelligence-ask-title">{t('in.findTitle')}</h2><p>{t('in.findHint')}</p></div>
+      <div><p className="workspace-eyebrow">{t('in.quickSearch')}</p><h2 id="intelligence-ask-title">{t('in.findTitle')}</h2><p>{t('in.findHint')}</p></div>
       <form onSubmit={(event) => void ask(event)}>
         <label className="sr-only" htmlFor="intelligence-question">{t('in.askLabel')}</label>
         <input id="intelligence-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder={t('in.askPh')} maxLength={100} />
@@ -183,7 +184,7 @@ export function IntelligenceWorkspace() {
           <p className="intelligence-privacy-note">{t('in.privacy', { name: workspace.name })}</p>
         </section></div></>}
       {(tab === 'ASK' || tab === 'PLANNER') && <section className="intelligence-plan-panel" aria-labelledby="intelligence-plan-title">
-        <div className="intelligence-plan-panel__intro"><span aria-hidden="true">✧</span><div><p className="workspace-eyebrow">{t('in.planEyebrow')}</p><h2 id="intelligence-plan-title">{t('in.planTitle')}</h2><p>{t('in.planIntro')}</p></div></div>
+        <div className="intelligence-plan-panel__intro"><span aria-hidden="true"><Icon name="target" size={20} /></span><div><p className="workspace-eyebrow">{t('in.planEyebrow')}</p><h2 id="intelligence-plan-title">{t('in.planTitle')}</h2><p>{t('in.planIntro')}</p></div></div>
         {planNotice && <p className="intelligence-plan-notice" role="status">{planNotice} <Link href="/workspace/projects">{t('in.openProjects')}</Link></p>}
         <form className="intelligence-plan-form" onSubmit={(event) => void submitPlan(event)}>
           <div className="intelligence-plan-form__fields">

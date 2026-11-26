@@ -94,7 +94,7 @@ export function AnalyticsWorkspace() {
   }
 
   return <section className="workspace-settings-page analytics-page">
-    <PageHeader eyebrow={t('an.eyebrow')} title={t('nav.analytics')} description={t('an.desc')} />
+    <PageHeader title={t('nav.analytics')} description={t('an.desc')} />
     {error && <p className="workspace-settings-status" role="alert">{error}</p>}
     {locked && <Panel icon="chart" title={t('an.lockedTitle')} subtitle={locked} id="an-locked" actions={<Link className="rd-btn" href="/workspace/settings">{t('an.seePlans')}</Link>}><span /></Panel>}
     {data && <>

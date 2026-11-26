@@ -62,7 +62,7 @@ function Blocks({ blocks }: { blocks: Block[] }) {
         case 'MEETING': return <section className="shared-doc__meeting" style={style}><h3>{block.text || 'Meeting notes'}</h3>{block.meta && <p><em>{block.meta}</em></p>}</section>;
         case 'BOOKMARK': return <p style={style}>{block.href ? <a href={block.href} target="_blank" rel="noopener noreferrer nofollow">{block.text}</a> : block.text}</p>;
         case 'TOC': return headings.length ? <nav className="shared-doc__toc" aria-label="Contents"><strong>Contents</strong>{headings.map((heading) => { const at = blocks.indexOf(heading); return <a key={at} href={`#h-${at}`} style={{ marginLeft: `${(Number(heading.type.slice(-1)) - 1) * 16}px` }}>{plain(heading.text)}</a>; })}</nav> : null;
-        case 'RESTRICTED': return <p className="shared-doc__restricted" style={style}><span aria-hidden="true">🔒</span> {block.text} that is not shared with you</p>;
+        case 'RESTRICTED': return <p className="shared-doc__restricted" style={style}>{block.text} that is not shared with you</p>;
         case 'IMAGE': {
           if (!block.image) return null;
           const src = `${api?.replace(/\/api\/v1$/, '')}${block.image}`;
