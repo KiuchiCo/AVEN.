@@ -1,3 +1,4 @@
+import { readApiEnvironment } from '../config/api-environment.js';
 import { randomUUID } from 'node:crypto';
 import { metrics } from '../observability/metrics.js';
 import { EntitlementsService } from '../billing/entitlements.service.js';
@@ -80,7 +81,7 @@ export class FilesService {
 
   async usage(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.member(identity, workspaceId);
-    return { usedBytes: await this.usedBytes(this.prisma, workspaceId), quotaBytes: await this.entitlements.limit(workspaceId, 'storageBytes'), maxFileBytes: this.limits.maxUploadBytes };
+    return { usedBytes: await this.usedBytes(this.prisma, workspaceId), quotaBytes: await this.entitlements.limit(workspaceId, 'storageBytes'), maxFileBytes: this.limits.maxUploadBytes, /** Where the file contents are kept, so the app can say so plainly. */ storage: readApiEnvironment().storageDriver };
   }
 
   /** Everything not yet permanently deleted counts: current files, files in the recycle bin, and old versions. */

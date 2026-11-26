@@ -133,8 +133,9 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   let s3: ApiEnvironment['s3'];
   if (storageDriver === 's3') {
     const bucket = source.S3_BUCKET?.trim(), accessKeyId = source.S3_ACCESS_KEY_ID?.trim(), secretAccessKey = source.S3_SECRET_ACCESS_KEY?.trim();
-    const region = source.S3_REGION?.trim() || 'us-east-1';
     const endpoint = source.S3_ENDPOINT?.trim() || undefined;
+    // Cloudflare R2 signs with the region “auto”; anything else would be rejected.
+    const region = source.S3_REGION?.trim() || (endpoint && /\.r2\.cloudflarestorage\.com/i.test(endpoint) ? 'auto' : 'us-east-1');
     if (!bucket || !accessKeyId || !secretAccessKey) errors.push('S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required when STORAGE_DRIVER=s3');
     else s3 = { bucket, region, accessKeyId, secretAccessKey, endpoint };
     if (endpoint) { try { new URL(endpoint); } catch { errors.push('S3_ENDPOINT must be a valid URL'); } }
@@ -173,7 +174,7 @@ export function readApiEnvironment(source: EnvironmentSource = process.env): Api
   try { const parsed = new URL(embeddingsBase); if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname))) errors.push('EMBEDDINGS_BASE_URL must be an https address'); } catch { errors.push('EMBEDDINGS_BASE_URL must be a valid URL'); }
   if (embeddingsModel.length > 100 || !/^[\w.:/-]+$/.test(embeddingsModel)) errors.push('EMBEDDINGS_MODEL must be a model identifier');
   const embeddings = embeddingsKey ? { apiKey: embeddingsKey, baseUrl: embeddingsBase, model: embeddingsModel } : undefined;
-  const aiModel = source.AI_MODEL?.trim() || (aiProvider === 'anthropic' ? 'claude-sonnet-5-5' : 'gemini-flash-latest');
+  const aiModel = source.AI_MODEL?.trim() || (aiProvider === 'anthropic' ? 'claude-sonnet-5-5' : 'gemini-flash-lite-latest');
   if (aiModel.length > 100 || !/^[\w.:-]+$/.test(aiModel)) errors.push('AI_MODEL must be a model identifier');
   const aiBaseUrl = source.AI_BASE_URL?.trim() || (aiProvider === 'anthropic' ? 'https://api.anthropic.com' : 'https://generativelanguage.googleapis.com');
   try {
@@ -254,7 +255,7 @@ export function integrationStatus(env: ApiEnvironment): { name: string; on: bool
   return [
     { name: 'AVEN Intelligence', on: Boolean(env.aiApiKey), needs: env.aiProvider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'GOOGLE_AI_API_KEY' },
     { name: 'Web search', on: Boolean(env.webSearch), needs: 'TAVILY_API_KEY' },
-    { name: 'Email', on: Boolean(env.emailApiKey), needs: 'EMAIL_API_KEY and EMAIL_FROM' },
+    { name: 'Email', on: Boolean(env.emailApiKey) && !emailSenderWarning(env.emailFrom) && emailSenderKind(env.emailFrom) !== 'invalid', needs: Boolean(env.emailApiKey) && emailSenderKind(env.emailFrom) === 'free_mail' ? 'a sender on a domain verified with Resend (EMAIL_FROM is a free mailbox such as Gmail)' : 'EMAIL_API_KEY and a valid EMAIL_FROM' },
     { name: 'Payments', on: Boolean(env.stripeSecretKey), needs: 'STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET' },
     { name: 'Browser push', on: Boolean(env.push), needs: 'VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT' },
     { name: 'iPhone and iPad push', on: Boolean(env.apns), needs: 'APNS_KEY_ID, APNS_TEAM_ID and APNS_PRIVATE_KEY' },
@@ -262,4 +263,26 @@ export function integrationStatus(env: ApiEnvironment): { name: string; on: bool
     { name: 'Outlook Calendar', on: Boolean(env.calendar.microsoft && env.calendar.tokenKey), needs: 'MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET and TOKEN_ENCRYPTION_KEY' },
     { name: 'Cloud file storage', on: env.storageDriver === 's3', needs: 'STORAGE_DRIVER=s3 with S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (files are kept on this server\'s disk until then)' },
   ];
+}
+
+
+/**
+ * Resend only sends from a domain you have verified with it; it cannot send "from" a free mailbox such as Gmail.
+ * Returns a plain-English warning when EMAIL_FROM looks like that, so it is flagged at startup instead of failing on the first invitation.
+ */
+/** What kind of sender EMAIL_FROM is: Resend's restricted testing sender, a free mailbox it can never send from, something that isn't an address, or an address on a domain that has to be verified. */
+export function emailSenderKind(from: string | undefined): 'missing' | 'invalid' | 'free_mail' | 'sandbox' | 'custom' {
+  if (!from?.trim()) return 'missing';
+  const address = /<([^>]+)>/.exec(from)?.[1] ?? from.trim();
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(address)) return 'invalid';
+  const domain = address.split('@')[1].toLowerCase();
+  if (domain === 'resend.dev') return 'sandbox';
+  return emailSenderWarning(from) ? 'free_mail' : 'custom';
+}
+
+export function emailSenderWarning(from: string | undefined): string | undefined {
+  const address = from && (/<([^>]+)>/.exec(from)?.[1] ?? from);
+  const domain = address?.split('@')[1]?.toLowerCase();
+  if (domain && /^(gmail|googlemail|yahoo|outlook|hotmail|live|icloud|me|proton|protonmail|aol)\./.test(domain)) return `EMAIL_FROM uses ${domain}, which Resend cannot send from. Verify your own domain at resend.com/domains and use an address on it. While developing, use AVEN <onboarding@resend.dev> (it only delivers to your own Resend account address).`;
+  return undefined;
 }

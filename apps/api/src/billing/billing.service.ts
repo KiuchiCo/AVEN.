@@ -77,6 +77,14 @@ export class BillingService {
     const { stripePrices, webBaseUrl } = readApiEnvironment();
     const priceId = stripePrices[plan.key as 'PLUS'];
     if (!priceId) throw new ServiceUnavailableException(`The ${plan.name} plan isn’t available to buy yet: its price hasn’t been set up with the payment provider.`);
+    // The price in Stripe is what actually gets charged. If it is not the price AVEN shows (wrong currency or amount, archived, not monthly), stop before anyone pays it.
+    await this.wrap(async () => {
+      const price = await stripe.getPrice(priceId);
+      const expected = plan.priceCents ?? -1;
+      if (!price.active || price.currency.toLowerCase() !== plan.currency.toLowerCase() || price.unitAmount !== expected || price.interval !== 'month' || price.usageType !== 'licensed') {
+        throw new ServiceUnavailableException(`The ${plan.name} plan can’t be bought right now: the price configured in Stripe (STRIPE_PRICE_${plan.key}) doesn’t match the ${plan.currency.toUpperCase()} ${(expected / 100).toFixed(2)} per month that AVEN shows. An administrator needs to fix it.`);
+      }
+    });
     const current = await this.entitlements.forWorkspace(workspaceId);
     const subscription = await this.prisma.subscription.findUnique({ where: { workspaceId } });
     if (subscription?.providerSubscriptionId && current.planKey !== 'FREE') throw new ConflictException('This workspace already has a subscription. Use “Manage billing” to change or cancel it.');
@@ -182,7 +190,16 @@ export class BillingService {
       }
       case 'invoice.paid': case 'invoice.payment_failed': case 'invoice.finalized': case 'invoice.updated': case 'invoice.voided': {
         if (typeof object.id !== 'string' || object.status === 'draft' || !customer) return null;
-        const subscription = await transaction.subscription.findFirst({ where: { providerCustomerId: customer }, select: { workspaceId: true } });
+        // Stripe does not promise to send events in order: a payment's invoice can arrive before the subscription event that tells AVEN who the customer is.
+        // The invoice names the workspace itself (through the subscription's metadata), so it is filed there without waiting, and never against a different customer.
+        let subscription = await transaction.subscription.findFirst({ where: { providerCustomerId: customer }, select: { workspaceId: true } });
+        if (!subscription) {
+          const claimed = object.parent?.subscription_details?.metadata?.workspaceId ?? object.subscription_details?.metadata?.workspaceId;
+          if (typeof claimed === 'string' && /^[0-9a-f-]{36}$/i.test(claimed) && await transaction.workspace.findUnique({ where: { id: claimed }, select: { id: true } })) {
+            const owner = await transaction.subscription.findUnique({ where: { workspaceId: claimed }, select: { providerCustomerId: true } });
+            if (!owner?.providerCustomerId || owner.providerCustomerId === customer) subscription = { workspaceId: claimed };
+          }
+        }
         if (!subscription) return null;
         const data = { number: typeof object.number === 'string' ? object.number.slice(0, 60) : null, status: knownStatus(object.status).toLowerCase(), amountCents: Number.isInteger(object.total) ? object.total : Number.isInteger(object.amount_due) ? object.amount_due : 0, currency: typeof object.currency === 'string' ? object.currency.slice(0, 3).toLowerCase() : 'aud', hostedUrl: typeof object.hosted_invoice_url === 'string' && /^https:\/\//.test(object.hosted_invoice_url) ? object.hosted_invoice_url.slice(0, 500) : null, periodStart: unix(object.period_start), periodEnd: unix(object.period_end) };
         await transaction.billingInvoice.upsert({ where: { providerInvoiceId: object.id }, create: { workspaceId: subscription.workspaceId, providerInvoiceId: object.id, createdAt: unix(object.created) ?? new Date(), ...data }, update: data });

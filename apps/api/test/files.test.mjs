@@ -159,8 +159,26 @@ test('object storage calls carry a timeout, and a failure is counted as an integ
   await healthy.put('w/k', Readable.from([Buffer.from('hello')]), 1000); await healthy.delete('w/k');
   assert.ok(seen.length === 2 && seen.every((init) => init.signal instanceof AbortSignal), 'every request has a timeout signal');
   const refusing = new S3StorageDriver(config, async () => new Response('no', { status: 503 }));
-  await assert.rejects(refusing.put('w/k', Readable.from([Buffer.from('x')]), 1000), /rejected the upload \(503\)/);
+  await assert.rejects(refusing.put('w/k', Readable.from([Buffer.from('x')]), 1000), /upload failed \(503\)/);
   const unreachable = new S3StorageDriver(config, async () => { throw new Error('connect ECONNREFUSED'); });
-  await assert.rejects(unreachable.delete('w/k'), /ECONNREFUSED/);
+  await assert.rejects(unreachable.delete('w/k'), /could not be reached/);
   assert.match(metrics.render(), /integration_failures_total\{integration="s3"\} [2-9]/);
+});
+
+test('object storage retries a busy store, tells a bad key from a missing bucket, and can check itself against a store', async () => {
+  const { Readable } = await import('node:stream');
+  const config = { bucket: 'b', region: 'auto', accessKeyId: 'AK', secretAccessKey: 'SK', endpoint: 'https://acct.r2.cloudflarestorage.com' };
+  let calls = 0;
+  const flaky = new S3StorageDriver(config, async () => { calls += 1; return calls < 3 ? new Response('busy', { status: 503 }) : new Response('ok', { status: 200 }); });
+  await flaky.put('w/k', Readable.from([Buffer.from('x')]), 100); assert.equal(calls, 3, 'two busy answers, then success');
+  const denied = new S3StorageDriver(config, async () => new Response('<Error><Code>SignatureDoesNotMatch</Code></Error>', { status: 403 }));
+  await assert.rejects(denied.put('w/k', Readable.from([Buffer.from('x')]), 100), (e) => /refused AVEN’s credentials \(SignatureDoesNotMatch\)/.test(e.message) && !e.message.includes('SK'));
+  const nobucket = new S3StorageDriver(config, async () => new Response('<Error><Code>NoSuchBucket</Code></Error>', { status: 404 }));
+  await assert.rejects(nobucket.put('w/k', Readable.from([Buffer.from('x')]), 100), /no bucket named “b”/);
+  const objects = new Map();
+  const store = new S3StorageDriver(config, async (url, init) => { const key = String(url); if (init.method === 'PUT') { objects.set(key, Buffer.from(init.body)); return new Response('', { status: 200 }); } if (init.method === 'GET') return objects.has(key) ? new Response(objects.get(key), { status: 200, headers: { 'content-length': String(objects.get(key).length) } }) : new Response('', { status: 404 }); objects.delete(key); return new Response(null, { status: 204 }); });
+  await store.check(); assert.equal(objects.size, 0, 'the check removes the object it wrote');
+  const broken = new S3StorageDriver(config, async (url, init) => init.method === 'GET' ? new Response('other', { status: 200 }) : new Response('', { status: 200 }));
+  await assert.rejects(broken.check(), /different content/);
+  assert.equal(readApiEnvironment({ DATABASE_URL: 'postgresql://u:p@localhost:5432/d', STORAGE_DRIVER: 's3', S3_BUCKET: 'b', S3_ACCESS_KEY_ID: 'a', S3_SECRET_ACCESS_KEY: 's', S3_ENDPOINT: 'https://acct.r2.cloudflarestorage.com' }).s3.region, 'auto', 'R2 defaults to the region its signatures require');
 });

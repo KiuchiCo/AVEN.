@@ -14,9 +14,10 @@ describe('plans, limits and billing', { skip }, () => {
   const event = (type, object) => ({ id: `evt_${++seq}_${t.run}`, type, data: { object } });
   const subscriptionEvent = (type, workspaceId, fields = {}) => event(type, { object: 'subscription', id: `sub_${t.run}`, customer: `cus_${t.run}`, status: 'active', metadata: { workspaceId, plan: 'PRO' }, cancel_at_period_end: false, current_period_end: Math.floor(Date.now() / 1000) + 86400 * 30, items: { data: [{ price: { id: 'price_pro' }, quantity: 1 }] }, ...fields });
 
+  const stripePrices = { price_plus: { currency: 'aud', unit_amount: 999 }, price_pro: { currency: 'aud', unit_amount: 1999 }, price_business: { currency: 'aud', unit_amount: 2999 } };
   before(async () => {
     stripeCalls = [];
-    stripe = createServer((req, res) => { let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => { stripeCalls.push({ method: req.method, url: req.url, body: b }); res.setHeader('content-type', 'application/json'); if (req.url === '/v1/checkout/sessions') return res.end(JSON.stringify({ url: 'https://checkout.stripe.test/session' })); if (req.url === '/v1/billing_portal/sessions') return res.end(JSON.stringify({ url: 'https://billing.stripe.test/portal' })); if (req.method === 'GET') return res.end(JSON.stringify({ items: { data: [{ id: 'si_1' }] } })); res.end('{}'); }); });
+    stripe = createServer((req, res) => { let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => { stripeCalls.push({ method: req.method, url: req.url, body: b }); res.setHeader('content-type', 'application/json'); if (req.url.startsWith('/v1/prices/')) { const id = req.url.split('?')[0].split('/').pop(); return res.end(JSON.stringify({ id, active: true, recurring: { interval: 'month', usage_type: 'licensed' }, ...stripePrices[id] })); } if (req.url === '/v1/checkout/sessions') return res.end(JSON.stringify({ url: 'https://checkout.stripe.test/session' })); if (req.url === '/v1/billing_portal/sessions') return res.end(JSON.stringify({ url: 'https://billing.stripe.test/portal' })); if (req.method === 'GET') return res.end(JSON.stringify({ items: { data: [{ id: 'si_1' }] } })); res.end('{}'); }); });
     await new Promise((resolve) => stripe.listen(0, '127.0.0.1', resolve));
     t = await boot({ STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_WEBHOOK_SECRET: SECRET, STRIPE_BASE_URL: `http://127.0.0.1:${stripe.address().port}`, STRIPE_PRICE_PLUS: 'price_plus', STRIPE_PRICE_PRO: 'price_pro', STRIPE_PRICE_BUSINESS: 'price_business' });
     for (const name of ['olive', 'mia']) await t.user(name);
@@ -114,5 +115,32 @@ describe('plans, limits and billing', { skip }, () => {
     const blocked = await t.call('mia', 'POST', `${ws(F)}/members/invitations`, { email: 'new@integration.test', role: 'MEMBER' });
     assert.equal(blocked.status, 402);
     assert.equal((await t.call('mia', 'POST', `${ws(F)}/members/invitations`, { email: 'guest@integration.test', role: 'GUEST' })).status, 201);
+  });
+
+  test('checkout refuses to start when the price in Stripe is not the price AVEN shows', async () => {
+    const original = { ...stripePrices.price_pro };
+    try {
+      for (const [change, pattern] of [[{ currency: 'usd' }, /A?UD 19\.99|AUD 19\.99/], [{ unit_amount: 1500 }, /19\.99/]]) {
+        Object.assign(stripePrices.price_pro, change);
+        const before = stripeCalls.filter((c) => c.url === '/v1/checkout/sessions').length;
+        const refused = await t.call('olive', 'POST', `${ws()}/billing/checkout`, { plan: 'PRO' });
+        assert.equal(refused.status, 503, JSON.stringify(refused.body)); assert.match(refused.body.message, /STRIPE_PRICE_PRO/); assert.match(refused.body.message, pattern);
+        assert.equal(stripeCalls.filter((c) => c.url === '/v1/checkout/sessions').length, before, 'no checkout was created at the wrong price');
+        Object.assign(stripePrices.price_pro, original);
+      }
+    } finally { Object.assign(stripePrices.price_pro, original); }
+    const fine = await t.call('olive', 'POST', `${ws()}/billing/checkout`, { plan: 'PRO' }); assert.notEqual(fine.status, 503, 'with the right price the price check lets it through (it may still stop for another reason, such as an existing subscription)');
+  });
+
+  test('an invoice that arrives before its subscription event is still filed, and cannot be filed against another customer’s workspace', async () => {
+    const early = await t.call('olive', 'POST', '/session/workspaces', { name: `Early invoice ${t.run}` });
+    const E = early.body.id; const invoice = (id, customer, workspaceId) => event('invoice.paid', { id, object: 'invoice', customer, status: 'paid', total: 999, amount_due: 999, amount_paid: 999, currency: 'aud', number: 'AVEN-0001', created: Math.floor(Date.now() / 1000), parent: { type: 'subscription_details', subscription_details: { subscription: 'sub_x', metadata: { workspaceId, plan: 'PLUS' } } } });
+    assert.equal((await hook(invoice(`in_${t.run}_1`, 'cus_early', E))).status, 200);
+    assert.equal(await t.prisma.billingInvoice.count({ where: { workspaceId: E } }), 1, 'filed under the workspace the invoice names, before any subscription exists');
+    await t.prisma.subscription.create({ data: { workspaceId: E, planKey: 'PLUS', status: 'ACTIVE', seats: 1, providerCustomerId: 'cus_early' } });
+    assert.equal((await hook(invoice(`in_${t.run}_2`, 'cus_someone_else', E))).status, 200);
+    assert.equal(await t.prisma.billingInvoice.count({ where: { workspaceId: E } }), 1, 'an invoice for a different customer is not filed under this workspace');
+    assert.equal((await hook(invoice(`in_${t.run}_3`, 'cus_nobody', '00000000-0000-4000-8000-000000000000'))).status, 200);
+    assert.equal(await t.prisma.billingInvoice.count({ where: { providerInvoiceId: `in_${t.run}_3` } }), 0, 'a workspace that does not exist is ignored');
   });
 });

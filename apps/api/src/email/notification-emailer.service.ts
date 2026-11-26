@@ -68,7 +68,7 @@ export class NotificationEmailer implements OnModuleInit, OnModuleDestroy {
         if (!mine.length) continue;
         const items: NotificationItem[] = mine.map((r) => ({ workspaceName: r.activity.workspace.name, actorName: r.activity.actor.displayName, message: r.activity.message, href: notificationHref(r.activity.entityType, r.activity.entityId), createdAt: r.createdAt }));
         try {
-          await this.mailer.send({ to: mine[0].user.email, ...renderNotificationEmail({ recipientName: mine[0].user.displayName, items, webBaseUrl }) });
+          await this.mailer.send({ to: mine[0].user.email, idempotencyKey: `summary-${mine.map((r) => r.id).sort()[0]}-${mine.length}`, ...renderNotificationEmail({ recipientName: mine[0].user.displayName, items, webBaseUrl }) });
           this.retryAfter.delete(userId);
           result.emails += 1;
         } catch (error) {

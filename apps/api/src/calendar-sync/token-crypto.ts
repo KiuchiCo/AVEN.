@@ -16,18 +16,21 @@ export function decryptToken(key: Buffer, stored: string): string {
   return Buffer.concat([decipher.update(Buffer.from(body, 'base64url')), decipher.final()]).toString('utf8');
 }
 
+/** The state is signed with a key derived from the token key, so one secret is never used for two different jobs (encrypting tokens and signing links). */
+const stateKey = (key: Buffer) => createHmac('sha256', key).update('aven-oauth-state-v1').digest();
+
 export type OAuthState = { workspaceId: string; userId: string; provider: 'GOOGLE' | 'MICROSOFT'; pushEnabled: boolean };
 
 /** The `state` carried through the provider's sign-in page: who started it, for which workspace, signed so it can't be forged, valid for 10 minutes. */
 export function signState(key: Buffer, state: OAuthState, now = Date.now()): string {
   const payload = b64(Buffer.from(JSON.stringify({ ...state, exp: now + 10 * 60_000, n: randomBytes(8).toString('hex') })));
-  return `${payload}.${b64(createHmac('sha256', key).update(payload).digest())}`;
+  return `${payload}.${b64(createHmac('sha256', stateKey(key)).update(payload).digest())}`;
 }
 
 export function verifyState(key: Buffer, value: string, now = Date.now()): OAuthState | null {
   const [payload, signature] = value.split('.');
   if (!payload || !signature) return null;
-  const expected = createHmac('sha256', key).update(payload).digest(); const given = Buffer.from(signature, 'base64url');
+  const expected = createHmac('sha256', stateKey(key)).update(payload).digest(); const given = Buffer.from(signature, 'base64url');
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as OAuthState & { exp: number };

@@ -94,3 +94,59 @@ test('Gemini: a blocked prompt is reported, and cancelling stops the stream', as
     await assert.rejects(pending, (e) => e.name === 'AbortError');
   });
 });
+
+test('Gemini: the thought signature on a tool call is kept and sent back with the result (without it Gemini refuses the next step)', async () => {
+  await withServer((req, res) => { res.writeHead(200, { 'content-type': 'text/event-stream' }); res.end(frames(
+    { candidates: [{ content: { role: 'model', parts: [{ functionCall: { id: 'fc-1', name: 'search_web', args: { query: 'aven' } }, thoughtSignature: 'SIG-OPAQUE-1' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 2 } },
+  )); }, async (baseUrl, requests) => {
+    const events = await collect(provider(baseUrl).stream(request));
+    const call = events.find((e) => e.type === 'tool_use');
+    assert.equal(call.id, 'fc-1'); assert.equal(call.signature, 'SIG-OPAQUE-1');
+    assert.deepEqual(events.find((e) => e.type === 'stop'), { type: 'stop', reason: 'tool_use' }, 'a tool call is a tool_use stop even when Gemini supplies the id');
+    await collect(provider(baseUrl).stream({ ...request, messages: [...request.messages, { role: 'assistant', content: [{ type: 'tool_use', id: call.id, name: call.name, input: call.input, signature: call.signature }] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: call.id, content: 'found' }] }] }));
+    assert.deepEqual(requests[1].body.contents[1], { role: 'model', parts: [{ functionCall: { name: 'search_web', args: { query: 'aven' } }, thoughtSignature: 'SIG-OPAQUE-1' }] });
+  });
+  assert.deepEqual(geminiContents([{ role: 'assistant', content: [{ type: 'tool_use', id: 'x', name: 'n', input: {} }] }])[0].parts[0], { functionCall: { name: 'n', args: {} } }, 'no signature, none invented');
+});
+
+test('Gemini: a provider that goes quiet is given up on, before the first word and in the middle of an answer', async () => {
+  const slow = (baseUrl) => new GeminiProvider({ apiKey: 'g', model: 'm', baseUrl, idleMs: 200 });
+  await withServer(() => { /* accepts the request and never answers */ }, async (baseUrl) => {
+    const started = Date.now();
+    await assert.rejects(collect(slow(baseUrl).stream(request)), (e) => e instanceof LlmError && e.kind === 'overloaded' && /stopped responding/.test(e.message));
+    assert.ok(Date.now() - started < 3000, 'gave up quickly, not after minutes');
+  });
+  await withServer((req, res) => { res.writeHead(200, { 'content-type': 'text/event-stream' }); res.write(frames({ candidates: [{ content: { role: 'model', parts: [{ text: 'Half an answ' }] } }] })); /* then silence */ }, async (baseUrl) => {
+    const seen = []; const outcome = await (async () => { try { for await (const e of slow(baseUrl).stream(request)) seen.push(e); return null; } catch (e) { return e; } })();
+    assert.equal(seen.filter((e) => e.type === 'text').length, 1, 'what arrived was passed on'); assert.ok(outcome instanceof LlmError && outcome.kind === 'overloaded');
+  });
+});
+
+test('Gemini: a refusal is an error, and running out of length is reported as such', async () => {
+  await withServer((req, res) => { res.writeHead(200, { 'content-type': 'text/event-stream' }); res.end(frames({ candidates: [{ finishReason: 'SAFETY' }] })); }, async (baseUrl) => {
+    await assert.rejects(collect(provider(baseUrl).stream(request)), (e) => e instanceof LlmError && e.kind === 'request' && /declined/.test(e.message));
+  });
+  await withServer((req, res) => { res.writeHead(200, { 'content-type': 'text/event-stream' }); res.end(frames({ candidates: [{ content: { role: 'model', parts: [{ thought: true, text: 'thinking…' }] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, thoughtsTokenCount: 34 } })); }, async (baseUrl) => {
+    const events = await collect(provider(baseUrl).stream(request));
+    assert.deepEqual(events.find((e) => e.type === 'stop'), { type: 'stop', reason: 'max_tokens' }); assert.equal(events.filter((e) => e.type === 'text').length, 0);
+    assert.deepEqual(events.at(-1), { type: 'usage', inputTokens: 4, outputTokens: 36 }, 'the thinking tokens are counted');
+  });
+});
+
+test('Gemini: every tool AVEN really has is turned into a schema Gemini accepts (one string type per field, nothing else it would reject)', async () => {
+  const { readTools, writeTools } = await import('../dist/ai/ai-rules.js');
+  const allowed = new Set(['type', 'description', 'enum', 'properties', 'required', 'items', 'nullable', 'format', 'minimum', 'maximum', 'minItems', 'maxItems']);
+  const problems = [];
+  const check = (schema, path) => {
+    if (!schema || typeof schema !== 'object') return;
+    for (const key of Object.keys(schema)) if (!allowed.has(key)) problems.push(`${path}: key ${key}`);
+    if (schema.type !== undefined && typeof schema.type !== 'string') problems.push(`${path}: type is not a single string`);
+    for (const [name, child] of Object.entries(schema.properties ?? {})) check(child, `${path}.${name}`);
+    if (schema.items) check(schema.items, `${path}[]`);
+  };
+  const tools = [...readTools, ...writeTools]; assert.ok(tools.length >= 10);
+  for (const tool of tools) check(geminiSchema(tool.input_schema), tool.name);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(geminiSchema({ type: ['string', 'null'], description: 'd' }), { type: 'string', nullable: true, description: 'd' });
+  assert.deepEqual(geminiSchema({ type: ['integer'] }), { type: 'integer' });
+});

@@ -56,6 +56,25 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
     return { subscribed: false };
   }
 
+  /** A test notification to the signed-in person's own browser subscriptions only, with fixed generic text. Dead subscriptions found on the way are removed. */
+  async sendTest(identity: AuthenticatedIdentity) {
+    if (!this.settings) throw new BadRequestException('Push notifications are not set up for this installation.');
+    const userId = await this.userId(identity);
+    const subscriptions = await this.prisma.pushSubscription.findMany({ where: { userId } });
+    if (!subscriptions.length) throw new BadRequestException('This account has no device subscribed. Turn notifications on first.');
+    const { webBaseUrl } = readApiEnvironment();
+    const payload = Buffer.from(JSON.stringify({ title: 'AVEN.', body: 'This is a test notification. Notifications are working on this device.', url: `${webBaseUrl}/workspace/settings` }));
+    const result = { sent: 0, removed: 0, failed: 0 };
+    for (const subscription of subscriptions) {
+      try { await this.deliver(subscription, payload, new Date()); result.sent += 1; }
+      catch (error) {
+        if (error instanceof WebhookError && (error.status === 404 || error.status === 410)) { await this.prisma.pushSubscription.deleteMany({ where: { id: subscription.id } }); result.removed += 1; }
+        else { reportIntegrationFailure('push', error); result.failed += 1; }
+      }
+    }
+    return result;
+  }
+
   /** The iPhone or iPad app registers (or re-registers) its notification token for the signed-in person. A token belongs to one person: signing in as someone else on the same device moves it. */
   async registerDevice(identity: AuthenticatedIdentity, input: unknown) {
     const userId = await this.userId(identity);

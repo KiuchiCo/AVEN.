@@ -10,6 +10,7 @@
     "start": "node dist/main.js",
     "prestart:dev": "tsc -p ../../packages/collab/tsconfig.json",
     "start:dev": "nest start --watch",
+    "storage:check": "node --env-file-if-exists=../../.env scripts/storage-check.mjs",
     "vapid:generate": "node scripts/vapid.mjs",
     "billing:create-plan-products": "node scripts/create-plan-products.mjs",
     "pretypecheck": "tsc -p ../../packages/collab/tsconfig.json",

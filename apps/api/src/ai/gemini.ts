@@ -2,11 +2,13 @@ import { reportIntegrationFailure } from '../observability/error-reporter.js';
 import { readSse } from './anthropic.js';
 import { LlmError, type LlmBlock, type LlmEvent, type LlmMessage, type LlmProvider, type LlmRequest, type LlmTool } from './llm.js';
 
-type Settings = { apiKey: string; model: string; baseUrl: string };
+type Settings = { apiKey: string; model: string; baseUrl: string; /** How long a silent connection is waited for before giving up (tests shorten it). */ idleMs?: number };
 type Part = Record<string, unknown>;
 
 /** Longest one answer may take from start to finish. */
 const STREAM_TIMEOUT_MS = 5 * 60_000;
+/** Longest the provider may stay silent (before the first word, or between chunks) before AVEN stops waiting. Gemini sometimes accepts a request and then says nothing. */
+const IDLE_MS = 45_000;
 
 /** Gemini accepts a subset of JSON Schema for tool parameters; anything else (additionalProperties, $schema, patterns…) makes it reject the request. */
 const SCHEMA_KEYS = new Set(['type', 'description', 'enum', 'properties', 'required', 'items', 'nullable', 'format', 'minimum', 'maximum', 'minItems', 'maxItems']);
@@ -16,6 +18,12 @@ export function geminiSchema(schema: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(schema)) {
     if (key === 'properties' && value && typeof value === 'object') out.properties = Object.fromEntries(Object.entries(value).map(([name, child]) => [name, geminiSchema(child)]));
+    else if (key === 'type' && Array.isArray(value)) {
+      // JSON Schema allows ["string", "null"]; Gemini wants one type plus nullable: true.
+      const types = value.filter((entry) => entry !== 'null');
+      if (types.length === 1) out.type = types[0];
+      if (types.length !== value.length) out.nullable = true;
+    }
     else if (SCHEMA_KEYS.has(key)) out[key] = key === 'items' ? geminiSchema(value) : value;
   }
   return out;
@@ -27,7 +35,8 @@ export function geminiContents(messages: LlmMessage[]): { role: 'user' | 'model'
   for (const message of messages) for (const block of message.content) if (block.type === 'tool_use') names.set(block.id, block.name);
   const part = (block: LlmBlock): Part => {
     if (block.type === 'text') return { text: block.text };
-    if (block.type === 'tool_use') return { functionCall: { name: block.name, args: block.input } };
+    // Gemini refuses the next step of a tool conversation unless the call comes back with the signature it was given.
+    if (block.type === 'tool_use') return { functionCall: { name: block.name, args: block.input }, ...(block.signature ? { thoughtSignature: block.signature } : {}) };
     return { functionResponse: { name: names.get(block.tool_use_id) ?? 'tool', response: block.is_error ? { error: block.content } : { result: block.content } } };
   };
   return messages.map((message) => ({ role: (message.role === 'assistant' ? 'model' : 'user') as 'user' | 'model', parts: message.content.map(part) })).filter((message) => message.parts.length);
@@ -57,40 +66,52 @@ export class GeminiProvider implements LlmProvider {
       ...(request.tools.length ? { tools: [{ functionDeclarations: declarations(request.tools) }] } : {}),
       generationConfig: { maxOutputTokens: request.maxTokens },
     };
+    const idleMs = this.settings.idleMs ?? IDLE_MS;
+    const stall = new AbortController(); let stalled = false; let timer: NodeJS.Timeout | undefined;
+    const arm = () => { clearTimeout(timer); timer = setTimeout(() => { stalled = true; stall.abort(); }, idleMs); };
+    const stalledError = () => { reportIntegrationFailure('gemini', new Error('The AI provider stopped responding'), { kind: 'idle' }); return new LlmError('The AI provider stopped responding. Try again in a moment.', 'overloaded'); };
+    const signal = AbortSignal.any([stall.signal, AbortSignal.timeout(STREAM_TIMEOUT_MS), ...(request.signal ? [request.signal] : [])]);
     let response: Response;
+    arm();
     try {
-      response = await fetch(url, {
-        method: 'POST',
-        signal: request.signal ? AbortSignal.any([request.signal, AbortSignal.timeout(STREAM_TIMEOUT_MS)]) : AbortSignal.timeout(STREAM_TIMEOUT_MS),
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': this.settings.apiKey },
-        body: JSON.stringify(body),
-      });
+      response = await fetch(url, { method: 'POST', signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': this.settings.apiKey }, body: JSON.stringify(body) });
     } catch (error) {
+      clearTimeout(timer);
+      if (stalled) throw stalledError();
       if ((error as Error).name === 'AbortError') throw error;
       reportIntegrationFailure('gemini', error, { kind: 'network' });
       throw new LlmError('Could not reach the AI provider.', 'network');
     }
-    if (!response.ok || !response.body) throw await this.failure(response);
+    if (!response.ok || !response.body) { clearTimeout(timer); throw await this.failure(response); }
 
-    let inputTokens = 0; let outputTokens = 0; let calls = 0; let finish = '';
-    for await (const chunk of readSse(response.body)) {
-      const feedback = chunk.promptFeedback as { blockReason?: string } | undefined;
-      if (feedback?.blockReason) throw new LlmError('The AI provider declined this request.', 'request');
-      const usage = chunk.usageMetadata as { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } | undefined;
-      if (usage) { inputTokens = usage.promptTokenCount ?? inputTokens; outputTokens = (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0); }
-      const candidate = (chunk.candidates as { content?: { parts?: Part[] }; finishReason?: string }[] | undefined)?.[0];
-      for (const part of candidate?.content?.parts ?? []) {
-        if (part.thought === true) continue; // the model's private reasoning summary is not part of the answer
-        if (typeof part.text === 'string' && part.text) yield { type: 'text', text: part.text };
-        const call = part.functionCall as { id?: string; name?: string; args?: unknown } | undefined;
-        if (call?.name) {
-          const input = call.args && typeof call.args === 'object' && !Array.isArray(call.args) ? call.args as Record<string, unknown> : {};
-          yield { type: 'tool_use', id: call.id || `call_${++calls}`, name: call.name, input };
+    let inputTokens = 0; let outputTokens = 0; let toolCalls = 0; let finish = ''; let wrote = false;
+    try {
+      for await (const chunk of readSse(response.body)) {
+        arm();
+        const feedback = chunk.promptFeedback as { blockReason?: string } | undefined;
+        if (feedback?.blockReason) throw new LlmError('The AI provider declined this request.', 'request');
+        const usage = chunk.usageMetadata as { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } | undefined;
+        if (usage) { inputTokens = usage.promptTokenCount ?? inputTokens; outputTokens = (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0); }
+        const candidate = (chunk.candidates as { content?: { parts?: Part[] }; finishReason?: string }[] | undefined)?.[0];
+        for (const part of candidate?.content?.parts ?? []) {
+          if (part.thought === true) continue; // the model's private reasoning summary is not part of the answer
+          if (typeof part.text === 'string' && part.text) { wrote = true; yield { type: 'text', text: part.text }; }
+          const call = part.functionCall as { id?: string; name?: string; args?: unknown } | undefined;
+          if (call?.name) {
+            const input = call.args && typeof call.args === 'object' && !Array.isArray(call.args) ? call.args as Record<string, unknown> : {};
+            toolCalls += 1;
+            yield { type: 'tool_use', id: call.id || `call_${toolCalls}`, name: call.name, input, ...(typeof part.thoughtSignature === 'string' ? { signature: part.thoughtSignature } : {}) };
+          }
         }
+        if (candidate?.finishReason) finish = candidate.finishReason;
       }
-      if (candidate?.finishReason) finish = candidate.finishReason;
-    }
-    yield { type: 'stop', reason: calls ? 'tool_use' : finish === 'MAX_TOKENS' ? 'max_tokens' : 'end_turn' };
+    } catch (error) {
+      if (stalled) throw stalledError();
+      throw error;
+    } finally { clearTimeout(timer); }
+    // An answer that is empty because Gemini declined it (safety, recitation…) is reported as that, not shown as a blank answer.
+    if (!wrote && !toolCalls && /^(SAFETY|RECITATION|BLOCKLIST|PROHIBITED_CONTENT|SPII|IMAGE_SAFETY)/.test(finish)) throw new LlmError('The AI provider declined to answer this.', 'request');
+    yield { type: 'stop', reason: toolCalls ? 'tool_use' : finish === 'MAX_TOKENS' ? 'max_tokens' : 'end_turn' };
     yield { type: 'usage', inputTokens, outputTokens };
   }
 

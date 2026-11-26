@@ -182,7 +182,7 @@ test('history drops a tool call whose result is missing, so the provider never s
 test('AI settings default safely, accept overrides, and reject unsafe values', () => {
   const base = { DATABASE_URL: 'postgresql://aven:x@localhost:5432/aven' };
   const defaults = readApiEnvironment(base);
-  assert.deepEqual([defaults.aiApiKey, defaults.aiModel, defaults.aiBaseUrl, defaults.aiMonthlyCredits, defaults.aiMaxOutputTokens], [undefined, 'gemini-flash-latest', 'https://generativelanguage.googleapis.com', 200, 2048]);
+  assert.deepEqual([defaults.aiApiKey, defaults.aiModel, defaults.aiBaseUrl, defaults.aiMonthlyCredits, defaults.aiMaxOutputTokens], [undefined, 'gemini-flash-lite-latest', 'https://generativelanguage.googleapis.com', 200, 2048]);
   assert.equal(defaults.aiProvider, 'gemini');
   assert.equal(readApiEnvironment({ ...base, GOOGLE_AI_API_KEY: ' g-x ', AI_MODEL: 'gemini-2.5-pro', AI_BASE_URL: 'http://localhost:8080' }).aiApiKey, 'g-x');
   // only the chosen provider's key counts, and the other provider keeps its own defaults
@@ -305,4 +305,14 @@ test('the web search tool validates its query and the prompt reflects whether it
   assert.equal(checkToolInput('search_web', { query: 'x' }).ok, false);
   assert.match(systemPrompt('W', new Date()), /cannot browse the web/);
   assert.match(systemPrompt('W', new Date(), true), /search_web/);
+});
+
+test('web results are listed as sources when the answer names the site or shows its address, and not otherwise', () => {
+  const web = (title, href) => ({ type: 'web', id: href, title, href });
+  const candidates = [web('Sydney Opera House - Wikipedia', 'https://en.wikipedia.org/wiki/Sydney_Opera_House'), web('Opening of the Sydney Opera House', 'https://mhnsw.au/opening'), web('Some unrelated page', 'https://www.example.org/x'), { type: 'task', id: 't1', title: 'Ship launch checklist', href: '/workspace/tasks/t1' }];
+  assert.deepEqual(citedSources(candidates, 'It opened in 1973, according to Wikipedia and the Opening of the Sydney Opera House page.').map((s) => s.href), ['https://en.wikipedia.org/wiki/Sydney_Opera_House', 'https://mhnsw.au/opening']);
+  assert.deepEqual(citedSources(candidates, 'See mhnsw.au for more.').map((s) => s.href), ['https://mhnsw.au/opening'], 'the address counts too');
+  assert.deepEqual(citedSources(candidates, 'No websites were used for this answer.'), [], 'nothing is cited that the answer never mentions');
+  assert.deepEqual(citedSources(candidates, 'Ship launch checklist is overdue.').map((s) => s.type), ['task']);
+  assert.match(systemPrompt('W', new Date(), true), /no Markdown links/i);
 });

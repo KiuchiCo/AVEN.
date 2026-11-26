@@ -94,4 +94,17 @@ describe('browser push notifications', { skip }, () => {
     const rows = await t.prisma.pushSubscription.findMany({});
     assert.equal(rows.length, 1); assert.equal(rows[0].userId, users.cat.id);
   });
+
+  test('a test notification goes only to the caller’s own devices, with fixed generic text; a gone device is cleaned up; no device is a clear error', async () => {
+    // cat owns the subscription after the previous test.
+    received.length = 0; status = 201;
+    assert.equal((await t.call(null, 'POST', '/push/test')).status, 401);
+    assert.equal((await t.call('ann', 'POST', '/push/test')).status, 400, 'a person with no device cannot test, and never reaches someone else’s');
+    assert.equal(received.length, 0);
+    const ok = await t.call('cat', 'POST', '/push/test'); assert.equal(ok.status, 200); assert.deepEqual(ok.body, { sent: 1, removed: 0, failed: 0 });
+    const message = decrypt(received[0].body, ua, auth); assert.equal(message.title, 'AVEN.'); assert.match(message.body, /test notification/i); assert.match(message.url, /^https:\/\/app\.aven\.test\/workspace\/settings$/);
+    status = 410;
+    assert.deepEqual((await t.call('cat', 'POST', '/push/test')).body, { sent: 0, removed: 1, failed: 0 });
+    assert.equal(await t.prisma.pushSubscription.count({ where: { userId: users.cat.id } }), 0, 'the expired subscription is gone'); status = 201;
+  });
 });

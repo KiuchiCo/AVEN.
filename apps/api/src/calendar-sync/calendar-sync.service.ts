@@ -71,7 +71,7 @@ export class CalendarSyncService {
       SELECT c.id,
         (SELECT count(*) FROM external_event_links l WHERE l."connectionId" = c.id AND l."eventId" IS NULL)
         + (SELECT count(*) FROM external_event_links l JOIN calendar_events e ON e.id = l."eventId" WHERE l."connectionId" = c.id AND e.recurrence IS NULL AND e."updatedAt" > l."localSyncedAt")
-        + (SELECT count(*) FROM calendar_events e WHERE e."workspaceId" = c."workspaceId" AND e.recurrence IS NULL AND e."startsAt" BETWEEN now() - interval '30 days' AND now() + interval '180 days' AND NOT EXISTS (SELECT 1 FROM external_event_links x WHERE x."eventId" = e.id)) AS pending
+        + (SELECT count(*) FROM calendar_events e WHERE e."workspaceId" = c."workspaceId" AND e.recurrence IS NULL AND e."startsAt" BETWEEN now() - interval '30 days' AND now() + interval '180 days' AND (c."pushFrom" IS NULL OR e."createdAt" >= c."pushFrom") AND NOT EXISTS (SELECT 1 FROM external_event_links x WHERE x."eventId" = e.id)) AS pending
       FROM calendar_connections c WHERE c."workspaceId" = ${workspaceId}::uuid AND c."pushEnabled" = true AND c.status = 'ACTIVE'`;
     return new Map(rows.map((row) => [row.id, Number(row.pending)]));
   }
@@ -118,9 +118,13 @@ export class CalendarSyncService {
 
   async setPush(identity: AuthenticatedIdentity, workspaceId: string, connectionId: string, input: unknown) {
     await this.manager(identity, workspaceId); await this.owned(workspaceId, connectionId);
-    const pushEnabled = input && typeof input === 'object' ? (input as { pushEnabled?: unknown }).pushEnabled : undefined;
+    const body = (input && typeof input === 'object' ? input : {}) as { pushEnabled?: unknown; existing?: unknown };
+    const pushEnabled = body.pushEnabled;
     if (typeof pushEnabled !== 'boolean') throw new BadRequestException('pushEnabled must be true or false.');
-    await this.prisma.calendarConnection.update({ where: { id: connectionId }, data: { pushEnabled } });
+    if (body.existing !== undefined && body.existing !== 'send' && body.existing !== 'skip') throw new BadRequestException('existing must be "send" or "skip".');
+    // Turning sending on can leave the events that already exist in AVEN out ("skip"): only ones made from now on are sent.
+    const pushFrom = pushEnabled && body.existing === 'skip' ? new Date() : pushEnabled && body.existing === 'send' ? null : undefined;
+    await this.prisma.calendarConnection.update({ where: { id: connectionId }, data: { pushEnabled, ...(pushFrom !== undefined ? { pushFrom } : {}) } });
     return { pushEnabled };
   }
 
@@ -251,7 +255,7 @@ export class CalendarSyncService {
       const events = eventIds.length ? await this.prisma.calendarEvent.findMany({ where: { workspaceId: connection.workspaceId, id: { in: eventIds } } }) : [];
       const eventById = new Map(events.map((event) => [event.id, event]));
       const locals = new Map(events.map((event) => [event.id, { id: event.id, updatedAt: event.updatedAt, startsAt: event.startsAt, recurring: event.recurrence !== null }]));
-      const unlinkedRows = connection.pushEnabled ? await this.prisma.calendarEvent.findMany({ where: { workspaceId: connection.workspaceId, externalLinks: { none: {} }, startsAt: { gte: window.from, lte: window.to } }, take: 500 }) : [];
+      const unlinkedRows = connection.pushEnabled ? await this.prisma.calendarEvent.findMany({ where: { workspaceId: connection.workspaceId, externalLinks: { none: {} }, ...(connection.pushFrom ? { createdAt: { gte: connection.pushFrom } } : {}), startsAt: { gte: window.from, lte: window.to } }, take: 500 }) : [];
       const unlinkedById = new Map(unlinkedRows.map((event) => [event.id, event]));
       const plan = planSync({ remote, links: links.map((link) => ({ id: link.id, eventId: link.eventId, externalId: link.externalId, etag: link.etag, localSyncedAt: link.localSyncedAt })), locals, unlinked: unlinkedRows.map((event) => ({ id: event.id, updatedAt: event.updatedAt, startsAt: event.startsAt, recurring: event.recurrence !== null })), pushEnabled: connection.pushEnabled, partial: incremental, window });
       summary.skippedRecurring = plan.skippedRecurring;

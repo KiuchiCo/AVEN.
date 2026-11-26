@@ -162,7 +162,9 @@ export function AssistantChat() {
           {messages.length === 0 && <div className="assistant__empty"><p>{t('as.tryAsking')}</p><ul>{[t('as.ex1'), t('as.ex2'), t('as.ex3'), t('as.ex4')].map((example) => <li key={example}><button type="button" onClick={() => setDraft(example)}>{example}</button></li>)}</ul></div>}
           {messages.map((message) => <article key={message.id} className={`assistant__message assistant__message--${message.role}`}>
             {message.text ? <p>{message.text}</p> : message.role === 'assistant' && busy && !message.actions.length ? <p className="assistant__working">{working || t('as.thinking')}</p> : null}
-            {message.citations.length > 0 && <div className="assistant__sources"><span>{t('as.sources')}</span>{message.citations.map((source) => <Link key={`${source.type}-${source.id}`} href={source.href}>{source.title}</Link>)}</div>}
+            {message.citations.length > 0 && <div className="assistant__sources"><span>{t('as.sources')}</span>{message.citations.map((source) => source.type === 'web' && /^https?:\/\//i.test(source.href)
+              ? <a key={`${source.type}-${source.id}`} href={source.href} target="_blank" rel="noopener noreferrer">{source.title}</a>
+              : <Link key={`${source.type}-${source.id}`} href={source.href}>{source.title}</Link>)}</div>}
             {message.actions.map((action) => <div key={action.id} className={`assistant__action assistant__action--${action.status}`}>
               <strong>{t(actionLabels[action.tool] ?? 'as.proposedChange')}</strong><p>{action.summary ?? action.input.title}</p>
               <small>{(action.details ?? []).join(' · ') || t('as.nothingChanges')}</small>

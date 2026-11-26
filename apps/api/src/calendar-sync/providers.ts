@@ -171,7 +171,9 @@ export class MicrosoftCalendar implements CalendarProvider {
   private async tokens(values: Record<string, string>, previousRefresh?: string) {
     const { body } = await call(this.config.tokenUrl, { method: 'POST', headers: FORM, body: form({ client_id: this.config.clientId, client_secret: this.config.clientSecret, scope: this.scope, ...values }) });
     if (!body?.access_token || !(body.refresh_token ?? previousRefresh)) throw new ProviderError('Microsoft did not return the tokens AVEN needs.', 'fatal');
-    return { accessToken: body.access_token as string, refreshToken: (body.refresh_token as string | undefined) ?? previousRefresh!, expiresAt: expires(body.expires_in) };
+    // Microsoft lets people untick permissions too; without the calendar one every sync would fail, so stop at connect time.
+    if (typeof body.scope === 'string' && !/calendars\.readwrite/i.test(body.scope)) throw new ProviderError('Microsoft did not give AVEN permission to see and edit your calendar. Connect again and accept the calendar permission.', values.grant_type === 'refresh_token' ? 'auth' : 'fatal');
+    return { accessToken: body.access_token as string, refreshToken: (body.refresh_token as string | undefined) ?? previousRefresh!, expiresAt: expires(body.expires_in), ...(typeof body.scope === 'string' ? { scopes: body.scope.slice(0, 500) } : {}) };
   }
   async exchange(code: string, redirectUri: string) {
     const tokens = await this.tokens({ code, redirect_uri: redirectUri, grant_type: 'authorization_code' });
@@ -181,14 +183,14 @@ export class MicrosoftCalendar implements CalendarProvider {
     return { ...tokens, email };
   }
   async refresh(refreshToken: string) { return this.tokens({ refresh_token: refreshToken, grant_type: 'refresh_token' }, refreshToken); }
-  private headers(token: string) { return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'outlook.timezone="UTC"' }; }
+  private headers(token: string) { return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'outlook.timezone="UTC", outlook.body-content-type="text"' }; }
   /** Graph gives UTC times without a trailing Z. */
   private utc(value: string) { return new Date(/Z$|[+-]\d\d:\d\d$/.test(value) ? value : `${value.split('.')[0]}Z`); }
   private toRemote(item: Json): RemoteEvent {
     const allDay = item.isAllDay === true;
     const start = this.utc(item.start?.dateTime ?? '1970-01-01T00:00:00'); const end = item.end?.dateTime ? this.utc(item.end.dateTime) : null;
     const range = allDay ? fromAllDayDates(start.toISOString().slice(0, 10), end ? end.toISOString().slice(0, 10) : undefined) : { startsAt: start, endsAt: end };
-    return { id: String(item.id), etag: String(item['@odata.etag'] ?? item.lastModifiedDateTime ?? ''), title: String(item.subject ?? ''), description: item.bodyPreview ?? null, location: item.location?.displayName ?? null, isAllDay: allDay, startsAt: range.startsAt, endsAt: range.endsAt, updatedAt: new Date(item.lastModifiedDateTime ?? Date.now()), cancelled: item.isCancelled === true };
+    return { id: String(item.id), etag: String(item['@odata.etag'] ?? item.lastModifiedDateTime ?? ''), title: String(item.subject ?? ''), description: (typeof item.body?.content === 'string' ? item.body.content : item.bodyPreview) ?? null, location: item.location?.displayName ?? null, isAllDay: allDay, startsAt: range.startsAt, endsAt: range.endsAt, updatedAt: new Date(item.lastModifiedDateTime ?? Date.now()), cancelled: item.isCancelled === true };
   }
   /** The next page the provider names, only if it is on the provider's own address: the access token is sent with it, so a link elsewhere must not be followed. */
   private sameOrigin(link: unknown): string | null {
@@ -197,7 +199,7 @@ export class MicrosoftCalendar implements CalendarProvider {
   }
   async list(token: string, window: Window) {
     const out: RemoteEvent[] = [];
-    let url: string | null = `${this.config.apiBase}/me/calendarView?${form({ startDateTime: window.from.toISOString(), endDateTime: window.to.toISOString(), $top: '100', $select: 'id,subject,bodyPreview,location,start,end,isAllDay,isCancelled,lastModifiedDateTime' })}`;
+    let url: string | null = `${this.config.apiBase}/me/calendarView?${form({ startDateTime: window.from.toISOString(), endDateTime: window.to.toISOString(), $top: '100', $select: 'id,subject,body,bodyPreview,location,start,end,isAllDay,isCancelled,lastModifiedDateTime' })}`;
     for (let i = 0; i < 40 && url; i += 1) {
       const { body } = await call(url, { headers: this.headers(token) });
       for (const item of (body?.value ?? []) as Json[]) if (item.id) out.push(this.toRemote(item));
@@ -211,8 +213,10 @@ export class MicrosoftCalendar implements CalendarProvider {
       : { isAllDay: false, start: { dateTime: content.startsAt.toISOString().replace('Z', ''), timeZone: 'UTC' }, end: { dateTime: (content.endsAt ?? new Date(content.startsAt.getTime() + hour)).toISOString().replace('Z', ''), timeZone: 'UTC' } };
     return { subject: content.title, body: { contentType: 'text', content: content.description ?? '' }, location: { displayName: content.location ?? '' }, ...times };
   }
-  async create(token: string, content: EventContent) {
-    const { body } = await call(`${this.config.apiBase}/me/events`, { method: 'POST', headers: this.headers(token), body: JSON.stringify(this.payload(content)) });
+  /** Graph picks the event id itself, so a repeated send is made safe with `transactionId`: Graph ignores a second create that carries the same one and returns the first event. */
+  async create(token: string, content: EventContent, key?: string) {
+    const transactionId = key ? `avn-${createHash('sha1').update(key).digest('hex')}` : undefined;
+    const { body } = await call(`${this.config.apiBase}/me/events`, { method: 'POST', headers: this.headers(token), body: JSON.stringify({ ...this.payload(content), ...(transactionId ? { transactionId } : {}) }) });
     return { id: String(body?.id), etag: String(body?.['@odata.etag'] ?? body?.lastModifiedDateTime ?? '') };
   }
   async update(token: string, id: string, content: EventContent, etag: string | null) {

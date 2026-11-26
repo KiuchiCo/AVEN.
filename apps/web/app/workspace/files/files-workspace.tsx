@@ -122,6 +122,7 @@ export function FilesWorkspace() {
     {notice && <p className="files-notice" role="status">{notice}</p>}
 
     {usage && <div className="files-usage" aria-label={t('file.storageAria')}><span className="files-usage__icon"><Icon name="database" size={20} /></span><div className="files-usage__bar" role="img" aria-label={t('file.quotaAria', { n: quota })}><span style={{ width: `${quota}%` }} /></div><small>{usage.quotaBytes === null ? t('file.used', { used: formatBytes(usage.usedBytes) }) : t('file.usedOf', { used: formatBytes(usage.usedBytes), total: formatBytes(usage.quotaBytes) })}{t('file.maxSize', { max: formatBytes(usage.maxFileBytes) })}</small><b className="files-usage__pct">{quota}%</b></div>}
+    {usage?.storage === 'local' && (workspace.role === 'OWNER' || workspace.role === 'ADMINISTRATOR') && <p className="workspace-settings-note" role="note">{t('file.localStorage')}</p>}
 
     <div className="files-toolbar">
       <div className="files-views" role="group" aria-label={t('file.viewAria')}><button type="button" aria-pressed={view === 'files'} onClick={() => { setView('files'); setVersions(null); }}><Icon name="folder" size={18} />{t('file.files')}</button><button type="button" aria-pressed={view === 'bin'} onClick={() => { setView('bin'); setVersions(null); }}><Icon name="trash" size={18} />{t('file.bin')}</button></div>

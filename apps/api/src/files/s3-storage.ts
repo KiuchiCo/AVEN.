@@ -44,17 +44,45 @@ export class S3StorageDriver implements StorageDriver {
     this.base = new URL(config.endpoint ?? `https://s3.${config.region}.amazonaws.com`);
   }
 
+  /** One signed request, tried up to three times when the store is busy or unreachable (the three operations are all safe to repeat). */
   private async send(method: string, key: string, body?: Buffer) {
     if (/\0/.test(key) || key.split('/').includes('..')) throw new Error('Invalid storage key.');
     const path = `${this.base.pathname.replace(/\/$/, '')}/${this.config.bucket}/${encodePath(key)}`;
-    const headers = signV4({ method, host: this.base.host, path, payloadHash: sha256(body ?? ''), region: this.config.region, accessKeyId: this.config.accessKeyId, secretAccessKey: this.config.secretAccessKey, now: new Date() });
-    // A stalled object store must not hold an upload or a download open for ever: writes get two minutes, a read ten (it covers streaming the whole file).
-    const signal = AbortSignal.timeout(method === 'GET' ? 10 * 60_000 : 2 * 60_000);
+    let last: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt) await new Promise((resolve) => setTimeout(resolve, 200 * 2 ** (attempt - 1)));
+      const headers = signV4({ method, host: this.base.host, path, payloadHash: sha256(body ?? ''), region: this.config.region, accessKeyId: this.config.accessKeyId, secretAccessKey: this.config.secretAccessKey, now: new Date() });
+      // A stalled object store must not hold an upload or a download open for ever: writes get two minutes, a read ten (it covers streaming the whole file).
+      const signal = AbortSignal.timeout(method === 'GET' ? 10 * 60_000 : 2 * 60_000);
+      try {
+        const response = await this.fetcher(`${this.base.origin}${path}`, { method, headers, body: body ? new Uint8Array(body) : undefined, signal });
+        if (response.status === 429 || response.status >= 500) { last = response; await response.body?.cancel().catch(() => undefined); continue; }
+        if (!response.ok && response.status !== 404) reportIntegrationFailure('s3', new Error(`Object storage answered ${response.status}`), { status: response.status, method });
+        return response;
+      } catch (error) { last = error; }
+    }
+    if (last instanceof Response) { reportIntegrationFailure('s3', new Error(`Object storage answered ${last.status}`), { status: last.status, method }); return last; }
+    reportIntegrationFailure('s3', last, { kind: 'network', method });
+    throw new Error('Object storage could not be reached.');
+  }
+
+  /** Turns a refusal into a message that says what to fix. The store's own error code (in the XML body) tells a bad key from a missing bucket. */
+  private async failure(response: Response, action: string): Promise<Error> {
+    const code = /<Code>([^<]+)<\/Code>/.exec(await response.text().catch(() => ''))?.[1] ?? '';
+    if (response.status === 401 || response.status === 403) return new Error(`Object storage refused AVEN’s credentials (${code || response.status}). Check S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and that the key can write to the bucket.`);
+    if (code === 'NoSuchBucket') return new Error(`Object storage has no bucket named “${this.config.bucket}”. Check S3_BUCKET and S3_ENDPOINT.`);
+    return new Error(`Object storage ${action} failed (${response.status}).`);
+  }
+
+  /** Writes, reads back and removes one small unique object, to prove the credentials, bucket and endpoint work. Touches nothing else in the bucket. */
+  async check(): Promise<void> {
+    const key = `.aven-storage-check/${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const content = Buffer.from('aven storage check');
+    await this.put(key, Readable.from([content]), 1024);
     try {
-      const response = await this.fetcher(`${this.base.origin}${path}`, { method, headers, body: body ? new Uint8Array(body) : undefined, signal });
-      if (!response.ok && response.status !== 404) reportIntegrationFailure('s3', new Error(`Object storage answered ${response.status}`), { status: response.status, method });
-      return response;
-    } catch (error) { reportIntegrationFailure('s3', error, { kind: 'network', method }); throw error; }
+      const { stream } = await this.get(key); const read: Buffer[] = []; for await (const chunk of stream) read.push(Buffer.from(chunk as Buffer));
+      if (!Buffer.concat(read).equals(content)) throw new Error('Object storage returned different content than was written.');
+    } finally { await this.delete(key); }
   }
 
   async put(key: string, source: Readable, maxBytes: number) {
@@ -68,20 +96,20 @@ export class S3StorageDriver implements StorageDriver {
     }
     const body = Buffer.concat(chunks);
     const response = await this.send('PUT', key, body);
-    if (!response.ok) throw new Error(`Object storage rejected the upload (${response.status}).`);
+    if (!response.ok) throw await this.failure(response, 'upload');
     return { size, checksum: sha256(body) };
   }
 
   async get(key: string) {
     const response = await this.send('GET', key);
     if (response.status === 404) throw new NotFoundException('File not found.');
-    if (!response.ok || !response.body) throw new Error(`Object storage read failed (${response.status}).`);
+    if (!response.ok || !response.body) throw await this.failure(response, 'read');
     const size = Number(response.headers.get('content-length') ?? 0);
     return { stream: Readable.fromWeb(response.body as never), size };
   }
 
   async delete(key: string) {
     const response = await this.send('DELETE', key);
-    if (!response.ok && response.status !== 404) throw new Error(`Object storage delete failed (${response.status}).`);
+    if (!response.ok && response.status !== 404) throw await this.failure(response, 'delete');
   }
 }

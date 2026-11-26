@@ -63,6 +63,16 @@ export function PushCard() {
     finally { setBusy(false); }
   }
 
+  async function sendTest() {
+    setBusy(true); setMessage('');
+    try {
+      const result = await call<{ sent: number; removed: number; failed: number }>('/test', 'POST');
+      setMessage(result.sent ? t('set.push.testSent', { n: result.sent }) : t('set.push.testNone'));
+      if (!result.sent && result.removed) setMode('off');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not send a test notification.'); }
+    finally { setBusy(false); }
+  }
+
   const note: Partial<Record<Mode, string>> = {
     unsupported: t('set.push.unsupported'),
     'off-server': t('set.push.offServer'),
@@ -71,7 +81,7 @@ export function PushCard() {
   return <div className="workspace-settings-card">
     <div><h2>{t('set.push.title')}</h2><p>{t('set.push.hint')}</p></div>
     {mode === 'loading' ? <p>{t('set.push.checking')}</p> : note[mode] ? <p className="workspace-settings-note">{note[mode]}</p> : <div className="billing-actions">
-      {mode === 'on' ? <button className="workspace-settings-save" disabled={busy} onClick={() => void disable()}>{t('set.push.off')}</button> : <button className="workspace-settings-save" disabled={busy} onClick={() => void enable()}>{t('set.push.on')}</button>}
+      {mode === 'on' ? <><button className="workspace-settings-save" disabled={busy} onClick={() => void sendTest()}>{t('set.push.test')}</button> <button className="workspace-settings-save" disabled={busy} onClick={() => void disable()}>{t('set.push.off')}</button></> : <button className="workspace-settings-save" disabled={busy} onClick={() => void enable()}>{t('set.push.on')}</button>}
     </div>}
     {message && <p className="workspace-settings-status" role="status">{message}</p>}
   </div>;

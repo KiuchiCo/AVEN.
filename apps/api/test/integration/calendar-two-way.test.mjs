@@ -169,6 +169,21 @@ describe('Google Calendar, both directions', { skip }, () => {
     assert.equal(await unsent(), 0, 'and nothing is left unsent');
   });
 
+  test('"send only new events": what already exists in AVEN stays out of Google, events made afterwards are sent', async () => {
+    assert.equal((await t.call('ora', 'PATCH', `${ws()}/${conn.id}`, { pushEnabled: false })).status, 200);
+    const old = await create('Existing before opt-in'); await run();
+    assert.equal((await t.call('ora', 'PATCH', `${ws()}/${conn.id}`, { pushEnabled: true, existing: 'maybe' })).status, 400, 'only send or skip are accepted');
+    assert.equal((await t.call('ora', 'PATCH', `${ws()}/${conn.id}`, { pushEnabled: true, existing: 'skip' })).status, 200);
+    await sleep(25); await create('Made after opt-in'); await run();
+    assert.equal(google().filter((e) => e.summary === 'Existing before opt-in').length, 0, 'the old event was not sent');
+    assert.equal(google().filter((e) => e.summary === 'Made after opt-in').length, 1, 'the new one was');
+    assert.equal(await pending(), 0, 'the skipped event is not reported as pending');
+    assert.ok((await local()).some((e) => e.id === old.id));
+    assert.equal((await t.call('ora', 'PATCH', `${ws()}/${conn.id}`, { pushEnabled: false })).status, 200);
+    assert.equal((await t.call('ora', 'PATCH', `${ws()}/${conn.id}`, { pushEnabled: true, existing: 'send' })).status, 200); await run();
+    assert.equal(google().filter((e) => e.summary === 'Existing before opt-in').length, 1, 'choosing "send" afterwards sends it once');
+  });
+
   test('another workspace cannot trigger or reach this calendar', async () => {
     const other = await t.workspace('zed'); const calls = stub.google.queries.length;
     const own = await t.call('zed', 'POST', `/workspaces/${other.id}/integrations/calendar/refresh`); assert.equal(own.status, 200); assert.equal(own.body.changed, false);

@@ -51,7 +51,7 @@ export class WorkspaceInvitationsService {
       this.prisma.workspace.findUnique({ where: { id: workspaceId }, select: { name: true } }),
     ]);
     const link = `${readApiEnvironment().webBaseUrl.replace(/\/$/, '')}/invite?token=${encodeURIComponent(token)}`;
-    const emailed = await this.email.send({ to: email, ...renderInvitationEmail({ inviterName: inviter?.displayName ?? '', workspaceName: workspace?.name ?? 'a workspace', role, link, expiresAt: invite.expiresAt }) });
+    const emailed = await this.email.send({ to: email, idempotencyKey: `invitation-${invite.id}`, ...renderInvitationEmail({ inviterName: inviter?.displayName ?? '', workspaceName: workspace?.name ?? 'a workspace', role, link, expiresAt: invite.expiresAt }) });
     return { invitation: invite, token, email: emailed };
   }
 

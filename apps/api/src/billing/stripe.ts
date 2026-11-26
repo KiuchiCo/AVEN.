@@ -64,6 +64,13 @@ export class StripeClient {
     return session.url;
   }
 
+  /** What Stripe holds for a price, so AVEN can check it against the price it advertises before sending anyone to pay. */
+  async getPrice(priceId: string): Promise<{ active: boolean; currency: string; unitAmount: number | null; interval: string | null; usageType: string | null }> {
+    const price = await this.request('GET', `/v1/prices/${encodeURIComponent(priceId)}`);
+    const recurring = price.recurring as { interval?: string; usage_type?: string } | null | undefined;
+    return { active: price.active === true, currency: String(price.currency ?? ''), unitAmount: typeof price.unit_amount === 'number' ? price.unit_amount : null, interval: recurring?.interval ?? null, usageType: recurring?.usage_type ?? null };
+  }
+
   async createPortal(customerId: string, returnUrl: string): Promise<string> {
     const session = await this.request('POST', '/v1/billing_portal/sessions', { customer: customerId, return_url: returnUrl });
     if (typeof session.url !== 'string') throw new BillingProviderError('The payment provider did not return a billing portal address.');

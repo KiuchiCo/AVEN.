@@ -21,6 +21,14 @@ describe('file storage', { skip }, () => {
   const url = (path) => `${t.base}/workspaces/${W.id}/files${path}`;
   const download = (who, id, query = '') => fetch(url(`/${id}/download${query}`), { headers: t.headers(who) });
 
+  test('the storage panel says where files are kept: local disk unless cloud storage is configured, and only members can ask', async () => {
+    const usage = await t.call('fay', 'GET', `/workspaces/${W.id}/files/usage`);
+    assert.equal(usage.status, 200); assert.equal(usage.body.storage, 'local');
+    assert.equal(JSON.stringify(usage.body).includes('secret'), false, 'no storage credentials in the answer');
+    assert.equal((await t.call('gus', 'GET', `/workspaces/${W.id}/files/usage`)).status, 404, 'not a member of this workspace');
+    assert.equal((await t.call(null, 'GET', `/workspaces/${W.id}/files/usage`)).status, 401);
+  });
+
   test('files come back byte for byte, and active content is never shown inline', async () => {
     const bytes = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(1_000_000)]);
     const saved = (await t.upload('fay', W.id, bytes, 'name=photo.bin', 'image/png')).body;

@@ -1192,6 +1192,8 @@ model CalendarConnection {
   scopes          String?             @db.VarChar(500)
   /// Also send events made in AVEN to this calendar. Off unless the person asked for it.
   pushEnabled     Boolean             @default(false)
+  /// When set, only events created in AVEN after this time are sent (the person chose not to send what already existed).
+  pushFrom        DateTime?           @db.Timestamptz(3)
   /// ACTIVE, or NEEDS_ATTENTION when the provider refused our tokens and the person must reconnect.
   status          String              @default("ACTIVE") @db.VarChar(20)
   lastSyncedAt    DateTime?           @db.Timestamptz(3)

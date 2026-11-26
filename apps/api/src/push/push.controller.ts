@@ -12,6 +12,7 @@ export class PushController {
 
   @Get('config') config() { return this.push.config(); }
   @Post('subscriptions') @HttpCode(200) subscribe(@CurrentIdentity() who: AuthenticatedIdentity, @Body() body: unknown) { return this.push.subscribe(who, body); }
+  @Post('test') @HttpCode(200) @UseGuards(RateLimitGuard.strict(10)) test(@CurrentIdentity() who: AuthenticatedIdentity) { return this.push.sendTest(who); }
   @Delete('subscriptions') unsubscribe(@CurrentIdentity() who: AuthenticatedIdentity, @Body() body: unknown) { return this.push.unsubscribe(who, body); }
 
   /** The iPhone or iPad app tells the API where to send this person's notifications. */

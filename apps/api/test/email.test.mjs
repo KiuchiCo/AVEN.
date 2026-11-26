@@ -24,7 +24,7 @@ test('the mailer posts the message in the email service’s format', async () =>
 });
 
 test('mail failures say whether retrying could help, without leaking the key', async () => {
-  for (const [status, retry, pattern] of [[401, false, /API key/], [403, false, /API key/], [422, false, /refused/], [400, false, /refused/], [429, true, /busy/], [500, true, /busy/], [503, true, /busy/]]) {
+  for (const [status, retry, pattern] of [[401, false, /API key/], [403, false, /refused/], [422, false, /refused/], [400, false, /refused/], [429, true, /busy/], [500, true, /busy/], [503, true, /busy/]]) {
     await emailService((req, res) => res.writeHead(status, { 'content-type': 'application/json' }).end('{"message":"bad address"}'), async (baseUrl) => {
       await assert.rejects(new ResendMailer({ apiKey: 're_secret', from: 'a@b.co', baseUrl }).send(email), (e) => e instanceof MailError && e.retry === retry && pattern.test(e.message) && !e.message.includes('re_secret'), String(status));
     });
@@ -93,4 +93,51 @@ test('email settings are validated and default to off', () => {
   assert.equal(readApiEnvironment({ ...base, EMAIL_API_KEY: 'k', EMAIL_FROM: 'AVEN <hello@example.com>', WEB_ORIGIN: 'https://app.example.com' }).webBaseUrl, 'https://app.example.com');
   for (const bad of [{ EMAIL_API_KEY: 'k' }, { EMAIL_FROM: 'not an address' }, { EMAIL_FROM: 'a@b.co\r\nBcc: x@y.z' }, { EMAIL_BASE_URL: 'http://example.com' }, { EMAIL_BASE_URL: 'nonsense' }]) assert.throws(() => readApiEnvironment({ ...base, ...bad }), /Invalid API environment/, JSON.stringify(bad));
   assert.doesNotThrow(() => readApiEnvironment({ ...base, EMAIL_API_KEY: 'k', EMAIL_FROM: 'hello@example.com', EMAIL_BASE_URL: 'http://localhost:9999' }));
+});
+
+test('Resend answers a bad key and an unverified sender differently, and AVEN says which one it is without putting addresses in the message', async () => {
+  const send = (status, body) => emailService((req, res) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body)), (baseUrl) => new ResendMailer({ apiKey: 're_secret', from: 'AVEN <me@gmail.com>', baseUrl }).send(email).then(() => null, (e) => e));
+  const key = await send(401, { statusCode: 401, name: 'validation_error', message: 'API key is invalid' });
+  assert.match(key.message, /EMAIL_API_KEY/); assert.equal(key.retry, false);
+  const sender = await send(403, { statusCode: 403, name: 'validation_error', message: 'The gmail.com domain is not verified. Please, add and verify your domain on https://resend.com/domains' });
+  assert.match(sender.message, /domain is not verified/); assert.match(sender.message, /onboarding@resend\.dev/); assert.doesNotMatch(sender.message, /API key/); assert.equal(sender.retry, false);
+  const other = await send(403, { message: 'Forbidden for jo@example.com' });
+  assert.doesNotMatch(other.message, /jo@example\.com/, 'an address in the provider’s message is removed'); assert.equal(other.retry, false);
+  const bad = await send(422, { name: 'validation_error', message: 'Invalid `to` field for dana@example.com' });
+  assert.doesNotMatch(bad.message, /dana@example\.com/);
+});
+
+test('a free-mail sender is flagged at startup, because Resend cannot send from it', async () => {
+  const { emailSenderWarning } = await import('../dist/config/api-environment.js');
+  assert.match(emailSenderWarning('AVEN <someone@gmail.com>'), /gmail\.com.*cannot send from/);
+  assert.match(emailSenderWarning('someone@outlook.com'), /outlook\.com/);
+  assert.equal(emailSenderWarning('AVEN <hello@aven.example>'), undefined);
+  assert.equal(emailSenderWarning('AVEN <onboarding@resend.dev>'), undefined);
+  assert.equal(emailSenderWarning(undefined), undefined);
+});
+
+test('sender kinds are told apart: missing, invalid, free mailbox, Resend testing sender, own domain', async () => {
+  const { emailSenderKind, integrationStatus } = await import('../dist/config/api-environment.js');
+  assert.deepEqual(['', 'nonsense', 'AVEN <me@gmail.com>', 'AVEN <onboarding@resend.dev>', 'AVEN <hello@aven.example>'].map(emailSenderKind), ['missing', 'invalid', 'free_mail', 'sandbox', 'custom']);
+  const on = (from, key = 're_x') => integrationStatus({ ...readApiEnvironment({ DATABASE_URL: 'postgresql://u:p@localhost:5432/d' }), emailApiKey: key, emailFrom: from }).find((i) => i.name === 'Email').on;
+  assert.deepEqual([on('AVEN <onboarding@resend.dev>'), on('AVEN <hello@aven.example>'), on('AVEN <me@gmail.com>'), on('nonsense'), on('AVEN <hello@aven.example>', '')], [true, true, false, false, false], 'email only counts as available when it can really send');
+});
+
+test('Resend’s testing-sender restriction, an invalid sender and an invalid recipient each get their own plain message', async () => {
+  const fail = (status, message) => emailService((req, res) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ message })), async (baseUrl) => {
+    try { await new ResendMailer({ apiKey: 're_key', from: 'AVEN <onboarding@resend.dev>', baseUrl }).send(email); } catch (e) { return e; }
+  });
+  const sandbox = await fail(403, 'You can only send testing emails to your own email address (me@example.com). To send emails to other recipients, please verify a domain at resend.com/domains');
+  assert.match(sandbox.message, /testing sender.*your own Resend account/); assert.equal(sandbox.retry, false); assert.equal(sandbox.message.includes('example.com'), false);
+  assert.match((await fail(422, 'Invalid `from` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format.')).message, /EMAIL_FROM is not a valid sender/);
+  assert.match((await fail(422, 'Invalid `to` field.')).message, /refused as invalid/);
+});
+
+test('a repeated send carries the same idempotency key, so a retry cannot email twice; the key is not part of the message', async () => {
+  await emailService((req, res) => res.writeHead(200, { 'content-type': 'application/json' }).end('{"id":"1"}'), async (baseUrl, requests) => {
+    const mailer = new ResendMailer({ apiKey: 're_key', from: 'AVEN <hello@example.com>', baseUrl });
+    await mailer.send({ ...email, idempotencyKey: 'invitation-1' }); await mailer.send({ ...email, idempotencyKey: 'invitation-1' }); await mailer.send(email);
+    assert.deepEqual(requests.map((r) => r.headers['idempotency-key']), ['invitation-1', 'invitation-1', undefined]);
+    assert.equal('idempotencyKey' in requests[0].body, false);
+  });
 });
