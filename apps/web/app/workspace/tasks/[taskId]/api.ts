@@ -3,6 +3,7 @@
 import { useAuth } from '@clerk/nextjs';
 import { useCallback } from 'react';
 import { useWorkspaceSession } from '../../workspace-shell';
+import { connectionError } from '../../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -11,7 +12,7 @@ export function useTaskCollaborationApi(taskId: string) {
   const { workspace } = useWorkspaceSession();
   const request = useCallback(async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to its API. Check your local API setup.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/${taskId}/collaboration${path}`, {
       ...options,
       headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers },

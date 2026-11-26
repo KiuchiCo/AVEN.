@@ -9,6 +9,7 @@ import { TaskLabels } from '../task-labels';
 import { AssistantChat } from './assistant-chat';
 import { PageHeader, PillTabs } from '../ui';
 import { Icon } from '../home-icons';
+import { connectionError } from '../connection-error';
 
 type Briefing = {
   generatedAt: string;
@@ -46,7 +47,7 @@ export function IntelligenceWorkspace() {
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to its API. Check your local API setup.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}${path}`, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers } });
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string } | null;

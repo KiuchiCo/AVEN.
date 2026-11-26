@@ -8,7 +8,7 @@ import test from 'node:test';
  * instead of coming from the translation dictionary. The count may only go down. When you translate some, lower BASELINE; a new screen with hardcoded text fails here.
  * It is a heuristic (it can miss text, and a few hits are proper nouns), so it supports the translation work and does not replace it.
  */
-const BASELINE = 307;
+const BASELINE = 158;
 const root = new URL('../app/', import.meta.url).pathname;
 const skip = /i18n|error-reporting|global-error|auth-setup/;
 

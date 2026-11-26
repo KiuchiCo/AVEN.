@@ -116,13 +116,13 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
         <aside id="workspace-navigation" className={`workspace-sidebar${mobileOpen ? ' workspace-sidebar--open' : ''}`}>
           <button type="button" className="workspace-sidebar__collapse" onClick={toggleSidebar} aria-pressed={collapsed} aria-controls="workspace-navigation" aria-label={collapsed ? t('shell.expandNav') : t('shell.collapseNav')} title={collapsed ? t('shell.expandNav') : t('shell.collapseNav')}><NavIcon name="back" /></button>
           <div className="workspace-sidebar__brand">
-            <Link className="auth-brand__wordmark" href="/workspace" aria-label="AVEN home">AVEN<span>.</span></Link>
+            <Link className="auth-brand__wordmark" href="/workspace" aria-label={t('ws.home')}>AVEN<span>.</span></Link>
             <p>{t('shell.tagline')}</p>
           </div>
 
           <WorkspaceSwitcher session={session} />
 
-          <nav className="workspace-nav" aria-label="Workspace navigation">
+          <nav className="workspace-nav" aria-label={t('shell.navAria')}>
             {navigationGroups.map((group, index) => <div className="workspace-nav__group" key={group.label ?? 'main'}>
               {group.key && <p className="workspace-nav__label">{t(group.key)}</p>}
               {group.hrefs.map((href) => {
@@ -154,7 +154,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
           <header className="workspace-topbar">
             <div className="workspace-topbar__leading">
               <button className="workspace-menu-toggle" onClick={() => setMobileOpen((open) => !open)} aria-expanded={mobileOpen} aria-controls="workspace-navigation" aria-label={mobileOpen ? t('shell.closeNav') : t('shell.openNav')}><NavIcon name="menu" /></button>
-              <div className="workspace-history" role="group" aria-label="History">
+              <div className="workspace-history" role="group" aria-label={t('shell.history')}>
                 <button type="button" onClick={() => router.back()} aria-label={t('shell.back')}><NavIcon name="back" /></button>
                 <button type="button" onClick={() => window.history.forward()} aria-label={t('shell.forward')}><NavIcon name="forward" /></button>
               </div>
@@ -191,7 +191,7 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
           <main id="workspace-content" className="workspace-content" tabIndex={-1}>
             <OfflineBanner />
             <TaskSyncBanner />
-            {session.workspace.role === 'GUEST' && <p className="workspace-readonly-banner" role="status">Guest access is read-only. You can browse workspace information, but editing is disabled.</p>}
+            {session.workspace.role === 'GUEST' && <p className="workspace-readonly-banner" role="status">{t('shell.guest')}</p>}
             {ready ? <Fragment key={session.workspace.id}>{children}</Fragment> : <div className="ds-skeleton" aria-busy="true" aria-label={t('shell.loading')}><i /><i /><i /></div>}
           </main>
         </div>

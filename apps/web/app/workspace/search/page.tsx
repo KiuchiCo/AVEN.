@@ -7,6 +7,7 @@ import { useT } from '../../i18n';
 import type { Key } from '../../i18n/en';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
+import { connectionError } from '../connection-error';
 
 type SearchResult = { id: string; type: string; title: string; detail: string; href: string; updatedAt: string; labels?: string[] };
 type SearchResponse = { query: string; results: SearchResult[] };
@@ -72,7 +73,7 @@ export default function WorkspaceSearchPage() {
       void (async () => {
         try {
           const token = await getToken();
-          if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+          if (!token || !apiBase) throw connectionError(token);
           const response = await fetch(`${apiBase}/workspaces/${workspace.id}/search?q=${encodeURIComponent(trimmed)}`, { headers: { Authorization: `Bearer ${token}` } });
           if (!response.ok) {
             const body = await response.json().catch(() => null) as { message?: string } | null;

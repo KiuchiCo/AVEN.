@@ -1250,6 +1250,7 @@ button:hover > .block-icon, button.is-active > .block-icon, button[aria-selected
 @media (max-width: 720px) {
   /* a phone wraps the toolbar onto a second row instead of scrolling, so Bold, Italic, Underline, colour, lists and alignment are all in reach; the end group (mode, More, collapse) stays with the last row */
   .et-row-main { flex-wrap: wrap; overflow: visible; row-gap: 2px; }
+  .et-group { flex-wrap: wrap; max-width: 100%; row-gap: 2px; } /* a long group (block types, insert) wraps too, instead of running off a 375px screen */
   .et-group--end { position: static; margin-left: auto; box-shadow: none; }
   .et-spacer { display: none; }
 }

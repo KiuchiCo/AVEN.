@@ -12,6 +12,7 @@ import type { FileRecord } from '../../files/types';
 import { BlockIcon } from '../../block-icons';
 import { safeHref, type DatabaseView, type TabPane } from './editor-model';
 import { fitMap, parseCoordinate, worldPixel } from './map-math';
+import { connectionError } from '../../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -21,7 +22,7 @@ function useWorkspaceApi() {
   const { workspace } = useWorkspaceSession();
   return useCallback(async <T,>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}/workspaces/${workspace.id}${path}`, { method: init.method ?? 'GET', cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: init.body !== undefined ? JSON.stringify(init.body) : undefined });
     const body = await response.json().catch(() => null) as { message?: string } | null;
     if (!response.ok) throw new Error(body?.message ?? 'AVEN could not complete that request.');

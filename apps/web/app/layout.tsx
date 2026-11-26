@@ -14,6 +14,8 @@ import './redesign.css';
 const display = Playfair_Display({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-display', display: 'swap' });
 const interfaceFont = Inter({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-interface', display: 'swap' });
 
+const themeScript = "try{var t=localStorage.getItem('aven-theme');if(t==='light'||t==='dark'||t==='system')document.documentElement.dataset.theme=t}catch(e){}";
+
 export const metadata: Metadata = {
   title: 'AVEN.—Your entire world, organised.',
   description: 'A connected workspace for projects, documents, databases, and your day.',
@@ -31,9 +33,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
 
   return (
     <html lang="en" className={`${display.variable} ${interfaceFont.variable}`} suppressHydrationWarning>
+      {/* A plain head script, not next/script: beforeInteractive waits for the main bundle, which is after the first paint,
+          so a dark theme first painted light and then faded across. This runs before the body is drawn. */}
+      <head><script id="aven-theme" nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
       <body>
         <Script id="aven-time-zone" nonce={nonce} strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: timeZoneScript }} />
-        <Script id="aven-theme" nonce={nonce} strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('aven-theme');if(t==='light'||t==='dark'||t==='system')document.documentElement.dataset.theme=t}catch(e){}" }} />
         <ErrorReporting />
         <ServiceWorkerRegistration />
         {publishableKey ? <ClerkProvider publishableKey={publishableKey} nonce={nonce}>{children}</ClerkProvider> : children}

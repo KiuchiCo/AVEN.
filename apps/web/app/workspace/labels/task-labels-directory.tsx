@@ -7,6 +7,7 @@ import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
 import { Icon } from '../home-icons';
 import { EmptyState, PageHeader } from '../ui';
+import { connectionError } from '../connection-error';
 
 type LabelCount = { label: string; taskCount: number };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
@@ -23,7 +24,7 @@ export function TaskLabelsDirectory() {
     async function load() {
       try {
         const token = await getToken();
-        if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+        if (!token || !apiBase) throw connectionError(token);
         const response = await fetch(`${apiBase}/workspaces/${workspace.id}/tasks/labels`, { headers: { Authorization: `Bearer ${token}` } });
         if (!response.ok) throw new Error('Could not load task labels.');
         const next = await response.json() as LabelCount[];

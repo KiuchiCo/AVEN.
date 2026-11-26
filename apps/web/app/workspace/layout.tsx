@@ -1,7 +1,8 @@
 import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
+import { pickLanguage, translate } from '../i18n/core';
 import { AuthSetupNotice } from '../auth-setup-notice';
 import { WorkspaceShell } from './workspace-shell';
 
@@ -40,16 +41,20 @@ export default async function WorkspaceLayout({ children }: Readonly<{ children:
   }
 
   if (!session) {
+    // Without a session the saved language is unknown, so the browser's language is used.
+    const language = pickLanguage((await headers()).get('accept-language'));
+    const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+    const developing = process.env.NODE_ENV !== 'production';
     return (
-      <main className="workspace-unavailable">
-        <Link className="auth-brand__wordmark" href="/" aria-label="AVEN home">AVEN<span>.</span></Link>
-        <p className="auth-setup__eyebrow">Workspace setup</p>
-        <h1>Your account is ready.</h1>
-        <p>{expired ? 'Your sign-in needs refreshing before AVEN can load your workspace.' : 'AVEN could not load your workspace. Check that the API and local database are running, then try again.'}</p>
+      <main className="workspace-unavailable" lang={language}>
+        <Link className="auth-brand__wordmark" href="/" aria-label={t('ws.home')}>AVEN<span>.</span></Link>
+        <p className="auth-setup__eyebrow">{t('ws.eyebrow')}</p>
+        <h1>{expired ? t('ws.expiredTitle') : t('ws.unavailableTitle')}</h1>
+        <p>{expired ? t('ws.expired') : developing ? t('ws.unavailableDev') : t('ws.unavailable')}</p>
         {/* A full page load, not client navigation, so Clerk can refresh the session cookie first. */}
         {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-        <a className="workspace-unavailable__retry" href="/workspace">Try again</a>
-        <a className="workspace-link" href="/prototype.html">Open the design preview</a>
+        <a className="workspace-unavailable__retry" href="/workspace">{t('ws.retry')}</a>
+        {developing && <a className="workspace-link" href="/prototype.html">{t('ws.preview')}</a>}
       </main>
     );
   }

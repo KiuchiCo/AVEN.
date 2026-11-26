@@ -5,13 +5,20 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
+import { useT } from '../../i18n';
+import type { Key } from '../../i18n/en';
 import { FavouriteStar } from '../favourites';
 import { attachArrows, clampSize, normalizeBox, toWorld, zoomAt, type View } from './board-geometry';
 import { colorNames, defaults, palette, uid, type BoardDetail, type BoardElement, type Color, type EntityType, type Tool } from './board-types';
+import { connectionError } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
-const tools: { id: Tool; label: string }[] = [{ id: 'select', label: 'Select' }, { id: 'sticky', label: 'Note' }, { id: 'rect', label: 'Box' }, { id: 'ellipse', label: 'Oval' }, { id: 'text', label: 'Text' }, { id: 'arrow', label: 'Arrow' }, { id: 'pen', label: 'Pen' }, { id: 'card', label: 'Link' }];
-const entityPaths: Record<EntityType, { label: string; path: string; href: string }> = { TASK: { label: 'Task', path: 'tasks', href: '/workspace/tasks' }, DOCUMENT: { label: 'Document', path: 'documents', href: '/workspace/documents' }, PROJECT: { label: 'Project', path: 'projects', href: '/workspace/projects' } };
+const tools: Tool[] = ['select', 'sticky', 'rect', 'ellipse', 'text', 'arrow', 'pen', 'card'];
+const entityPaths: Record<EntityType, { path: string; href: string }> = { TASK: { path: 'tasks', href: '/workspace/tasks' }, DOCUMENT: { path: 'documents', href: '/workspace/documents' }, PROJECT: { path: 'projects', href: '/workspace/projects' } };
+/** Enter edits the selected element only from the canvas or its own entry in the contents list; on any other control it presses that control. */
+const enterEdits = (event: KeyboardEvent, id: string) => { const control = event.target instanceof Element ? event.target.closest('button, a') : null; return !control || (control as HTMLElement).dataset.id === id; };
+/** Keyboard nudge for the selected element, in board units; Shift moves it further. */
+const nudge = (event: KeyboardEvent) => (event.shiftKey ? 50 : 10);
 type Pick = { type: EntityType; items: { id: string; title: string }[]; filter: string; loading: boolean };
 type Gesture = { kind: 'pan'; sx: number; sy: number; view: View } | { kind: 'move'; id: string; px: number; py: number; orig: BoardElement } | { kind: 'resize'; id: string; px: number; py: number; orig: BoardElement } | { kind: 'draw'; id: string; px: number; py: number };
 type Conflict = BoardDetail | null;
@@ -19,6 +26,7 @@ type Conflict = BoardDetail | null;
 export function BoardEditor({ boardId }: { boardId: string }) {
   const { workspace } = useWorkspaceSession();
   const { getToken } = useAuth();
+  const t = useT();
   const readOnly = workspace.role === 'GUEST';
   const [name, setName] = useState('');
   const [elements, setElements] = useState<BoardElement[]>([]);
@@ -39,10 +47,12 @@ export function BoardEditor({ boardId }: { boardId: string }) {
   const latest = useRef({ elements, updatedAt });
   useEffect(() => { latest.current = { elements, updatedAt }; });
   const svg = useRef<SVGSVGElement>(null);
+  /** Set when the keyboard opened the text editor, so closing it puts focus back on that item's list entry. */
+  const returnFocus = useRef<string | null>(null);
 
   const call = useCallback(async (path: string, method = 'GET', body?: unknown) => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}/workspaces/${workspace.id}/whiteboards/${boardId}${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
     const json = await response.json().catch(() => null);
     return { response, json };
@@ -52,29 +62,29 @@ export function BoardEditor({ boardId }: { boardId: string }) {
     let live = true;
     void call('').then(({ response, json }) => {
       if (!live) return;
-      if (!response.ok) { setStatus(json?.message ?? 'Could not load this whiteboard.'); return; }
+      if (!response.ok) { setStatus(json?.message ?? t('wbe.loadFailed')); return; }
       const board = json as BoardDetail; setName(board.name); setElements(attachArrows(board.content.elements)); setUpdatedAt(board.updatedAt); setLoaded(true);
-    }).catch(() => live && setStatus('Could not load this whiteboard.'));
+    }).catch(() => live && setStatus(t('wbe.loadFailed')));
     return () => { live = false; };
-  }, [call]);
+  }, [call, t]);
 
   // Save a moment after the last change. A save never overwrites someone else's: a conflict asks first.
   useEffect(() => {
     if (!dirty || readOnly || conflict) return;
     const timer = setTimeout(async () => {
       const sent = latest.current;
-      setStatus('Saving…');
+      setStatus(t('wbe.saving'));
       try {
         const { response, json } = await call('', 'PATCH', { elements: sent.elements, baseUpdatedAt: sent.updatedAt });
         if (response.status === 409) { setConflict(json.current as BoardDetail); setStatus(''); return; }
-        if (!response.ok) { setStatus(json?.message ?? 'Could not save. Your changes are still here.'); return; }
+        if (!response.ok) { setStatus(json?.message ?? t('wbe.saveFailed')); return; }
         setUpdatedAt((json as BoardDetail).updatedAt);
         if (latest.current.elements === sent.elements) setDirty(false);
-        setStatus('Saved');
-      } catch { setStatus('Could not save. Your changes are still here.'); }
+        setStatus(t('wbe.saved'));
+      } catch { setStatus(t('wbe.saveFailed')); }
     }, 1200);
     return () => clearTimeout(timer);
-  }, [dirty, elements, updatedAt, readOnly, conflict, call]);
+  }, [dirty, elements, updatedAt, readOnly, conflict, call, t]);
 
   const commit = useCallback((next: BoardElement[], remember = true) => {
     if (remember) history.current = [...history.current.slice(-49), latest.current.elements];
@@ -86,13 +96,23 @@ export function BoardEditor({ boardId }: { boardId: string }) {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (editing || readOnly || (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA'].includes(event.target.tagName))) return;
+      if (event.key === 'Escape' && pick) { setPick(null); document.querySelector<HTMLElement>('.board-tools [data-tool="card"]')?.focus(); return; }
+      if (editing || readOnly || (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName))) return;
       if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); remove(); }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); undo(); }
       if (event.key === 'Escape') { setTool('select'); setSelected(null); }
+      // Keyboard alternative to dragging: arrows move the selected element, Enter edits its text.
+      const target = selected ? latest.current.elements.find((item) => item.id === selected) : undefined;
+      if (!target || event.metaKey || event.ctrlKey || event.altKey) return;
+      const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+      if (step) {
+        event.preventDefault();
+        const dx = step[0] * nudge(event), dy = step[1] * nudge(event);
+        commit(latest.current.elements.map((item) => (item.id !== target.id ? item : { ...item, x: item.x + dx, y: item.y + dy, ...(item.points ? { points: item.points.map(([x, y]) => [x + dx, y + dy] as [number, number]) } : {}), ...(item.type === 'arrow' ? { from: undefined, to: undefined } : {}) })));
+      } else if (event.key === 'Enter' && enterEdits(event, target.id) && target.type !== 'arrow' && target.type !== 'pen' && target.type !== 'card') { event.preventDefault(); returnFocus.current = target.id; setEditing(target.id); }
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
-  }, [editing, readOnly, remove, undo]);
+  }, [editing, readOnly, remove, undo, pick, selected, commit]);
 
   const point = (event: { clientX: number; clientY: number }): [number, number] => {
     const rect = svg.current!.getBoundingClientRect(); return toWorld(view, event.clientX - rect.left, event.clientY - rect.top);
@@ -165,7 +185,8 @@ export function BoardEditor({ boardId }: { boardId: string }) {
   const select = elements.find((item) => item.id === selected);
   const editingElement = elements.find((item) => item.id === editing);
   const stroke = (item: BoardElement) => palette[item.color].line;
-  const body = (item: BoardElement) => item.type === 'arrow' || item.type === 'pen' ? null : item.type === 'card' ? <foreignObject x={item.x} y={item.y} width={item.w} height={item.h} pointerEvents="none"><div className="board-card"><small>{item.entity ? entityPaths[item.entity.type].label : 'Link'}</small><strong>{item.text}</strong></div></foreignObject> : <foreignObject x={item.x} y={item.y} width={item.w} height={item.h} pointerEvents="none"><div className={`board-text board-text--${item.type}`}>{item.text}</div></foreignObject>;
+  const describe = (item: BoardElement) => { const kind = item.type === 'card' && item.entity ? t(`wbe.ent.${item.entity.type}` as Key) : t(`wbe.tool.${item.type}` as Key); const text = item.text?.trim(); return text ? `${kind}: ${text.slice(0, 80)}` : kind; };
+  const body = (item: BoardElement) => item.type === 'arrow' || item.type === 'pen' ? null : item.type === 'card' ? <foreignObject x={item.x} y={item.y} width={item.w} height={item.h} pointerEvents="none"><div className="board-card"><small>{item.entity ? t(`wbe.ent.${item.entity.type}` as Key) : t('wbe.tool.card')}</small><strong>{item.text}</strong></div></foreignObject> : <foreignObject x={item.x} y={item.y} width={item.w} height={item.h} pointerEvents="none"><div className={`board-text board-text--${item.type}`}>{item.text}</div></foreignObject>;
 
   async function openPicker(type: EntityType) {
     setPick({ type, items: [], filter: '', loading: true });
@@ -173,7 +194,7 @@ export function BoardEditor({ boardId }: { boardId: string }) {
       const token = await getToken();
       const response = await fetch(`${apiBase}/workspaces/${workspace.id}/${entityPaths[type].path}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       const rows = response.ok ? await response.json() as { id: string; title?: string; name?: string }[] : [];
-      setPick((current) => (current && current.type === type ? { ...current, loading: false, items: rows.map((row) => ({ id: row.id, title: row.title ?? row.name ?? 'Untitled' })).slice(0, 200) } : current));
+      setPick((current) => (current && current.type === type ? { ...current, loading: false, items: rows.map((row) => ({ id: row.id, title: row.title ?? row.name ?? t('wbe.untitled') })).slice(0, 200) } : current));
     } catch { setPick((current) => (current ? { ...current, loading: false } : current)); }
   }
   function placeCard(entry: { id: string; title: string }) {
@@ -185,43 +206,49 @@ export function BoardEditor({ boardId }: { boardId: string }) {
   }
 
   function renameBoard() {
-    const next = window.prompt('Rename whiteboard', name)?.trim(); if (!next || next === name) return;
-    void call('', 'PATCH', { name: next }).then(({ response, json }) => { if (response.ok) setName(next); else setStatus(json?.message ?? 'Could not rename.'); });
+    const next = window.prompt(t('wbe.renamePrompt'), name)?.trim(); if (!next || next === name) return;
+    void call('', 'PATCH', { name: next }).then(({ response, json }) => { if (response.ok) setName(next); else setStatus(json?.message ?? t('wbe.renameFailed')); });
   }
 
-  if (!loaded) return <section className="workspace-settings-page"><p>{status || 'Loading…'}</p><Link href="/workspace/whiteboards">Back to whiteboards</Link></section>;
+  if (!loaded) return <section className="workspace-settings-page"><p role="status">{status || t('wbe.loading')}</p><Link href="/workspace/whiteboards">{t('wbe.back')}</Link></section>;
   return <section className="board">
     <header className="board-bar">
-      <Link href="/workspace/whiteboards">← Whiteboards</Link>
+      <Link href="/workspace/whiteboards" aria-label={t('wbe.back')}>← {t('wbe.backShort')}</Link>
       <h1>{name}</h1>
-      {!readOnly && <button onClick={renameBoard}>Rename</button>}
+      {!readOnly && <button type="button" onClick={renameBoard}>{t('wbe.rename')}</button>}
       <FavouriteStar kind="WHITEBOARD" entityId={boardId} />
-      <span className="board-status" role="status">{readOnly ? 'View only' : status}</span>
+      <span className="board-status" role="status">{readOnly ? t('wbe.viewOnly') : status}</span>
     </header>
-    {!readOnly && <div className="board-tools" role="toolbar" aria-label="Whiteboard tools">
-      {tools.map((item) => <button key={item.id} aria-pressed={item.id === 'card' ? pick !== null : tool === item.id} onClick={() => (item.id === 'card' ? void openPicker('TASK') : setTool(item.id))}>{item.label}</button>)}
+    {!readOnly && <div className="board-tools" role="toolbar" aria-label={t('wbe.tools')}>
+      {tools.map((id) => <button type="button" key={id} data-tool={id} aria-pressed={id === 'card' ? pick !== null : tool === id} onClick={() => (id === 'card' ? void openPicker('TASK') : setTool(id))}>{t(`wbe.tool.${id}` as Key)}</button>)}
       <span className="board-sep" />
-      {colorNames.map((name) => <button key={name} className="board-swatch" aria-label={`Colour ${name}`} aria-pressed={color === name} style={{ background: palette[name].fill, borderColor: palette[name].line }} onClick={() => { setColor(name); if (selected) { commit(latest.current.elements.map((item) => (item.id === selected ? { ...item, color: name } : item))); } }} />)}
+      {colorNames.map((name) => <button key={name} className="board-swatch" type="button" aria-label={t('wbe.colour', { name: t(`wbe.c.${name}` as Key) })} aria-pressed={color === name} style={{ background: palette[name].fill, borderColor: palette[name].line }} onClick={() => { setColor(name); if (selected) { commit(latest.current.elements.map((item) => (item.id === selected ? { ...item, color: name } : item))); } }} />)}
       <span className="board-sep" />
-      <button onClick={undo} >Undo</button>
-      <button onClick={remove} disabled={!selected}>Delete</button>
-      {select?.type === 'card' && select.entity && <Link className="board-open" href={`${entityPaths[select.entity.type].href}/${select.entity.id}`}>Open {entityPaths[select.entity.type].label.toLowerCase()} ↗</Link>}
+      <button type="button" onClick={undo}>{t('wbe.undo')}</button>
+      <button type="button" onClick={remove} disabled={!selected}>{t('wbe.delete')}</button>
+      {select?.type === 'card' && select.entity && <Link className="board-open" href={`${entityPaths[select.entity.type].href}/${select.entity.id}`}>{t(`wbe.open.${select.entity.type}` as Key)} ↗</Link>}
       <span className="board-sep" />
-      <button onClick={() => setView((current) => zoomAt(current, 400, 250, 1 / 1.2))} aria-label="Zoom out">−</button>
-      <span>{Math.round(view.k * 100)}%</span>
-      <button onClick={() => setView((current) => zoomAt(current, 400, 250, 1.2))} aria-label="Zoom in">+</button>
+      <button type="button" onClick={() => setView((current) => zoomAt(current, 400, 250, 1 / 1.2))} aria-label={t('wbe.zoomOut')}>−</button>
+      <span aria-label={t('wbe.zoom', { n: Math.round(view.k * 100) })}>{Math.round(view.k * 100)}%</span>
+      <button type="button" onClick={() => setView((current) => zoomAt(current, 400, 250, 1.2))} aria-label={t('wbe.zoomIn')}>+</button>
     </div>}
-    {conflict && <div className="board-conflict" role="alert"><span>Someone else changed this whiteboard while you were editing.</span>
-      <button onClick={() => { setElements(conflict.content.elements); setUpdatedAt(conflict.updatedAt); setConflict(null); setDirty(false); history.current = []; }}>Load their version</button>
-      <button onClick={() => { setUpdatedAt(conflict.updatedAt); setConflict(null); }}>Keep mine</button></div>}
-    {pick && <div className="board-picker" role="dialog" aria-label="Link to something in this workspace">
-      <div role="group" aria-label="What to link">{(Object.keys(entityPaths) as EntityType[]).map((type) => <button key={type} aria-pressed={pick.type === type} onClick={() => void openPicker(type)}>{entityPaths[type].label}s</button>)}</div>
-      <input value={pick.filter} placeholder={`Find a ${entityPaths[pick.type].label.toLowerCase()}`} aria-label="Filter" onChange={(event) => setPick({ ...pick, filter: event.target.value })} autoFocus />
-      <ul>{pick.loading ? <li>Loading…</li> : pick.items.filter((entry) => entry.title.toLowerCase().includes(pick.filter.toLowerCase())).slice(0, 8).map((entry) => <li key={entry.id}><button onClick={() => placeCard(entry)}>{entry.title}</button></li>)}</ul>
-      <button onClick={() => setPick(null)}>Cancel</button>
+    {conflict && <div className="board-conflict" role="alert"><span>{t('wbe.conflict')}</span>
+      <button type="button" onClick={() => { setElements(conflict.content.elements); setUpdatedAt(conflict.updatedAt); setConflict(null); setDirty(false); history.current = []; }}>{t('wbe.loadTheirs')}</button>
+      <button type="button" onClick={() => { setUpdatedAt(conflict.updatedAt); setConflict(null); }}>{t('wbe.keepMine')}</button></div>}
+    {pick && <div className="board-picker" role="dialog" aria-label={t('wbe.pickTitle')}>
+      <div role="group" aria-label={t('wbe.pickWhat')}>{(Object.keys(entityPaths) as EntityType[]).map((type) => <button type="button" key={type} aria-pressed={pick.type === type} onClick={() => void openPicker(type)}>{t(`wbe.ents.${type}` as Key)}</button>)}</div>
+      <input value={pick.filter} placeholder={t(`wbe.find.${pick.type}` as Key)} aria-label={t(`wbe.find.${pick.type}` as Key)} onChange={(event) => setPick({ ...pick, filter: event.target.value })} autoFocus />
+      <ul>{pick.loading ? <li role="status">{t('wbe.loading')}</li> : pick.items.filter((entry) => entry.title.toLowerCase().includes(pick.filter.toLowerCase())).slice(0, 8).map((entry) => <li key={entry.id}><button type="button" onClick={() => placeCard(entry)}>{entry.title}</button></li>)}</ul>
+      <button type="button" onClick={() => setPick(null)}>{t('wbe.cancel')}</button>
     </div>}
     <div className="board-canvas">
-      <svg ref={svg} role="application" aria-label="Whiteboard canvas" onPointerDown={down} onPointerMove={move} onPointerUp={up} onWheel={wheel} onDoubleClick={(event) => { const id = (event.target as Element).closest<SVGElement>('[data-id]')?.dataset.id; const item = elements.find((entry) => entry.id === id); if (item?.type === 'card' && item.entity) { router.push(`${entityPaths[item.entity.type].href}/${item.entity.id}`); return; } if (!readOnly && item && item.type !== 'arrow' && item.type !== 'pen') setEditing(item.id); }} style={{ cursor: tool === 'select' ? 'default' : 'crosshair' }}>
+      {/* The canvas is drawn for pointers. This list is its keyboard and screen-reader way in: it shows while it has focus. */}
+      {elements.length > 0 && <nav className="board-outline" aria-label={t('wbe.contents')}>
+        <ul>{elements.map((item) => <li key={item.id}><button type="button" data-id={item.id} aria-pressed={selected === item.id} onClick={() => { setSelected(item.id); setColor(item.color); setTool('select'); }}>{describe(item)}</button></li>)}</ul>
+        {!readOnly && <p>{t('wbe.keysHint')}</p>}
+      </nav>}
+      <p className="visually-hidden" role="status">{select ? t('wbe.selected', { item: describe(select) }) : ''}</p>
+      <svg ref={svg} role="img" aria-label={t('wbe.canvas', { n: elements.length })} onPointerDown={down} onPointerMove={move} onPointerUp={up} onWheel={wheel} onDoubleClick={(event) => { const id = (event.target as Element).closest<SVGElement>('[data-id]')?.dataset.id; const item = elements.find((entry) => entry.id === id); if (item?.type === 'card' && item.entity) { router.push(`${entityPaths[item.entity.type].href}/${item.entity.id}`); return; } if (!readOnly && item && item.type !== 'arrow' && item.type !== 'pen') setEditing(item.id); }} style={{ cursor: tool === 'select' ? 'default' : 'crosshair' }}>
         <defs>{colorNames.map((name) => <marker key={name} id={`arrow-${name}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill={palette[name].line} /></marker>)}</defs>
         <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
           {elements.map((item) => <g key={item.id} data-id={item.id}>
@@ -237,8 +264,9 @@ export function BoardEditor({ boardId }: { boardId: string }) {
           {select && !readOnly && (() => { const box = select.type === 'arrow' ? normalizeBox(select) : select; const hx = select.type === 'arrow' ? select.x + select.w : box.x + box.w; const hy = select.type === 'arrow' ? select.y + select.h : box.y + box.h; return <g pointerEvents="none"><rect x={box.x - 4} y={box.y - 4} width={box.w + 8} height={box.h + 8} fill="none" stroke="var(--aven-bronze)" strokeDasharray="5 4" />{select.type !== 'pen' && <rect data-id={select.id} data-handle="1" pointerEvents="all" x={hx - 6} y={hy - 6} width={12} height={12} rx={3} fill="var(--aven-bronze)" style={{ cursor: 'nwse-resize' }} />}</g>; })()}
         </g>
       </svg>
-      {editingElement && <textarea className="board-editing" autoFocus aria-label="Edit text" defaultValue={editingElement.text ?? ''} maxLength={2000} style={{ left: view.x + editingElement.x * view.k, top: view.y + editingElement.y * view.k, width: editingElement.w * view.k, height: editingElement.h * view.k, fontSize: 15 * view.k }}
-        onBlur={(event) => { const text = event.target.value; commit(latest.current.elements.map((item) => (item.id === editingElement.id ? { ...item, text } : item))); setEditing(null); }}
+      {editingElement && <textarea className="board-editing" autoFocus aria-label={t('wbe.editText')} defaultValue={editingElement.text ?? ''} maxLength={2000} style={{ left: view.x + editingElement.x * view.k, top: view.y + editingElement.y * view.k, width: editingElement.w * view.k, height: editingElement.h * view.k, fontSize: 15 * view.k }}
+        onBlur={(event) => { const text = event.target.value; commit(latest.current.elements.map((item) => (item.id === editingElement.id ? { ...item, text } : item))); setEditing(null);
+          const back = returnFocus.current; returnFocus.current = null; if (back) window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`.board-outline button[data-id="${back}"]`)?.focus()); }}
         onKeyDown={(event) => { if (event.key === 'Escape') (event.target as HTMLTextAreaElement).blur(); }} />}
     </div>
   </section>;

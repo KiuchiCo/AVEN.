@@ -12,6 +12,7 @@ import { TaskBadges } from './task-badges';
 import { Icon, type IconName } from './home-icons';
 import { EmptyState, PageHeader, Panel, PillTabs, Pill, StatCard, StatRow } from './ui';
 import { ago } from './relative-time';
+import { connectionError } from './connection-error';
 
 type TaskRecord = {
   id: string;
@@ -50,7 +51,7 @@ function useWorkspaceProductivity() {
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}${path}`, {
       ...options,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers },
@@ -270,7 +271,7 @@ export function InboxWorkspace() {
 
   const fetchUpdates = useCallback(async () => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity/inbox`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
     if (!response.ok) throw new Error('Could not load workspace updates.');
     return response.json();

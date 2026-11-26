@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useT } from '../../i18n';
 import { useWorkspaceSession } from '../workspace-shell';
 import { PageHeader } from '../ui';
+import { connectionError } from '../connection-error';
 
 type LinkedRecord = { id: string; name?: string; title?: string };
 type KnowledgeItem = { id: string; title: string; content: string; sourceUrl: string | null; tags: string[]; isPinned: boolean; archivedAt: string | null; updatedAt: string; createdBy: { displayName: string }; project: LinkedRecord | null; document: LinkedRecord | null; task: LinkedRecord | null; _count: { versions: number } };
@@ -42,7 +43,7 @@ export function KnowledgeHub() {
 
   const request = useCallback(async (path: string, options: RequestInit = {}) => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}${path}`, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers } });
     if (!response.ok) { const body = await response.json().catch(() => null) as { message?: string } | null; throw new Error(body?.message ?? 'AVEN could not complete that request.'); }
     return response.json();

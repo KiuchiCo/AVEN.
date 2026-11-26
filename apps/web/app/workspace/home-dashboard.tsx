@@ -9,6 +9,7 @@ import type { Key } from '../i18n/en';
 import { Icon } from './home-icons';
 import { ago } from './relative-time';
 import { useWorkspaceSession } from './workspace-shell';
+import { connectionError } from './connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -32,7 +33,6 @@ const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-d
 const longDate = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 const shortDate = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 const dayMonth = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
-const priorityLabel: Record<string, string> = { URGENT: 'Urgent', HIGH: 'High', MEDIUM: 'Medium', LOW: 'Low' };
 
 function activityLink(entityType: string, entityId: string) {
   if (entityType.startsWith('TASK')) return `/workspace/tasks/${entityId}`;
@@ -62,7 +62,7 @@ export function HomeDashboard() {
 
   const request = useCallback(async (path: string, init?: RequestInit) => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, cache: 'no-store' });
     const body = await response.json().catch(() => null);
     if (!response.ok) throw new Error(body?.message ?? 'AVEN could not complete that request.');
@@ -136,7 +136,7 @@ export function HomeDashboard() {
               {summary.myTasks.length === 0 ? <p className="home-empty">{t('home.noTasks')}</p> : <ul className="home-tasks">{summary.myTasks.slice(0, 5).map((task) => <li key={task.id}>
                 <button type="button" className="home-check" aria-label={`Mark “${task.title}” complete`} onClick={() => void complete(task.id)} />
                 <Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link>
-                <span className={`home-pill home-pill--${task.priority.toLowerCase()}`}>{priorityLabel[task.priority] ?? task.priority}</span>
+                <span className={`home-pill home-pill--${task.priority.toLowerCase()}`}>{['URGENT', 'HIGH', 'MEDIUM', 'LOW'].includes(task.priority) ? t(`prio.${task.priority.toLowerCase()}` as Key).replace(/^./, (c) => c.toLocaleUpperCase()) : task.priority}</span>
                 <span className="home-tasks__due">{dueLabel(task.dueAt, today)}</span>
               </li>)}</ul>}
             </article>}

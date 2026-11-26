@@ -9,6 +9,7 @@ import { useWorkspaceSession } from '../workspace-shell';
 import { Icon, type IconName } from '../home-icons';
 import { EmptyState, PageHeader, Panel, Pill, StatCard, StatRow } from '../ui';
 import { ago } from '../relative-time';
+import { connectionError } from '../connection-error';
 
 type ActivityEntry = { id: string; entityType: string; entityId: string; message: string; createdAt: string; actor: { id?: string; displayName: string } };
 const typeIcons: Record<string, IconName> = { PROJECT: 'layers', TASK: 'tasks', TASK_COMMENT: 'chat', TASK_CHECKLIST: 'tasks', MILESTONE: 'flag', DOCUMENT: 'doc', KNOWLEDGE: 'doc', CALENDAR: 'calendar', WORKSPACE: 'users' };
@@ -37,7 +38,7 @@ export default function ActivityPage() {
     async function load() {
       try {
         const token = await getToken();
-        if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+        if (!token || !apiBase) throw connectionError(token);
         const response = await fetch(`${apiBase}/workspaces/${workspace.id}/activity`, { headers: { Authorization: `Bearer ${token}` } });
         if (!response.ok) throw new Error('Could not load workspace activity.');
         const savedEntries = await response.json() as ActivityEntry[];

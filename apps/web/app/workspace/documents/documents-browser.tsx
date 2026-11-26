@@ -13,6 +13,7 @@ import { BulkBar, Breadcrumbs, EntryList, ViewSwitcher, type Entry, type MenuAct
 import { CreateDocumentModal, FiltersPanel, MoveDialog, NameDialog, sortLabel } from './library-dialogs';
 import { downloadExport } from './download-export';
 import { VIEW_KEY, advancedCount, canBulkDownload, browse, noAdvanced, nextSort, pathLabel, pathTo, readView, type Advanced, type DocRecord, type FolderRecord, type NavFilter, type SortKey } from './library-model';
+import { connectionError } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? '';
 type Dialog = { kind: 'create' } | { kind: 'newFolder' } | { kind: 'renameDoc'; doc: DocRecord } | { kind: 'renameFolder'; folder: FolderRecord } | { kind: 'move'; ids: string[]; folder?: FolderRecord } | { kind: 'deleteDocs'; ids: string[] } | { kind: 'deleteFolder'; folder: FolderRecord };
@@ -86,7 +87,7 @@ export function DocumentsBrowser() {
 
   async function exportDoc(doc: DocRecord, format: 'pdf' | 'docx') {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+    if (!token || !apiBase) throw connectionError(token);
     const name = await downloadExport({ apiBase, workspaceId: workspace.id, documentId: doc.id, title: doc.title, format, token });
     flash(t('ed.exported', { name }));
   }

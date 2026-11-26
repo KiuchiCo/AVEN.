@@ -24,6 +24,7 @@ import { isLocalId, readLocalDocument, removeLocalDocument } from './local-docum
 import { draftKey, readDraft, removeDraft, writeDraft } from './offline-draft';
 
 import type { Block } from './editor-model';
+import { connectionError } from '../../connection-error';
 type Document = { id: string; title: string; content: string; updatedAt: string; project: { id: string; name: string } | null };
 type Version = { id: string; title: string; label: string | null; createdAt: string; createdBy: { displayName: string } };
 type Comment = { id: string; body: string; createdAt: string; resolvedAt: string | null; blockId: string | null; quote: string | null; parentId: string | null; createdBy: { id: string; displayName: string } };
@@ -103,7 +104,7 @@ export default function DocumentEditorPage() {
     let token: string | null = null;
     try { token = await getToken(); } catch { throw new OfflineError('offline'); }
     if (!token && typeof navigator !== 'undefined' && !navigator.onLine) throw new OfflineError('offline');
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+    if (!token || !apiBase) throw connectionError(token);
     let response: Response;
     try { response = await fetch(`${apiBase}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } }); }
     catch { throw new OfflineError('offline'); }

@@ -9,6 +9,7 @@ import type { Key } from '../../i18n/en';
 import { useWorkspaceSession } from '../workspace-shell';
 import { AgentsPanel, type AgentInfo } from './agents-panel';
 import { encodeBlocks, textToBlocks, titleFromText } from './text-to-blocks';
+import { connectionError } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 const actionLabels: Record<string, Key> = { create_task: 'as.proposedTask', update_task: 'as.proposedChange', create_document: 'as.proposedDocument', create_event: 'as.proposedEvent' };
@@ -43,7 +44,7 @@ export function AssistantChat() {
 
   const call = useCallback(async <T,>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${base}${path}`, { method: init.method ?? 'GET', cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: init.body !== undefined ? JSON.stringify(init.body) : undefined });
     const body = await response.json().catch(() => null);
     if (!response.ok) throw new Error((body as { message?: string } | null)?.message ?? 'AVEN could not complete that request.');

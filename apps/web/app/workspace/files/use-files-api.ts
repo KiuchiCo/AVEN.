@@ -4,6 +4,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useCallback } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import type { FileRecord } from './types';
+import { connectionError } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -19,7 +20,7 @@ export function useFilesApi() {
 
   const authorised = useCallback(async () => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+    if (!token || !apiBase) throw connectionError(token);
     return { Authorization: `Bearer ${token}` };
   }, [getToken]);
 

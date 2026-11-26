@@ -2,6 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { connectionError } from './connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export type FavouriteKind = 'PROJECT' | 'DOCUMENT' | 'DATABASE' | 'WHITEBOARD';
@@ -16,7 +17,7 @@ export function FavouritesProvider({ workspaceId, children }: { workspaceId: str
   const { getToken } = useAuth();
   const [items, setItems] = useState<Favourite[]>([]);
   const request = useCallback(async (method: string, body?: unknown) => {
-    const token = await getToken(); if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+    const token = await getToken(); if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}/workspaces/${workspaceId}/favourites`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
     const json = await response.json().catch(() => null);
     if (!response.ok) throw new Error(json?.message ?? 'AVEN could not complete that request.');

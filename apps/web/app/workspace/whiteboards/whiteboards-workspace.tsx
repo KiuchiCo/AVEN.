@@ -11,6 +11,7 @@ import { EmptyState, PageHeader, Panel } from '../ui';
 import { attachArrows } from './board-geometry';
 import { buildTemplate, templateOptions, type TemplateKey } from './board-templates';
 import type { BoardSummary } from './board-types';
+import { connectionError } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
@@ -30,7 +31,7 @@ export function WhiteboardsWorkspace() {
 
   const call = useCallback(async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}/workspaces/${workspace.id}/whiteboards${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
     const json = await response.json().catch(() => null);
     if (!response.ok) throw new Error(json?.message ?? 'AVEN could not complete that request.');

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '../../../../i18n';
 import { useState } from 'react';
 import type { TaskCollaborationTab } from '../lib/task-collaboration-tabs';
 import type { TaskSummary, WorkspaceMember } from '../types';
@@ -21,5 +22,6 @@ export function TaskDetailView({ task, currentUserId, members, projectTasks, bus
   return <div className="workspace-section-page task-detail"><TaskDetailHeader task={task} />{errorMessage && <TaskDetailError message={errorMessage} />}<TaskQuickActions task={task} busy={busy} onUpdate={onUpdate} onDuplicate={onDuplicate} onDelete={onDelete} /><TaskEditPanel task={task} members={members} busy={busy} onSave={onUpdate} /><AttachmentsPanel target={{ taskId: task.id }} /><TaskSummaryCard task={task} /><TaskSubtasksPanel task={task} busy={busy} onAdd={onAddSubtask} onToggle={onToggleSubtask} /><TaskRepeatPanel key={`${task.recurrence}-${task.recurrenceInterval}-${task.recurrenceUntil}-${task.dueAt}`} task={task} busy={busy} onSave={onUpdate} /><div className="task-detail__layout"><div><TaskDetailNav active={tab} onChange={setTab} /><TaskCollaborationPanel key={`${task.id}-${tab}`} taskId={task.id} currentUserId={currentUserId} members={members} tab={tab} /></div><aside><TaskDependenciesPanel task={task} tasks={projectTasks} busy={busy} onSave={onSaveDependencies} /><TaskFollowersPanel taskId={task.id} currentUserId={currentUserId} members={members} /><TaskDetailAside task={task} /></aside></div></div>;
 }
 function TaskDetailAside({ task }: { task: TaskSummary }) {
-  return <section className="task-detail__aside"><p className="workspace-eyebrow">Task context</p><h2>Keep the next step clear</h2><p>Use the discussion for decisions, the checklist for work items, and Follow task to stay current.</p>{task.project && <p><strong>Project</strong><br /><a href={`/workspace/projects/${task.project.id}`}>{task.project.name}</a></p>}</section>;
+  const t = useT();
+  return <section className="task-detail__aside"><p className="workspace-eyebrow">{t('td.context')}</p><h2>{t('td.contextTitle')}</h2><p>{t('td.contextText')}</p>{task.project && <p><strong>{t('td.project')}</strong><br /><a href={`/workspace/projects/${task.project.id}`}>{task.project.name}</a></p>}</section>;
 }

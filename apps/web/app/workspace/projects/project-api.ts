@@ -3,6 +3,7 @@
 import { useAuth } from '@clerk/nextjs';
 import { useCallback } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
+import { connectionError } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export type Request = <T = unknown>(path: string, options?: RequestInit) => Promise<T>;
@@ -13,7 +14,7 @@ export function useProjectApi() {
   const { workspace, user } = useWorkspaceSession();
   const request = useCallback<Request>(async (path, options = {}) => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API. Check your local API setup.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}/workspaces/${workspace.id}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } });
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { message?: string } | null;

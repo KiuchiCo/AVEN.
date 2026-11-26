@@ -12,6 +12,7 @@ import { MessageBody } from './message-body';
 import { readEvents } from './sse';
 import { Icon } from '../home-icons';
 import { Avatar, EmptyState, PillTabs } from '../ui';
+import { connectionError } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export type Channel = { id: string; kind: 'CHANNEL' | 'DIRECT' | 'GROUP'; name: string | null; topic: string; unread: number; participants: Participant[] };
@@ -51,7 +52,7 @@ export function MessagesWorkspace() {
 
   const call = useCallback(async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
     const token = await getToken();
-    if (!token || !apiBase) throw new Error('AVEN could not connect to the API.');
+    if (!token || !apiBase) throw connectionError(token);
     const response = await fetch(`${apiBase}/workspaces/${workspace.id}/channels${path}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
     const json = await response.json().catch(() => null);
     if (!response.ok) throw new Error(json?.message ?? 'AVEN could not complete that request.');
