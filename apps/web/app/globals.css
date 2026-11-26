@@ -4010,3 +4010,8 @@ html[data-native] input, html[data-native] textarea, html[data-native] select { 
 .knowledge-compose__row :is(input, select, textarea), .calendar-repeat-fields :is(input, select, textarea), .productivity-form__row :is(input, select, textarea) { width: 100%; min-width: 0; box-sizing: border-box; }
 /* On iPad the sidebar is always visible, so it also stays clear of the status bar. */
 .workspace-sidebar { padding-top: calc(24px + env(safe-area-inset-top)); }
+
+/* Connected apps: the checkbox keeps its own size, so its label sits next to it on one line instead of wrapping beside a wide input. */
+.connection-toggle { flex: 0 1 auto; white-space: nowrap; }
+.connection-toggle input[type='checkbox'] { flex: none; width: 16px; min-width: 16px; height: 16px; margin: 0; padding: 0; }
+@media (max-width: 560px) { .connection-toggle { white-space: normal; } }

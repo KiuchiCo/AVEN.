@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { CalendarSyncService } from '../calendar-sync/calendar-sync.service.js';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { DocumentEvents } from './document-events.js';
 import { TextSessions } from './text-sessions.js';
 import { PermissionsService } from '../billing/permissions.service.js';
@@ -44,7 +45,7 @@ function previewContent(content: string): string {
 
 @Injectable()
 export class ProductivityService {
-  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService, private readonly documentEvents: DocumentEvents, private readonly textSessions: TextSessions) {}
+  constructor(private readonly prisma: PrismaService, private readonly automations: AutomationsService, private readonly triggers: WorkflowTriggersService, private readonly entitlements: EntitlementsService, private readonly permissions: PermissionsService, private readonly documentEvents: DocumentEvents, private readonly textSessions: TextSessions, @Optional() private readonly calendarSync?: CalendarSyncService) {}
 
   async listProjects(identity: AuthenticatedIdentity, workspaceId: string) {
     const actor = await this.projectActor(identity, workspaceId);
@@ -1205,6 +1206,13 @@ export class ProductivityService {
     return document;
   }
 
+  /** One small aggregate: how many events there are and when the newest change happened. Adding, editing or deleting any event changes the pair. */
+  async calendarRevision(identity: AuthenticatedIdentity, workspaceId: string) {
+    await this.requireMembership(identity, workspaceId);
+    const { _count, _max } = await this.prisma.calendarEvent.aggregate({ where: { workspaceId }, _count: { _all: true }, _max: { updatedAt: true } });
+    return { revision: `${_count._all}-${_max.updatedAt?.getTime() ?? 0}` };
+  }
+
   async listCalendarEvents(identity: AuthenticatedIdentity, workspaceId: string) {
     const userId = await this.requireMembership(identity, workspaceId);
     const [events, hidden] = await Promise.all([this.prisma.calendarEvent.findMany({
@@ -1305,6 +1313,7 @@ export class ProductivityService {
       include: { task: { select: { id: true, title: true } }, project: { select: { id: true, name: true } } },
     });
     await this.recordActivity(workspaceId, actorId, 'CALENDAR', event.id, `${recurrence ? 'scheduled a recurring series' : 'scheduled'} “${event.title}”`);
+    this.calendarSync?.requestPush(workspaceId);
     return event;
   }
 
@@ -1354,6 +1363,7 @@ export class ProductivityService {
     }
     const updated = await this.prisma.calendarEvent.findFirstOrThrow({ where: { id: eventId, workspaceId }, include });
     await this.recordActivity(workspaceId, actorId, 'CALENDAR', eventId, `updated ${updated.recurrence ? 'recurring series' : 'event'} “${updated.title}”`);
+    this.calendarSync?.requestPush(workspaceId);
     return updated;
   }
 
@@ -1399,6 +1409,7 @@ export class ProductivityService {
       this.prisma.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'CALENDAR', entityId: eventId, message: `removed ${event.recurrence ? 'recurring series' : 'event'} “${event.title}” from calendar` } }),
       this.prisma.calendarEvent.delete({ where: { id: eventId } }),
     ]);
+    this.calendarSync?.requestPush(workspaceId);
     return { id: eventId, deleted: true };
   }
 

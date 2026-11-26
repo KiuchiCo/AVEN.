@@ -15,6 +15,8 @@ const connection = () => Param('connectionId', new ParseUUIDPipe());
 export class CalendarSyncController {
   constructor(private readonly sync: CalendarSyncService) {}
   @Get() overview(@CurrentIdentity() who: Who, @workspace() ws: string) { return this.sync.overview(who, ws); }
+  /** Any member opening the calendar: syncs the workspace's connected calendars if they are a minute or more out of date. */
+  @Post('refresh') @HttpCode(200) refresh(@CurrentIdentity() who: Who, @workspace() ws: string) { return this.sync.refreshWorkspace(who, ws); }
   @Post('connect') @HttpCode(200) connect(@CurrentIdentity() who: Who, @workspace() ws: string, @Body() body: unknown) { return this.sync.connect(who, ws, body); }
   @Patch(':connectionId') setPush(@CurrentIdentity() who: Who, @workspace() ws: string, @connection() id: string, @Body() body: unknown) { return this.sync.setPush(who, ws, id, body); }
   @Post(':connectionId/sync') @HttpCode(200) syncNow(@CurrentIdentity() who: Who, @workspace() ws: string, @connection() id: string) { return this.sync.syncNow(who, ws, id); }

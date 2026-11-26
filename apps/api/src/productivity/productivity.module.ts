@@ -1,3 +1,4 @@
+import { CalendarSyncModule } from '../calendar-sync/calendar-sync.module.js';
 import { Module } from '@nestjs/common';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { ProjectsController } from './projects.controller.js';
@@ -31,7 +32,7 @@ import { WorkspaceAdminController } from './workspace-admin.controller.js';
 import { TaskCollaborationModule } from './task-collaboration/task-collaboration.module.js';
 
 @Module({
-  imports: [TaskCollaborationModule, EmailModule, FilesModule],
+  imports: [TaskCollaborationModule, EmailModule, FilesModule, CalendarSyncModule],
   controllers: [WorkspaceAdminController, ProjectsController, TasksController, DocumentsController, CalendarController, DatabasesController, MilestonesController, SearchController, MembersController, ActivityController, IntelligenceController, InvitationsController, KnowledgeController, AutomationsController, DashboardController],
   providers: [DocumentLibraryService, DocumentEvents, TextSessions, ProductivityService, DatabasesService, IntelligenceService, WorkspaceInvitationsService, KnowledgeService, AutomationsService, DashboardService, WorkflowTriggersService, ClerkAuthGuard],
   exports: [ProductivityService, IntelligenceService, WorkflowTriggersService],

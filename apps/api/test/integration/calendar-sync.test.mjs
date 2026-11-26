@@ -51,6 +51,26 @@ describe('calendar sync', { skip }, () => {
     assert.deepEqual(Object.keys((await t.call('ora', 'GET', ws())).body.connections[0]).filter((k) => /token/i.test(k)), [], 'tokens are never sent to the browser');
   });
 
+  test('Google scopes: the request asks for exactly what AVEN uses, and a connection without the calendar permission is refused, not saved', async () => {
+    const { started, location } = await connect('GOOGLE');
+    const url = new URL(started.body.url);
+    assert.deepEqual(url.searchParams.get('scope').split(' '), ['openid', 'email', 'https://www.googleapis.com/auth/calendar.events']);
+    assert.equal(url.searchParams.get('prompt'), 'consent'); assert.equal(url.searchParams.get('access_type'), 'offline'); assert.equal(url.searchParams.get('include_granted_scopes'), 'true');
+    assert.match(location, /connected=google/);
+    const stored = await t.prisma.calendarConnection.findFirstOrThrow({ where: { workspaceId: W.id, provider: 'GOOGLE' } });
+    assert.match(stored.scopes, /auth\/calendar\.events/, 'the granted scopes are recorded');
+    // the person unticks the calendar permission on Google's screen: Google still sends tokens, but without it
+    const before = (await connections()).length; stub.google.scope = 'openid email';
+    try {
+      const refused = await connect('GOOGLE');
+      assert.match(refused.location, /settings\/connections\?error=Google%20did%20not%20give%20AVEN%20permission/);
+      assert.equal((await connections()).length, before, 'nothing was saved');
+    } finally { stub.google.scope = 'openid email https://www.googleapis.com/auth/calendar.events'; }
+    // a full-calendar grant is also enough
+    stub.google.scope = 'openid email https://www.googleapis.com/auth/calendar';
+    try { assert.match((await connect('GOOGLE')).location, /connected=google/); } finally { stub.google.scope = 'openid email https://www.googleapis.com/auth/calendar.events'; }
+  });
+
   test('importing is safe to repeat: no duplicates, and provider changes and deletions follow', async () => {
     const [c] = await connections();
     for (const [id, name] of [['g1', 'Standup'], ['g2', 'Planning'], ['g3', 'Review']]) stub.addGoogle(id, name, soon(1), soon(1, 11));
@@ -117,6 +137,110 @@ describe('calendar sync', { skip }, () => {
     assert.equal((await events()).length, before, 'no events were lost');
     stub.google.refuseRefresh = false; const { location } = await connect('GOOGLE', true); assert.match(location, /connected=google/);
     assert.equal((await connections()).find((x) => x.provider === 'GOOGLE').status, 'ACTIVE', 'reconnecting repairs it');
+  });
+
+  const google = () => t.prisma.calendarConnection.findFirstOrThrow({ where: { workspaceId: W.id, provider: 'GOOGLE' } });
+  const run = (id) => svc.syncConnection(id); // straight to the service: these tests make many syncs, more than the per-minute limit on the API route
+  const makeDue = (id, minutes = 6) => t.prisma.calendarConnection.update({ where: { id }, data: { lastSyncedAt: new Date(Date.now() - minutes * 60_000) } });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  /** Connecting starts a first sync in the background; wait for it, so a test's own sync isn't turned away as "already running". */
+  const idle = async (id, since = new Date(0)) => { await sleep(250); for (let i = 0; i < 80; i += 1) { const row = await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id } }); if (!row.syncingSince && row.lastSyncedAt && row.lastSyncedAt > since) return; await sleep(100); } };
+
+  test('automatic sync: the first read is full and leaves a token; later reads use it and fetch only what changed', async () => {
+    const c = await google(); await idle(c.id); await run(c.id);
+    const row = await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } });
+    assert.match(row.syncToken, /^tok-\d+$/, 'a sync token was stored'); assert.ok(row.fullSyncedAt);
+    stub.google.queries.length = 0; stub.addGoogle('a1', 'Auto one', soon(8), soon(8, 11));
+    const added = await run(c.id); assert.equal(added.imported, 1);
+    assert.equal(stub.google.queries.length, 1, 'one request'); assert.match(stub.google.queries[0], /syncToken=tok-\d+/); assert.doesNotMatch(stub.google.queries[0], /timeMin/, 'not the whole window again');
+    const quiet = await run(c.id); assert.deepEqual([quiet.imported, quiet.updated, quiet.removed], [0, 0, 0]);
+    stub.edit(stub.google, 'a1', { summary: 'Auto one (moved)' }); assert.equal((await run(c.id)).updated, 1); assert.ok((await titles()).includes('Auto one (moved)'));
+    assert.equal((await events()).filter((e) => e.title.startsWith('Auto one')).length, 1, 'updated in place, not duplicated');
+    stub.google.events.delete('a1'); assert.equal((await run(c.id)).removed, 1); assert.equal((await events()).filter((e) => e.title.startsWith('Auto one')).length, 0);
+  });
+
+  test('an expired token is refreshed first, and an expired sync token is recovered with a full read', async () => {
+    const c = await google(); await idle(c.id); const tokensBefore = stub.google.tokens;
+    await t.prisma.calendarConnection.update({ where: { id: c.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    stub.addGoogle('a2', 'Found after refresh', soon(9), soon(9, 11)); assert.equal((await run(c.id)).imported, 1);
+    assert.equal(stub.google.tokens, tokensBefore + 1, 'the access token was refreshed once');
+    stub.addGoogle('a3', 'Found after recovery', soon(10), soon(10, 11)); stub.google.expireTokens = true; stub.google.queries.length = 0;
+    const recovered = await run(c.id); assert.equal(recovered.imported, 1, JSON.stringify(recovered)); assert.equal(recovered.problems.length, 0);
+    assert.match(stub.google.queries[0], /syncToken/, 'it tried the token first'); assert.ok(stub.google.queries.slice(1).length >= 1 && stub.google.queries.slice(1).every((q) => /timeMin/.test(q) && !/syncToken/.test(q)), 'then read the whole window');
+    assert.match((await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } })).syncToken, /^tok-\d+$/, 'and a new token');
+  });
+
+  test('repeating events arrive as their individual occurrences at the right instant, whatever time zone Google uses', async () => {
+    const c = await google(); await idle(c.id);
+    stub.addGoogle('r1_20270105', 'Weekly sync', '2027-01-05T10:00:00+11:00', '2027-01-05T11:00:00+11:00', { recurringEventId: 'r1' });
+    stub.addGoogle('r1_20270112', 'Weekly sync', '2027-01-12T10:00:00+11:00', '2027-01-12T11:00:00+11:00', { recurringEventId: 'r1' });
+    assert.equal((await run(c.id)).imported, 2);
+    const rows = (await events()).filter((e) => e.title === 'Weekly sync').sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    assert.deepEqual(rows.map((e) => e.startsAt), ['2027-01-04T23:00:00.000Z', '2027-01-11T23:00:00.000Z']);
+    stub.google.events.delete('r1_20270112'); assert.equal((await run(c.id)).removed, 1, 'one occurrence cancelled in Google');
+    assert.equal((await events()).filter((e) => e.title === 'Weekly sync').length, 1);
+  });
+
+  test('background sync: a due connection is synced with nobody pressing Sync now, a recent one is left alone, and failures back off', async () => {
+    const c = await google(); await idle(c.id); stub.addGoogle('b1', 'Background one', soon(11), soon(11, 11));
+    await makeDue(c.id); assert.ok(await svc.syncDue() >= 1); assert.ok((await titles()).includes('Background one'));
+    stub.addGoogle('b2', 'Background two', soon(12), soon(12, 11)); assert.equal(await svc.syncDue(), 0, 'just synced, so not due');
+    assert.ok(!(await titles()).includes('Background two'));
+    // Google is busy: the failure is recorded and the next attempt is pushed back, not hammered
+    stub.google.failWith = 503; await makeDue(c.id); await svc.syncDue();
+    let row = await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } });
+    assert.equal(row.failureCount, 1); assert.equal(row.status, 'ACTIVE'); assert.ok(row.nextAttemptAt.getTime() > Date.now() + 4 * 60_000, 'about five minutes');
+    stub.google.failWith = 0; await makeDue(c.id); assert.equal(await svc.syncDue(), 0, 'waiting out the delay');
+    await t.prisma.calendarConnection.update({ where: { id: c.id }, data: { nextAttemptAt: null } }); assert.ok(await svc.syncDue() >= 1);
+    row = await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } }); assert.deepEqual([row.failureCount, row.nextAttemptAt, row.lastError], [0, null, null]);
+    assert.ok((await titles()).includes('Background two'), 'recovered and caught up');
+    const { retryDelayMs } = await import('../../dist/calendar-sync/calendar-sync.service.js');
+    assert.deepEqual([1, 2, 3, 4, 10].map(retryDelayMs), [300_000, 600_000, 1_200_000, 2_400_000, 3_600_000]);
+  });
+
+  test('after repeated failures background syncing stops and asks to reconnect; reconnecting restores it', async () => {
+    const c = await google(); await idle(c.id); stub.google.failWith = 500;
+    for (let i = 0; i < 8; i += 1) { await t.prisma.calendarConnection.update({ where: { id: c.id }, data: { nextAttemptAt: null, syncingSince: null } }); await run(c.id); }
+    stub.google.failWith = 0;
+    const row = await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } });
+    assert.equal(row.status, 'NEEDS_ATTENTION'); assert.match(row.lastError, /Reconnect to resume/);
+    await makeDue(c.id); const queries = stub.google.queries.length; await svc.syncDue(); assert.equal(stub.google.queries.length, queries, 'not retried in the background');
+    stub.google.queries.length = 0; const since = new Date();
+    assert.match((await connect('GOOGLE', true)).location, /connected=google/); await idle(c.id, since);
+    const fixed = await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } }); assert.deepEqual([fixed.status, fixed.failureCount], ['ACTIVE', 0]); assert.match(fixed.syncToken, /^tok-\d+$/);
+    assert.ok(/timeMin/.test(stub.google.queries[0]) && !/syncToken/.test(stub.google.queries[0]), 'the first sync after reconnecting is a full read, not the old token');
+  });
+
+  test('opening the calendar syncs a stale connection for any member, once per cooldown, and never for outsiders', async () => {
+    const c = await google(); await idle(c.id); await run(c.id); stub.addGoogle('o1', 'Seen on opening', soon(13), soon(13, 11)); await makeDue(c.id, 2);
+    const first = await t.call('max', 'POST', `${ws()}/refresh`); assert.equal(first.status, 200, JSON.stringify(first.body)); assert.equal(first.body.changed, true);
+    assert.ok((await titles()).includes('Seen on opening'));
+    const calls = stub.google.queries.length; const second = await t.call('max', 'POST', `${ws()}/refresh`);
+    assert.equal(second.body.changed, false); assert.equal(stub.google.queries.length, calls, 'inside the cooldown nothing is fetched');
+    await t.user('zed'); assert.ok([403, 404].includes((await t.call('zed', 'POST', `${ws()}/refresh`)).status), 'not a member');
+    assert.equal((await t.call(null, 'POST', `${ws()}/refresh`)).status, 401);
+    assert.equal((await t.call('max', 'GET', ws())).status, 403, 'members still cannot see the connection details');
+  });
+
+  test('a change made in AVEN reaches the calendar shortly afterwards, without a manual sync or waiting for the schedule', async () => {
+    await idle((await google()).id); svc.sendInTests = true; svc.pushDelayMs = 50;
+    const find = (title) => [...stub.google.events.values(), ...stub.graph.events.values()].find((e) => e.summary === title || e.subject === title);
+    const until = async (check) => { for (let i = 0; i < 60 && !check(); i += 1) await sleep(100); return check(); };
+    try {
+      const made = (await t.call('ora', 'POST', `/workspaces/${W.id}/events`, { title: 'Pushed soon', startsAt: soon(14), endsAt: soon(14, 11) })).body;
+      assert.ok(await until(() => find('Pushed soon')), 'created in the connected calendar');
+      await t.call('ora', 'PATCH', `/workspaces/${W.id}/events/${made.id}`, { title: 'Pushed soon v2', baseUpdatedAt: made.updatedAt });
+      assert.ok(await until(() => find('Pushed soon v2')), 'the edit followed'); assert.equal([...stub.google.events.values(), ...stub.graph.events.values()].filter((e) => /^Pushed soon/.test(e.summary ?? e.subject)).length, 1, 'one copy, not two');
+      await t.call('ora', 'DELETE', `/workspaces/${W.id}/events/${made.id}`);
+      assert.ok(await until(() => !find('Pushed soon v2')), 'the deletion followed');
+    } finally { svc.sendInTests = false; svc.pushDelayMs = 4000 }
+  });
+
+  test('after disconnecting Google, background and on-open syncing no longer touch it', async () => {
+    const c = await google(); await idle(c.id); assert.equal((await t.call('ora', 'DELETE', `${ws()}/${c.id}`)).status, 200);
+    const queries = stub.google.queries.length; await svc.syncDue(); await t.call('max', 'POST', `${ws()}/refresh`);
+    assert.equal(stub.google.queries.length, queries); assert.equal(await t.prisma.calendarConnection.count({ where: { workspaceId: W.id, provider: 'GOOGLE' } }), 0);
+    const since = new Date(); assert.match((await connect('GOOGLE', true)).location, /connected=google/, 'and it can be connected again'); await idle((await google()).id, since);
   });
 
   test('disconnecting forgets the tokens but keeps the events; a second sync of the same account cannot run at once', async () => {

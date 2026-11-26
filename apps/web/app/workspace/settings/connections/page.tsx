@@ -9,7 +9,7 @@ import { safeRedirectUrl } from '../safe-redirect';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 type Provider = { key: 'GOOGLE' | 'MICROSOFT'; label: string; configured: boolean; setup: string };
-type Connection = { id: string; provider: Provider['key']; accountEmail: string; pushEnabled: boolean; status: string; lastSyncedAt: string | null; lastError: string | null; connectedBy: { displayName: string } };
+type Connection = { id: string; provider: Provider['key']; accountEmail: string; pushEnabled: boolean; status: string; lastSyncedAt: string | null; lastError: string | null; syncing: boolean; pendingOutbound: number; unsentEvents: number; connectedBy: { displayName: string } };
 type Overview = { providers: Provider[]; connections: Connection[]; redirectUri: string };
 type Summary = { imported: number; updated: number; removed: number; sent: number; conflicts: number; skippedRecurring: number; problems: string[] };
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -41,6 +41,14 @@ function Connections() {
     return () => { live = false; };
   }, [allowed, call]);
 
+  // The card keeps itself current: every few seconds while a sync is running, otherwise every fifteen seconds, and only while the page is on screen.
+  const anySyncing = data?.connections.some((connection) => connection.syncing) ?? false;
+  useEffect(() => {
+    if (!allowed) return;
+    const timer = setInterval(() => { if (document.visibilityState === 'visible' && busy === '') void call<Overview>('').then(setData).catch(() => undefined); }, anySyncing ? 3000 : 15000);
+    return () => clearInterval(timer);
+  }, [allowed, call, anySyncing, busy]);
+
   async function run(key: string, action: () => Promise<string | void>) {
     setBusy(key); setError(''); setNotice('');
     try { const message = await action(); if (message) setNotice(message); setData(await call<Overview>('')); }
@@ -62,16 +70,19 @@ function Connections() {
         return <div className="workspace-settings-card" key={provider.key}>
           <div><h2>{provider.label}</h2>{provider.configured ? <p>{existing.length ? t('cn.connectedAdd') : t('cn.notConnected')}</p> : <p>{t('cn.awaiting', { app: provider.key === 'GOOGLE' ? t('cn.appGoogle') : t('cn.appMicrosoft'), setup: provider.setup, uri: data.redirectUri })}</p>}</div>
           {existing.map((connection) => <div className="connection-row" key={connection.id}>
-            <div><strong>{connection.accountEmail}</strong><small>{t('cn.connectedBy', { name: connection.connectedBy.displayName, status: connection.status === 'ACTIVE' ? (connection.lastSyncedAt ? t('cn.lastSynced', { when: when.format(new Date(connection.lastSyncedAt)) }) : t('cn.waitingFirst')) : t('cn.reconnectNeeded') })}</small>{connection.lastError && <small className="connection-error">{connection.lastError}</small>}</div>
-            <label className="connection-toggle"><input type="checkbox" checked={connection.pushEnabled} disabled={busy !== ''} onChange={(event) => void run(`push-${connection.id}`, async () => { await call(`/${connection.id}`, 'PATCH', { pushEnabled: event.target.checked }); })} /> {t('cn.alsoSend')}</label>
+            <div><strong>{connection.accountEmail}</strong><small>{t('cn.connectedBy', { name: connection.connectedBy.displayName, status: connection.status === 'ACTIVE' ? (connection.syncing ? t('cn.syncingNow') : connection.lastSyncedAt ? t('cn.lastSynced', { when: when.format(new Date(connection.lastSyncedAt)) }) : t('cn.waitingFirst')) : t('cn.reconnectNeeded') })}</small>{connection.lastError && <small className="connection-error" role="alert">{t('cn.syncError')}: {connection.lastError}</small>}
+            {!connection.pushEnabled && <small>{t('cn.sendOff')}</small>}
+            {connection.pushEnabled && connection.pendingOutbound > 0 && <small>{t('cn.pending', { n: connection.pendingOutbound })}</small>}</div>
+            <label className="connection-toggle"><input type="checkbox" checked={connection.pushEnabled} disabled={busy !== ''} onChange={(event) => { if (event.target.checked && connection.unsentEvents > 0 && !window.confirm(t('cn.confirmSend', { n: connection.unsentEvents }))) return; void run(`push-${connection.id}`, async () => { await call(`/${connection.id}`, 'PATCH', { pushEnabled: event.target.checked }); }); }} /> {t('cn.alsoSend')}</label>
             <div className="connection-actions">
-              {connection.status === 'ACTIVE' ? <button disabled={busy !== ''} onClick={() => void run(`sync-${connection.id}`, async () => summary(await call<Summary>(`/${connection.id}/sync`, 'POST')))}>{busy === `sync-${connection.id}` ? t('cn.syncing') : t('cn.syncNow')}</button> : <button disabled={busy !== ''} onClick={() => void connect(provider.key, connection.pushEnabled)}>{t('cn.reconnect')}</button>}
+              {connection.status === 'ACTIVE' ? <button disabled={busy !== '' || connection.syncing} onClick={() => void run(`sync-${connection.id}`, async () => summary(await call<Summary>(`/${connection.id}/sync`, 'POST')))}>{busy === `sync-${connection.id}` ? t('cn.syncing') : t('cn.syncNow')}</button> : <button disabled={busy !== ''} onClick={() => void connect(provider.key, connection.pushEnabled)}>{t('cn.reconnect')}</button>}
               <button disabled={busy !== ''} onClick={() => { if (window.confirm(t('cn.confirmDisconnect', { email: connection.accountEmail }))) void run(`disconnect-${connection.id}`, async () => { await call(`/${connection.id}`, 'DELETE'); return t('cn.disconnected'); }); }}>{t('cn.disconnect')}</button>
             </div>
           </div>)}
           {provider.configured && <div className="connection-add"><label className="connection-toggle"><input type="checkbox" checked={send[provider.key] ?? false} onChange={(event) => setSend({ ...send, [provider.key]: event.target.checked })} /> {t('cn.alsoSendThis')}</label><button className="workspace-settings-save" disabled={busy !== ''} onClick={() => void connect(provider.key, send[provider.key] ?? false)}>{existing.length ? t('cn.addAnother') : t('cn.connect', { label: provider.label })}</button></div>}
         </div>;
       })}
+      <p className="workspace-settings-note">{t('cn.autoSync')}</p>
       <p className="workspace-settings-note">{t('cn.foot')}</p>
     </>}
   </section>;

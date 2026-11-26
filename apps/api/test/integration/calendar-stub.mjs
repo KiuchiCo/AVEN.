@@ -5,7 +5,13 @@ import { createServer } from 'node:http';
  * with real version markers (ETags), If-Match checks, paging and deletions. Tests drive it through `google` and `graph`.
  */
 export async function startStub() {
-  const make = (kind) => ({ kind, events: new Map(), counter: 0, tokens: 0, refuseRefresh: false, calls: [], email: `${kind}@calendar.test` });
+  // Google's change feed: every change gets a number, a deletion leaves a "cancelled" marker, and a sync token is "tok-<number>".
+  class Tracked extends Map {
+    seq = 0; revs = new Map(); tombs = new Map();
+    set(key, value) { super.set(key, value); this.revs.set(key, ++this.seq); this.tombs.delete(key); return this; }
+    delete(key) { const had = super.delete(key); if (had) { this.revs.delete(key); this.tombs.set(key, ++this.seq); } return had; }
+  }
+  const make = (kind) => ({ kind, queries: [], failWith: 0, failMutations: 0, dropNextResponse: false, mutations: [], expireTokens: false, scope: 'openid email https://www.googleapis.com/auth/calendar.events', events: kind === 'google' ? new Tracked() : new Map(), counter: 0, tokens: 0, refuseRefresh: false, calls: [], email: `${kind}@calendar.test` });
   const google = make('google'); const graph = make('graph');
   const clock = () => new Date().toISOString();
 
@@ -25,25 +31,43 @@ export async function startStub() {
       const form = new URLSearchParams(raw);
       if (form.get('grant_type') === 'refresh_token' && side.refuseRefresh) return json(res, 400, { error: 'invalid_grant', error_description: 'Token has been revoked.' });
       side.tokens += 1;
-      return json(res, 200, { access_token: `${side.kind}-access-${side.tokens}`, refresh_token: form.get('grant_type') === 'authorization_code' ? `${side.kind}-refresh` : undefined, expires_in: side.shortLived ? 1 : 3600, id_token: side.kind === 'google' ? idToken(side.email) : undefined });
+      return json(res, 200, { access_token: `${side.kind}-access-${side.tokens}`, refresh_token: form.get('grant_type') === 'authorization_code' ? `${side.kind}-refresh` : undefined, expires_in: side.shortLived ? 1 : 3600, ...(side.kind === 'google' ? { scope: side.scope } : {}), id_token: side.kind === 'google' ? idToken(side.email) : undefined });
     }
     if (!(req.headers.authorization ?? '').startsWith('Bearer ')) return json(res, 401, { error: { message: 'no token' } });
 
     if (side.kind === 'google') {
+      // what Google answers when the token was issued without a calendar permission
+      if (rest.startsWith('/calendars/') && !/auth\/calendar/.test(side.scope)) return json(res, 403, { error: { code: 403, message: 'Request had insufficient authentication scopes.', status: 'PERMISSION_DENIED' } });
       if (rest === '/calendars/primary/events' && req.method === 'GET') {
-        const items = [...side.events.values()]; const size = 2; const start = Number(url.searchParams.get('pageToken') ?? 0);
+        side.queries.push(url.search);
+        if (side.failWith) return json(res, side.failWith, { error: { message: 'The service is busy.' } });
+        const sync = url.searchParams.get('syncToken'); const ev = side.events;
+        if (sync && side.expireTokens) { side.expireTokens = false; return json(res, 410, { error: { code: 410, message: 'Sync token is no longer valid, a full sync is required.' } }); }
+        let items;
+        if (sync) { const since = Number(sync.replace('tok-', '')); items = [...ev.entries()].filter(([k]) => ev.revs.get(k) > since).map(([, v]) => v).concat([...ev.tombs].filter(([, rev]) => rev > since).map(([id]) => ({ id, status: 'cancelled' }))); }
+        else items = [...ev.values()];
+        const size = 2; const start = Number(url.searchParams.get('pageToken') ?? 0);
         const page = items.slice(start, start + size);
-        return json(res, 200, { items: page, ...(start + size < items.length ? { nextPageToken: String(start + size) } : {}) });
+        return json(res, 200, { items: page, ...(start + size < items.length ? { nextPageToken: String(start + size) } : { nextSyncToken: `tok-${ev.seq}` }) });
       }
-      if (rest === '/calendars/primary/events' && req.method === 'POST') { const e = JSON.parse(raw); const id = `new-g${++side.counter}`; const item = { id, etag: `"1-${id}"`, updated: clock(), status: 'confirmed', ...e }; side.events.set(id, item); return json(res, 200, item); }
+      if (side.failMutations && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && rest.startsWith('/calendars/')) { side.mutations.push(`${req.method} failed`); return json(res, side.failMutations, { error: { message: 'The service is busy.' } }); }
+      if (rest === '/calendars/primary/events' && req.method === 'POST') {
+        const e = JSON.parse(raw); const id = e.id ?? `new-g${++side.counter}`;
+        if (e.id && side.events.has(e.id)) return json(res, 409, { error: { code: 409, message: 'The requested identifier already exists.' } });
+        if (e.id && side.deleted?.has(e.id)) return json(res, 409, { error: { code: 409, message: 'The requested identifier already exists.' } });
+        const item = { id, etag: `"1-${id}"`, updated: clock(), status: 'confirmed', ...e, id }; side.events.set(id, item); side.mutations.push(`POST ${id}`);
+        if (side.dropNextResponse) { side.dropNextResponse = false; return req.socket.destroy(); } // the event was made, but the answer never arrives
+        return json(res, 200, item);
+      }
       const match = /^\/calendars\/primary\/events\/(.+)$/.exec(rest);
       if (match) {
         const id = decodeURIComponent(match[1]); const item = side.events.get(id);
-        if (req.method === 'DELETE') { side.events.delete(id); return json(res, item ? 204 : 410); }
+        if (req.method === 'GET') return item ? json(res, 200, item) : json(res, 404, { error: { message: 'not found' } });
+        if (req.method === 'DELETE') { side.mutations.push(`DELETE ${id}`); side.events.delete(id); (side.deleted ??= new Set()).add(id); return json(res, item ? 204 : 410); }
         if (!item) return json(res, 404, { error: { message: 'gone' } });
         if (req.method === 'PUT') {
           if (req.headers['if-match'] && req.headers['if-match'] !== item.etag) return json(res, 412, { error: { message: 'etag mismatch' } });
-          const next = { ...JSON.parse(raw), id, etag: `"${Number(item.etag.split('-')[0].slice(1)) + 1}-${id}"`, updated: clock(), status: 'confirmed' }; side.events.set(id, next); return json(res, 200, next);
+          side.mutations.push(`PUT ${id}`); const next = { ...JSON.parse(raw), id, etag: `"${Number(item.etag.split('-')[0].slice(1)) + 1}-${id}"`, updated: clock(), status: 'confirmed' }; side.events.set(id, next); return json(res, 200, next);
         }
       }
     } else {

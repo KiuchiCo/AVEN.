@@ -1188,12 +1188,22 @@ model CalendarConnection {
   accessTokenEnc  String              @db.Text
   refreshTokenEnc String              @db.Text
   expiresAt       DateTime            @db.Timestamptz(3)
+  /// The permissions the provider said it granted when the account was connected (null for connections made before this was recorded).
+  scopes          String?             @db.VarChar(500)
   /// Also send events made in AVEN to this calendar. Off unless the person asked for it.
   pushEnabled     Boolean             @default(false)
   /// ACTIVE, or NEEDS_ATTENTION when the provider refused our tokens and the person must reconnect.
   status          String              @default("ACTIVE") @db.VarChar(20)
   lastSyncedAt    DateTime?           @db.Timestamptz(3)
   lastError       String?             @db.VarChar(300)
+  /// Google's incremental-sync token: with it the next sync fetches only what changed. Cleared when Google says it has expired, and on reconnect.
+  syncToken       String?             @db.Text
+  /// When the whole window was last read in full. A full read is repeated every few hours to pick up events that have moved into the window.
+  fullSyncedAt    DateTime?           @db.Timestamptz(3)
+  /// Consecutive failed syncs. Backs the retry delay off, and after too many the connection asks to be reconnected instead of retrying for ever.
+  failureCount    Int                 @default(0)
+  /// Background syncs wait until this time after a failure.
+  nextAttemptAt   DateTime?           @db.Timestamptz(3)
   /// Set while a sync runs, so two servers never sync the same account at once. Older than ten minutes counts as abandoned.
   syncingSince    DateTime?           @db.Timestamptz(3)
   createdAt       DateTime            @default(now()) @db.Timestamptz(3)

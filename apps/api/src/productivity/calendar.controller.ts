@@ -14,6 +14,12 @@ export class CalendarController {
     return this.productivity.listCalendarEvents(identity, workspaceId);
   }
 
+  /** A cheap marker that changes whenever an event is added, edited or removed (by anyone, or by a calendar sync). The calendar page polls it to know when to reload the events. */
+  @Get('revision')
+  revision(@CurrentIdentity() identity: AuthenticatedIdentity, @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string) {
+    return this.productivity.calendarRevision(identity, workspaceId);
+  }
+
   @Post()
   create(
     @CurrentIdentity() identity: AuthenticatedIdentity,

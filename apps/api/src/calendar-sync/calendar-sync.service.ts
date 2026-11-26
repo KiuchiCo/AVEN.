@@ -15,6 +15,16 @@ export type SyncSummary = { imported: number; updated: number; removed: number; 
 
 const DAY = 86_400_000;
 const STALE_CLAIM_MS = 10 * 60_000;
+/** A sync is due when the last one finished this long ago. A little under five minutes, so the one-minute check lands on the five-minute mark instead of just missing it. */
+const DUE_AFTER_MS = 4.5 * 60_000;
+/** Opening the calendar only syncs a connection that hasn't been synced for this long. */
+const OPEN_COOLDOWN_MS = 60_000;
+/** The whole window is re-read this often even when sync tokens work, to pick up events that have moved into it. */
+const FULL_RESYNC_MS = 6 * 3_600_000;
+/** After this many failures in a row background syncing stops and the person is asked to reconnect (or press Sync now). */
+const MAX_FAILURES = 8;
+/** Retry delay after a failure: five minutes, doubling each time, never more than an hour. */
+export const retryDelayMs = (failures: number) => Math.min(5 * 60_000 * 2 ** Math.max(0, failures - 1), 60 * 60_000);
 const emptySummary = (): SyncSummary => ({ imported: 0, updated: 0, removed: 0, sent: 0, conflicts: 0, skippedRecurring: 0, problems: [] });
 const toLocalContent = (event: { title: string; description: string | null; location: string | null; isAllDay: boolean; startsAt: Date; endsAt: Date | null }): EventContent => ({ title: event.title, description: event.description, location: event.location, isAllDay: event.isAllDay, startsAt: event.startsAt, endsAt: event.endsAt });
 
@@ -44,9 +54,26 @@ export class CalendarSyncService {
   async overview(identity: AuthenticatedIdentity, workspaceId: string) {
     await this.manager(identity, workspaceId);
     const { calendar } = readApiEnvironment();
-    const connections = await this.prisma.calendarConnection.findMany({ where: { workspaceId }, orderBy: { createdAt: 'asc' }, select: { id: true, provider: true, accountEmail: true, pushEnabled: true, status: true, lastSyncedAt: true, lastError: true, createdAt: true, connectedBy: { select: { displayName: true } } } });
+    const connections = await this.prisma.calendarConnection.findMany({ where: { workspaceId }, orderBy: { createdAt: 'asc' }, select: { id: true, provider: true, accountEmail: true, pushEnabled: true, status: true, lastSyncedAt: true, lastError: true, syncingSince: true, createdAt: true, connectedBy: { select: { displayName: true } } } });
     const providers = (['GOOGLE', 'MICROSOFT'] as const).map((key) => ({ key, label: key === 'GOOGLE' ? 'Google Calendar' : 'Outlook Calendar', configured: this.byKey.has(key) && Boolean(calendar.tokenKey), setup: key === 'GOOGLE' ? 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET' : 'MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET' }));
-    return { providers, connections, redirectUri: this.redirectUri() };
+    const pending = await this.pendingOutbound(workspaceId);
+    // What turning on "send AVEN events" would send for the first time: every AVEN event in the synced window that isn't paired with a calendar event yet.
+    const unsentEvents = await this.prisma.calendarEvent.count({ where: { workspaceId, recurrence: null, startsAt: { gte: new Date(Date.now() - 30 * DAY), lte: new Date(Date.now() + 180 * DAY) }, externalLinks: { none: {} } } });
+    return { providers, connections: connections.map(({ syncingSince, ...rest }) => ({ ...rest, syncing: Boolean(syncingSince && syncingSince.getTime() > Date.now() - STALE_CLAIM_MS), pendingOutbound: pending.get(rest.id) ?? 0, unsentEvents })), redirectUri: this.redirectUri() };
+  }
+
+  /**
+   * How many AVEN changes are still waiting to reach each calendar that receives AVEN events: events not sent yet, edits not sent yet, and deletions not passed on.
+   * There is no separate queue: a pending change is simply one the links don't match yet, so a sync that succeeds clears it and a failed one leaves it for the next try.
+   */
+  private async pendingOutbound(workspaceId: string): Promise<Map<string, number>> {
+    const rows = await this.prisma.$queryRaw<Array<{ id: string; pending: bigint }>>`
+      SELECT c.id,
+        (SELECT count(*) FROM external_event_links l WHERE l."connectionId" = c.id AND l."eventId" IS NULL)
+        + (SELECT count(*) FROM external_event_links l JOIN calendar_events e ON e.id = l."eventId" WHERE l."connectionId" = c.id AND e.recurrence IS NULL AND e."updatedAt" > l."localSyncedAt")
+        + (SELECT count(*) FROM calendar_events e WHERE e."workspaceId" = c."workspaceId" AND e.recurrence IS NULL AND e."startsAt" BETWEEN now() - interval '30 days' AND now() + interval '180 days' AND NOT EXISTS (SELECT 1 FROM external_event_links x WHERE x."eventId" = e.id)) AS pending
+      FROM calendar_connections c WHERE c."workspaceId" = ${workspaceId}::uuid AND c."pushEnabled" = true AND c.status = 'ACTIVE'`;
+    return new Map(rows.map((row) => [row.id, Number(row.pending)]));
   }
 
   async connect(identity: AuthenticatedIdentity, workspaceId: string, input: unknown) {
@@ -71,8 +98,9 @@ export class CalendarSyncService {
       if (!membership || !['OWNER', 'ADMINISTRATOR'].includes(membership.role)) return back('error=You no longer have permission to connect calendars here.');
       const tokens = await provider.exchange(query.code, this.redirectUri());
       const key = this.key();
-      const data = { connectedById: state.userId, accessTokenEnc: encryptToken(key, tokens.accessToken), refreshTokenEnc: encryptToken(key, tokens.refreshToken), expiresAt: tokens.expiresAt, pushEnabled: state.pushEnabled, status: 'ACTIVE', lastError: null };
-      const connection = await this.prisma.calendarConnection.upsert({ where: { workspaceId_provider_accountEmail: { workspaceId: state.workspaceId, provider: state.provider, accountEmail: tokens.email } }, create: { workspaceId: state.workspaceId, provider: state.provider, accountEmail: tokens.email, ...data }, update: data, select: { id: true } });
+      const data = { connectedById: state.userId, accessTokenEnc: encryptToken(key, tokens.accessToken), refreshTokenEnc: encryptToken(key, tokens.refreshToken), expiresAt: tokens.expiresAt, scopes: tokens.scopes ?? null, status: 'ACTIVE', lastError: null, syncToken: null, fullSyncedAt: null, failureCount: 0, nextAttemptAt: null };
+      // Reconnecting keeps the person's existing "send AVEN events" choice: it is only set when the account is first connected.
+      const connection = await this.prisma.calendarConnection.upsert({ where: { workspaceId_provider_accountEmail: { workspaceId: state.workspaceId, provider: state.provider, accountEmail: tokens.email } }, create: { workspaceId: state.workspaceId, provider: state.provider, accountEmail: tokens.email, pushEnabled: state.pushEnabled, ...data }, update: data, select: { id: true } });
       void this.syncConnection(connection.id).catch((error) => { reportIntegrationFailure('calendar', error); this.logger.warn(`First sync failed: ${error instanceof Error ? error.message : error}`); });
       return back(`connected=${state.provider.toLowerCase()}`);
     } catch (error) {
@@ -113,12 +141,64 @@ export class CalendarSyncService {
     return result ?? { ...emptySummary(), problems: ['A sync is already running for this calendar. Try again in a moment.'] };
   }
 
-  /** The scheduled run: connections that haven't synced for five minutes, a few at a time. */
+  /**
+   * The scheduled run (every minute, see the runner): active connections whose last sync finished about five minutes ago and that
+   * aren't waiting out a failure, a few at a time. A connection whose connector is no longer an owner or administrator is skipped.
+   */
   async syncDue(limit = 10): Promise<number> {
-    const due = await this.prisma.calendarConnection.findMany({ where: { status: 'ACTIVE', OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(Date.now() - 5 * 60_000) } }] }, orderBy: { lastSyncedAt: { sort: 'asc', nulls: 'first' } }, take: limit, select: { id: true } });
+    const now = Date.now();
+    const due = await this.prisma.calendarConnection.findMany({
+      where: { status: 'ACTIVE', AND: [{ OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(now - DUE_AFTER_MS) } }] }, { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date(now) } }] }] },
+      orderBy: { lastSyncedAt: { sort: 'asc', nulls: 'first' } }, take: limit, select: { id: true, workspaceId: true, connectedById: true },
+    });
     let done = 0;
-    for (const { id } of due) { try { if (await this.syncConnection(id)) done += 1; } catch (error) { reportIntegrationFailure('calendar', error); this.logger.warn(`Sync of ${id} failed: ${error instanceof Error ? error.message : error}`); } }
+    for (const { id, workspaceId, connectedById } of due) {
+      try {
+        const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId: connectedById } }, select: { role: true } });
+        if (!member || !['OWNER', 'ADMINISTRATOR'].includes(member.role)) continue;
+        if (await this.syncConnection(id)) done += 1;
+      } catch (error) { reportIntegrationFailure('calendar', error); this.logger.warn(`Sync of ${id} failed: ${error instanceof Error ? error.message : error}`); }
+    }
     return done;
+  }
+
+  /**
+   * Opening the calendar: any member's visit brings the workspace's connected calendars up to date, if they haven't been synced for a minute.
+   * Waits a few seconds so quick syncs show up straight away; slower ones carry on in the background and the page asks again.
+   */
+  async refreshWorkspace(identity: AuthenticatedIdentity, workspaceId: string) {
+    await requireWorkspaceMember(this.prisma, identity, workspaceId, true); // like every action that changes something, not for guests
+    const stale = new Date(Date.now() - OPEN_COOLDOWN_MS);
+    const due = await this.prisma.calendarConnection.findMany({ where: { workspaceId, status: 'ACTIVE', AND: [{ OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: stale } }] }, { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }] }] }, select: { id: true } });
+    const running = await this.prisma.calendarConnection.count({ where: { workspaceId, status: 'ACTIVE', syncingSince: { gt: new Date(Date.now() - STALE_CLAIM_MS) } } });
+    if (!due.length) return { changed: false, syncing: running > 0 };
+    const runs = Promise.allSettled(due.map(({ id }) => this.syncConnection(id)));
+    const finished = await Promise.race([runs, new Promise<null>((resolve) => { const timer = setTimeout(() => resolve(null), 8000); timer.unref(); })]);
+    if (!finished) return { changed: false, syncing: true };
+    const changed = finished.some((result) => result.status === 'fulfilled' && result.value !== null && result.value.imported + result.value.updated + result.value.removed > 0);
+    return { changed, syncing: finished.some((result) => result.status === 'fulfilled' && result.value === null) };
+  }
+
+  private readonly pushTimers = new Map<string, NodeJS.Timeout>();
+  /** How long a burst of AVEN edits is held before it is sent. Exposed so tests don't wait for it. */
+  pushDelayMs = 4000;
+  /** Tests only: sends changes even though background syncing is switched off in the test environment. */
+  sendInTests = false;
+  /**
+   * An event was created, edited or deleted in AVEN: a few seconds later (so a burst of edits is one sync) the workspace's calendars that
+   * receive AVEN events are synced, so the change reaches Google without waiting for the next scheduled run.
+   */
+  requestPush(workspaceId: string) {
+    if (!this.sendInTests && readApiEnvironment().calendar.syncDisabled) return; // syncing is off on this server (always so in tests, unless a test turns it on)
+    clearTimeout(this.pushTimers.get(workspaceId));
+    const timer = setTimeout(() => {
+      this.pushTimers.delete(workspaceId);
+      void (async () => {
+        const rows = await this.prisma.calendarConnection.findMany({ where: { workspaceId, status: 'ACTIVE', pushEnabled: true }, select: { id: true } });
+        for (const { id } of rows) await this.syncConnection(id);
+      })().catch((error) => { reportIntegrationFailure('calendar', error); this.logger.warn(`Sending a change to the calendar failed: ${error instanceof Error ? error.message : error}`); });
+    }, this.pushDelayMs);
+    timer.unref(); this.pushTimers.set(workspaceId, timer);
   }
 
   private async accessToken(connection: { id: string; accessTokenEnc: string; refreshTokenEnc: string; expiresAt: Date }, provider: CalendarProvider): Promise<string> {
@@ -143,9 +223,28 @@ export class CalendarSyncService {
       try { token = await this.accessToken(connection, provider); }
       catch (error) { return await this.fail(connectionId, error, summary); }
       const now = Date.now(); const window = { from: new Date(now - 30 * DAY), to: new Date(now + 180 * DAY) };
-      let remote;
-      try { remote = await provider.list(token, window); }
-      catch (error) { return await this.fail(connectionId, error, summary); }
+      // Incremental when the provider offers it and a recent full read left a token; otherwise the whole window.
+      const wantFull = !provider.changes || !connection.syncToken || !connection.fullSyncedAt || now - connection.fullSyncedAt.getTime() > FULL_RESYNC_MS;
+      let remote; let nextToken: string | null = null; let incremental = false;
+      try {
+        if (provider.changes) { const result = await provider.changes(token, window, wantFull ? null : connection.syncToken); remote = result.events; nextToken = result.syncToken; incremental = result.incremental; }
+        else remote = await provider.list(token, window);
+      } catch (error) { return await this.fail(connectionId, error, summary); }
+
+      // An event AVEN sent whose answer was lost shows up here as a copy nobody is linked to, carrying AVEN's own id. Pair it with its AVEN event
+      // (which is then sent its current content once) instead of importing it as a second event and later removing it.
+      if (connection.pushEnabled && provider.idForKey && provider.isSentCopy) {
+        const known = new Set((await this.prisma.externalEventLink.findMany({ where: { connectionId }, select: { externalId: true } })).map((link) => link.externalId));
+        const strays = remote.filter((item) => !item.cancelled && !known.has(item.id) && provider.isSentCopy!(item.id));
+        if (strays.length) {
+          const candidates = await this.prisma.calendarEvent.findMany({ where: { workspaceId: connection.workspaceId, externalLinks: { none: {} } }, select: { id: true } });
+          const eventFor = new Map(candidates.map((candidate) => [provider.idForKey!(`${connection.id}:${candidate.id}`), candidate.id]));
+          for (const stray of strays) {
+            const eventId = eventFor.get(stray.id); if (!eventId) continue;
+            await this.prisma.externalEventLink.create({ data: { connectionId, eventId, externalId: stray.id, etag: stray.etag, localSyncedAt: new Date(0) } }).catch((error) => { if ((error as { code?: string }).code !== 'P2002') throw error; });
+          }
+        }
+      }
 
       const links = await this.prisma.externalEventLink.findMany({ where: { connectionId } });
       const eventIds = links.map((link) => link.eventId).filter((id): id is string => Boolean(id));
@@ -154,7 +253,7 @@ export class CalendarSyncService {
       const locals = new Map(events.map((event) => [event.id, { id: event.id, updatedAt: event.updatedAt, startsAt: event.startsAt, recurring: event.recurrence !== null }]));
       const unlinkedRows = connection.pushEnabled ? await this.prisma.calendarEvent.findMany({ where: { workspaceId: connection.workspaceId, externalLinks: { none: {} }, startsAt: { gte: window.from, lte: window.to } }, take: 500 }) : [];
       const unlinkedById = new Map(unlinkedRows.map((event) => [event.id, event]));
-      const plan = planSync({ remote, links: links.map((link) => ({ id: link.id, eventId: link.eventId, externalId: link.externalId, etag: link.etag, localSyncedAt: link.localSyncedAt })), locals, unlinked: unlinkedRows.map((event) => ({ id: event.id, updatedAt: event.updatedAt, startsAt: event.startsAt, recurring: event.recurrence !== null })), pushEnabled: connection.pushEnabled, window });
+      const plan = planSync({ remote, links: links.map((link) => ({ id: link.id, eventId: link.eventId, externalId: link.externalId, etag: link.etag, localSyncedAt: link.localSyncedAt })), locals, unlinked: unlinkedRows.map((event) => ({ id: event.id, updatedAt: event.updatedAt, startsAt: event.startsAt, recurring: event.recurrence !== null })), pushEnabled: connection.pushEnabled, partial: incremental, window });
       summary.skippedRecurring = plan.skippedRecurring;
 
       const label = provider.label; const notes: string[] = [];
@@ -167,17 +266,30 @@ export class CalendarSyncService {
         }
       }
       if (summary.imported + summary.updated + summary.removed + summary.sent > 0) await this.prisma.workspaceActivity.create({ data: { workspaceId: connection.workspaceId, actorId: connection.connectedById, entityType: 'CALENDAR', entityId: connection.id, message: `synced ${label}: ${[summary.imported && `${summary.imported} added`, summary.updated && `${summary.updated} updated`, summary.removed && `${summary.removed} removed`, summary.sent && `${summary.sent} sent`].filter(Boolean).join(', ')}${notes.length ? `. ${notes.slice(0, 2).join(' ')}` : ''}`.slice(0, 240) } });
-      await this.prisma.calendarConnection.update({ where: { id: connectionId }, data: { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: summary.problems[0] ?? null } });
+      // The token only moves forward when every change was applied; otherwise the same changes come again next time (applying them is safe to repeat).
+      const clean = summary.problems.length === 0;
+      const tokens = provider.changes ? (clean ? { syncToken: nextToken, ...(incremental ? {} : { fullSyncedAt: new Date() }) } : incremental ? {} : { syncToken: null }) : {};
+      await this.prisma.calendarConnection.update({ where: { id: connectionId }, data: { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: summary.problems[0] ?? null, ...tokens, ...(clean ? { failureCount: 0, nextAttemptAt: null } : {}) } });
       return summary;
     } catch (error) { return await this.fail(connectionId, error, summary); }
     finally { await this.prisma.calendarConnection.updateMany({ where: { id: connectionId }, data: { syncingSince: null } }).catch(() => undefined); }
   }
 
-  /** A refused token means the person has to reconnect; anything else is retried at the next sync. */
+  /**
+   * A refused token means the person has to reconnect. Anything else is retried with a growing delay (5, 10, 20… minutes, at most an hour),
+   * and after MAX_FAILURES in a row background syncing stops until the person reconnects.
+   */
   private async fail(connectionId: string, error: unknown, summary: SyncSummary): Promise<SyncSummary> {
     const message = error instanceof Error ? error.message.slice(0, 280) : 'The sync failed.';
     const needsAttention = error instanceof ProviderError && error.kind === 'auth';
-    await this.prisma.calendarConnection.updateMany({ where: { id: connectionId }, data: { lastError: message, ...(needsAttention ? { status: 'NEEDS_ATTENTION' } : {}) } });
+    const current = await this.prisma.calendarConnection.findUnique({ where: { id: connectionId }, select: { failureCount: true } });
+    const failures = (current?.failureCount ?? 0) + 1;
+    const giveUp = !needsAttention && failures >= MAX_FAILURES;
+    await this.prisma.calendarConnection.updateMany({ where: { id: connectionId }, data: {
+      lastError: giveUp ? `${message.slice(0, 200)} Syncing paused after repeated failures. Reconnect to resume.` : message,
+      failureCount: failures, nextAttemptAt: needsAttention || giveUp ? null : new Date(Date.now() + retryDelayMs(failures)),
+      ...(needsAttention || giveUp ? { status: 'NEEDS_ATTENTION' } : {}),
+    } });
     summary.problems.push(message);
     return summary;
   }
@@ -208,7 +320,7 @@ export class CalendarSyncService {
       }
       case 'pushCreate': {
         const event = c.unlinkedById.get(action.eventId); if (!event) return;
-        const created = await provider.create(token, toLocalContent(event));
+        const created = await provider.create(token, toLocalContent(event), `${connection.id}:${event.id}`);
         // If remembering the pairing fails, take the new copy back off the calendar so the next sync can't send it a second time.
         try { await this.prisma.externalEventLink.create({ data: { connectionId: connection.id, eventId: event.id, externalId: created.id, etag: created.etag, localSyncedAt: event.updatedAt } }); }
         catch (error) { await provider.remove(token, created.id).catch(() => undefined); throw error; }

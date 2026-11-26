@@ -4,7 +4,8 @@ import { useT } from '../i18n';
 import type { Key } from '../i18n/en';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useLiveRevision } from './use-live-revision';
 import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabels } from './task-labels';
 import { Icon } from './home-icons';
@@ -139,7 +140,12 @@ export function CalendarWorkspace() {
     return response.json();
   }, [getToken]);
 
+  // The events' "revision" as of the last load. The revision is read first, so a change that lands while loading is noticed by the next check rather than missed.
+  const knownRevision = useRef<string | null>(null);
+  const fetchRevision = useCallback(async () => (await request(`/workspaces/${workspace.id}/events/revision`) as { revision: string }).revision, [request, workspace.id]);
+
   const reload = useCallback(async () => {
+    knownRevision.current = await fetchRevision().catch(() => null); // the live check is a bonus: if it fails, the calendar still loads
     const [taskRows, eventRows, projectRows] = await Promise.all([
       request(`/workspaces/${workspace.id}/tasks`),
       request(`/workspaces/${workspace.id}/events`),
@@ -148,7 +154,14 @@ export function CalendarWorkspace() {
     setTasks(taskRows.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED'));
     setEvents(eventRows);
     setProjects(projectRows);
-  }, [request, workspace.id]);
+  }, [request, fetchRevision, workspace.id]);
+
+  // Events only: used when something else changed them (a calendar sync, another tab). The selected date, view and filters are state of this page and are left alone.
+  const reloadEvents = useCallback(async () => {
+    knownRevision.current = await fetchRevision().catch(() => null); // the live check is a bonus: if it fails, the calendar still loads
+    setEvents(await request(`/workspaces/${workspace.id}/events`) as CalendarEvent[]);
+  }, [request, fetchRevision, workspace.id]);
+  useLiveRevision(knownRevision, fetchRevision, reloadEvents);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +172,26 @@ export function CalendarWorkspace() {
     })();
     return () => { cancelled = true; };
   }, [reload]);
+
+  // Opening the calendar (and coming back to it) asks the server to bring connected calendars up to date. The server only does the work
+  // when they are a minute or more out of date, and this ref stops repeated renders or quick tab switches from asking again.
+  const lastRefresh = useRef(0);
+  const laterReload = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const refreshFromProviders = useCallback(async () => {
+    if (Date.now() - lastRefresh.current < 60_000) return;
+    lastRefresh.current = Date.now();
+    try {
+      const result = await request(`/workspaces/${workspace.id}/integrations/calendar/refresh`, { method: 'POST' }) as { changed: boolean; syncing: boolean };
+      if (result.changed) await reloadEvents();
+      if (result.syncing) { clearTimeout(laterReload.current); laterReload.current = setTimeout(() => { void reloadEvents().catch(() => undefined); }, 6000); }
+    } catch { /* the calendar still works from what AVEN already has */ }
+  }, [request, reloadEvents, workspace.id]);
+  useEffect(() => {
+    void (async () => { await refreshFromProviders(); })();
+    const onVisible = () => { if (document.visibilityState === 'visible') void refreshFromProviders(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearTimeout(laterReload.current); };
+  }, [refreshFromProviders]);
 
   async function createEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -193,9 +226,9 @@ export function CalendarWorkspace() {
       formElement.reset();
       setEditingEvent(null); setEndValue(''); setRepeatFrequency(''); setRepeatUntilValue('');
       setStartValue(`${selectedDate}T09:00`);
-      await reload();
+      await reloadEvents();
     } catch (reason) {
-      if ((reason as { status?: number }).status === 409) { setEditingEvent(null); setError('Someone else changed this event while you were editing. The latest version has been loaded—open it again to make your change.'); await reload(); }
+      if ((reason as { status?: number }).status === 409) { setEditingEvent(null); setError('Someone else changed this event while you were editing. The latest version has been loaded—open it again to make your change.'); await reloadEvents(); }
       else setError(reason instanceof Error ? reason.message : 'Could not schedule the event.');
     }
     finally { setBusy(false); }
@@ -260,7 +293,7 @@ export function CalendarWorkspace() {
     try {
       await request(`/workspaces/${workspace.id}/events/${event.id}`, { method: 'DELETE' });
       if (editingEvent?.id === event.id) setEditingEvent(null);
-      await reload();
+      await reloadEvents();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the event.'); }
     finally { setBusy(false); }
   }
@@ -271,7 +304,7 @@ export function CalendarWorkspace() {
     try {
       if (file.size > 1_000_000) throw new Error(t('cal.fileBig'));
       setImportSummary(await request(`/workspaces/${workspace.id}/events/import`, { method: 'POST', body: JSON.stringify({ ics: await file.text() }) }));
-      await reload();
+      await reloadEvents();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import this calendar file.'); }
     finally { setBusy(false); }
   }

@@ -20,9 +20,10 @@ export type Plan = { actions: Action[]; skippedRecurring: number };
  *  - Deleted on the provider: deleted here too (only if it falls inside the synced window).
  *  - Deleted in AVEN: stays deleted. If sending is on, it is deleted on the provider too; otherwise it is simply not re-imported.
  *  - AVEN events with no link at all are sent only when sending is on. Repeating ones are skipped: providers use their own repeat rules.
+ *  - `partial` (an incremental read): `remote` holds only what changed, so a missing event means "unchanged", never "deleted". Only an explicit cancellation removes anything.
  */
-export function planSync(input: { remote: RemoteEvent[]; links: Link[]; locals: Map<string, Local>; unlinked: Local[]; pushEnabled: boolean; window: { from: Date; to: Date } }): Plan {
-  const { links, locals, pushEnabled, window } = input;
+export function planSync(input: { remote: RemoteEvent[]; links: Link[]; locals: Map<string, Local>; unlinked: Local[]; pushEnabled: boolean; window: { from: Date; to: Date }; partial?: boolean }): Plan {
+  const { links, locals, pushEnabled, window } = input; const partial = input.partial === true;
   const actions: Action[] = [];
   const remoteById = new Map<string, RemoteEvent>(); const cancelled = new Set<string>();
   for (const remote of input.remote) { if (remote.cancelled) cancelled.add(remote.id); else remoteById.set(remote.id, remote); }
@@ -34,12 +35,16 @@ export function planSync(input: { remote: RemoteEvent[]; links: Link[]; locals: 
     if (link.eventId === null || !locals.has(link.eventId)) {
       // Deleted in AVEN.
       if (remote && pushEnabled) actions.push({ type: 'pushDelete', linkId: link.id, externalId: link.externalId });
-      else if (!remote) actions.push({ type: 'dropLink', linkId: link.id });
+      else if (!remote && !partial) actions.push({ type: 'dropLink', linkId: link.id });
+      else if (!remote && cancelled.has(link.externalId)) actions.push({ type: 'dropLink', linkId: link.id });
+      else if (!remote && pushEnabled) actions.push({ type: 'pushDelete', linkId: link.id, externalId: link.externalId }); // unchanged on the provider, so still there
       continue;
     }
     const local = locals.get(link.eventId)!;
     if (!remote) {
-      if (cancelled.has(link.externalId) || inWindow(local.startsAt)) actions.push({ type: 'deleteLocal', linkId: link.id, eventId: local.id });
+      if (cancelled.has(link.externalId) || (!partial && inWindow(local.startsAt))) actions.push({ type: 'deleteLocal', linkId: link.id, eventId: local.id });
+      // Unchanged on the provider but edited here: send the edit.
+      else if (partial && pushEnabled && !local.recurring && local.updatedAt.getTime() > link.localSyncedAt.getTime()) actions.push({ type: 'pushUpdate', linkId: link.id, eventId: local.id, externalId: link.externalId, etag: link.etag, conflict: false });
       continue;
     }
     const localChanged = local.updatedAt.getTime() > link.localSyncedAt.getTime();
@@ -53,7 +58,7 @@ export function planSync(input: { remote: RemoteEvent[]; links: Link[]; locals: 
     else actions.push({ type: 'pushUpdate', linkId: link.id, eventId: local.id, externalId: link.externalId, etag: remote.etag, conflict: true });
   }
 
-  for (const remote of remoteById.values()) if (!linked.has(remote.id)) actions.push({ type: 'createLocal', remote });
+  for (const remote of remoteById.values()) if (!linked.has(remote.id) && (!partial || inWindow(remote.startsAt))) actions.push({ type: 'createLocal', remote }); // a change feed covers the whole calendar, but AVEN only holds the window
 
   let skippedRecurring = 0;
   if (pushEnabled) for (const local of input.unlinked) { if (local.recurring) skippedRecurring += 1; else if (inWindow(local.startsAt)) actions.push({ type: 'pushCreate', eventId: local.id }); }
