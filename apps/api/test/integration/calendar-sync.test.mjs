@@ -184,14 +184,19 @@ describe('calendar sync', { skip }, () => {
   test('background sync: a due connection is synced with nobody pressing Sync now, a recent one is left alone, and failures back off', async () => {
     const c = await google(); await idle(c.id); stub.addGoogle('b1', 'Background one', soon(11), soon(11, 11));
     await makeDue(c.id, 1e7); assert.ok(await svc.syncDue() >= 1); assert.ok((await titles()).includes('Background one')); // longest-waiting, so ahead of earlier runs' connections in a reused database
-    stub.addGoogle('b2', 'Background two', soon(12), soon(12, 11)); assert.equal(await svc.syncDue(), 0, 'just synced, so not due');
+    // syncDue() works through every due connection in the database, and the integration database is reused between runs, so the
+    // checks below look at this connection (its own lastSyncedAt), and each step makes it the longest-waiting so it is in the batch.
+    const synced = async () => (await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } })).lastSyncedAt.getTime();
+    stub.addGoogle('b2', 'Background two', soon(12), soon(12, 11)); const justSynced = await synced(); await svc.syncDue();
+    assert.equal(await synced(), justSynced, 'just synced, so not due');
     assert.ok(!(await titles()).includes('Background two'));
     // Google is busy: the failure is recorded and the next attempt is pushed back, not hammered
-    stub.google.failWith = 503; await makeDue(c.id); await svc.syncDue();
+    stub.google.failWith = 503; await makeDue(c.id, 1e7); await svc.syncDue();
     let row = await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } });
     assert.equal(row.failureCount, 1); assert.equal(row.status, 'ACTIVE'); assert.ok(row.nextAttemptAt.getTime() > Date.now() + 4 * 60_000, 'about five minutes');
-    stub.google.failWith = 0; await makeDue(c.id); assert.equal(await svc.syncDue(), 0, 'waiting out the delay');
-    await t.prisma.calendarConnection.update({ where: { id: c.id }, data: { nextAttemptAt: null } }); assert.ok(await svc.syncDue() >= 1);
+    stub.google.failWith = 0; await makeDue(c.id, 1e7); const waiting = await synced(); await svc.syncDue();
+    assert.equal(await synced(), waiting, 'waiting out the delay'); assert.equal((await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } })).failureCount, 1);
+    await t.prisma.calendarConnection.update({ where: { id: c.id }, data: { nextAttemptAt: null } }); await makeDue(c.id, 1e7); assert.ok(await svc.syncDue() >= 1);
     row = await t.prisma.calendarConnection.findUniqueOrThrow({ where: { id: c.id } }); assert.deepEqual([row.failureCount, row.nextAttemptAt, row.lastError], [0, null, null]);
     assert.ok((await titles()).includes('Background two'), 'recovered and caught up');
     const { retryDelayMs } = await import('../../dist/calendar-sync/calendar-sync.service.js');

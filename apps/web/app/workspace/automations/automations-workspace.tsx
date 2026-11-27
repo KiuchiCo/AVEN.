@@ -8,7 +8,7 @@ import type { Key } from '../../i18n/en';
 import { useWorkspaceSession } from '../workspace-shell';
 import { TaskLabels } from '../task-labels';
 import { WorkflowsWorkspace } from './workflows-workspace';
-import { EmptyState, PageHeader, Panel, StatCard, StatRow } from '../ui';
+import { EmptyState, PageHeader, Panel, PillTabs, StatCard, StatRow } from '../ui';
 import { Icon } from '../home-icons';
 import { connectionError, apiFetch } from '../connection-error';
 
@@ -28,6 +28,7 @@ export function AutomationsWorkspace() {
   const statusLabel = (status: string) => { const option = statuses.find((item) => item.value === status); return option ? t(option.label) : status; };
   const priorityName = (value: string | null) => { const key = ({ LOW: 'prio.low', MEDIUM: 'prio.medium', HIGH: 'prio.high', URGENT: 'prio.urgent' } as Record<string, Key>)[value ?? 'MEDIUM']; return key ? t(key) : (value ?? '').toLocaleLowerCase(); };
   const { workspace } = useWorkspaceSession();
+  const [kind, setKind] = useState<'WORKFLOWS' | 'RULES'>('WORKFLOWS');
   const [data, setData] = useState<AutomationData>({ rules: [], runs: [] });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -124,8 +125,10 @@ export function AutomationsWorkspace() {
     {error && <p className="productivity-error" role="alert">{error}</p>}
     {notice && <p className="automations-notice" role="status">{notice}</p>}
 
-    <WorkflowsWorkspace />
+    {/* Two kinds of automation, one at a time: multi-step workflows, and one-line rules for a task status change. */}
+    <PillTabs label={t('nav.automations')} value={kind} onChange={setKind} items={[{ key: 'WORKFLOWS', label: t('au.tab.workflows'), icon: 'bolt' }, { key: 'RULES', label: t('au.tab.rules'), icon: 'sliders', count: data.rules.length }]} />
 
+    {kind === 'WORKFLOWS' ? <WorkflowsWorkspace /> : <>
     <StatRow columns={3} label={t('nav.automations')}>
       <StatCard icon="bolt" value={data.rules.length} label={t('au.rules')} />
       <StatCard icon="play" value={enabledCount} label={t('au.enabled')} />
@@ -165,5 +168,6 @@ export function AutomationsWorkspace() {
         <div><strong>{run.rule.name}</strong><small>{run.task ? <><Link href={`/workspace/tasks/${run.task.id}`}>{run.task.title}</Link> · </> : <>{t('au.taskGone')} · </>}{run.summary}</small>{run.task && <TaskLabels labels={run.task.labels} compact />}</div>
         <time dateTime={run.createdAt}>{fmt(run.createdAt)}</time></li>)}</ul>}
     </Panel>
+    </>}
   </div>;
 }

@@ -25,9 +25,12 @@ export function RecordPager({ mode, page, pageSize, state, onPage, onPageSize, o
   }
   return <nav className="database-pager" aria-label={t('db.pager.nav')}>
     <span role="status" aria-live="polite">{state.loading ? t('db.pager.loading') : state.total === 0 ? t('db.pager.none') : t('db.pager.showing', { from: number.format(from), to: number.format(to), total: number.format(state.total) })}</span>
-    <label>{t('db.pager.size')} <select value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>{pageSizes.map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
-    <button type="button" onClick={() => onPage(page - 1)} disabled={page <= 1 || state.loading}>{t('db.pager.prev')}</button>
-    <span>{t('db.pager.page', { page: number.format(page), pages: number.format(pages) })}</span>
-    <button type="button" onClick={() => onPage(page + 1)} disabled={page >= pages || state.loading}>{t('db.pager.next')}</button>
+    {state.total > pageSizes[0] && <label>{t('db.pager.size')} <select value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>{pageSizes.map((size) => <option key={size} value={size}>{size}</option>)}</select></label>}
+    {/* One page needs no page controls: two disabled buttons only add noise. */}
+    {(pages > 1 || page > 1) && <>
+      <button type="button" onClick={() => onPage(page - 1)} disabled={page <= 1 || state.loading}>{t('db.pager.prev')}</button>
+      <span>{t('db.pager.page', { page: number.format(page), pages: number.format(pages) })}</span>
+      <button type="button" onClick={() => onPage(page + 1)} disabled={page >= pages || state.loading}>{t('db.pager.next')}</button>
+    </>}
   </nav>;
 }

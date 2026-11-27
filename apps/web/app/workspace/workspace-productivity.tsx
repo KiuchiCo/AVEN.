@@ -134,6 +134,36 @@ const labelColour = (label: string) => { let hash = 0; for (const char of label)
 const priorityTone = (priority: string) => (priority === 'URGENT' || priority === 'HIGH' ? 'red' : priority === 'MEDIUM' ? 'amber' : 'green') as 'red' | 'amber' | 'green';
 
 type TaskGroupBy = 'DUE' | 'PROJECT' | 'PRIORITY' | 'STATUS';
+const TASK_VIEW_KEY = 'aven:my-tasks-view';
+const readTaskView = (): 'LIST' | 'BOARD' => { try { return window.localStorage.getItem(TASK_VIEW_KEY) === 'BOARD' ? 'BOARD' : 'LIST'; } catch { return 'LIST'; } };
+const subscribeStorage = (notify: () => void) => { window.addEventListener('storage', notify); return () => window.removeEventListener('storage', notify); };
+const boardColumns = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'COMPLETED'] as const;
+
+/** My Tasks as status columns. Drag a card to another column, or use its status menu (keyboard and touch). */
+export function MyTaskBoard({ tasks, savingId, onStatus }: { tasks: TaskRecord[]; savingId: string | null; onStatus: (id: string, status: string) => void }) {
+  const t = useT();
+  const [over, setOver] = useState('');
+  const statusLabel = (value: string) => t(taskStatuses.find((status) => status.value === value)?.label ?? 'status.todo');
+  return <div className="pw-board task-board">{boardColumns.map((column) => {
+    const cards = tasks.filter((task) => task.status === column);
+    return <section key={column} className={`pw-column${over === column ? ' is-over' : ''}`} aria-label={t('pj.columnAria', { title: statusLabel(column), n: cards.length })}
+      onDragOver={(event) => { event.preventDefault(); setOver(column); }} onDragLeave={() => setOver((current) => (current === column ? '' : current))}
+      onDrop={(event) => { event.preventDefault(); setOver(''); const id = event.dataTransfer.getData('text/plain'); const task = tasks.find((row) => row.id === id); if (task && task.status !== column) onStatus(id, column); }}>
+      <h3><span>{statusLabel(column)}</span><b>{cards.length}</b></h3>
+      <div className="pw-column__cards">{cards.length === 0 ? <p className="task-board__empty">{t('tasks.boardEmpty')}</p> : cards.map((task) => <article key={task.id} className="pw-task" draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', task.id)}>
+        <Link href={`/workspace/tasks/${task.id}`} className="pw-task__title">{task.title}</Link>
+        <TaskBadges task={task} />
+        {task.labels.length > 0 && <TaskLabels labels={task.labels} compact />}
+        <div className="pw-task__foot">
+          <Pill tone={priorityTone(task.priority)}><i className="rd-dot" />{t(`prio.${task.priority.toLowerCase()}` as Key).replace(/^./, (c) => c.toLocaleUpperCase())}</Pill>
+          {task.dueAt && <time className="rd-due" dateTime={task.dueAt}><Icon name="calendar" size={14} />{new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(new Date(`${task.dueAt.slice(0, 10)}T12:00:00`))}</time>}
+          <select className="pw-select-sm" value={task.status} disabled={savingId === task.id} aria-label={t('tasks.statusFor', { title: task.title })} onChange={(event) => onStatus(task.id, event.target.value)}>{taskStatuses.map((status) => <option key={status.value} value={status.value}>{t(status.label)}</option>)}</select>
+        </div>
+        {task.project && <Link className="rd-projectpill" href={`/workspace/projects/${task.project.id}`}><Icon name="layers" size={15} />{task.project.name}</Link>}
+      </article>)}</div>
+    </section>;
+  })}</div>;
+}
 
 export function MyTasksWorkspace() {
   const t = useT();
@@ -151,6 +181,12 @@ export function MyTasksWorkspace() {
   const [projectFilter, setProjectFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [query, setQuery] = useState('');
+  // The summary counts double as one-tap filters: due today, this week, high priority.
+  const [quick, setQuick] = useState<'' | 'TODAY' | 'WEEK' | 'HIGH'>('');
+  const storedView = useSyncExternalStore(subscribeStorage, readTaskView, () => 'LIST' as const);
+  const [chosenView, setChosenView] = useState<'LIST' | 'BOARD' | null>(null);
+  const view = chosenView ?? storedView;
+  const setView = (next: 'LIST' | 'BOARD') => { setChosenView(next); try { window.localStorage.setItem(TASK_VIEW_KEY, next); } catch { /* the choice just isn't remembered */ } };
   const urlLabel = useSyncExternalStore(
     (notify) => { window.addEventListener('popstate', notify); return () => window.removeEventListener('popstate', notify); },
     () => new URLSearchParams(window.location.search).get('label')?.trim().toLocaleLowerCase() ?? '',
@@ -165,16 +201,26 @@ export function MyTasksWorkspace() {
   const open = tasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
   const dayOf = (task: TaskRecord) => task.dueAt?.slice(0, 10) ?? null;
   const stats = { open: open.length, today: open.filter((task) => dayOf(task) === todayKey).length, week: open.filter((task) => { const day = dayOf(task); return day !== null && day > todayKey && day <= weekEndKey; }).length, high: open.filter((task) => task.priority === 'HIGH' || task.priority === 'URGENT').length };
-  const visibleTasks = useMemo(() => {
+  // Every filter except status: the board shows status as its columns, so it starts from here.
+  const matchingTasks = useMemo(() => {
     let matching = labelFilter ? tasks.filter((task) => task.labels.includes(labelFilter)) : tasks;
     if (tab === 'MINE') matching = matching.filter((task) => task.assignee?.id === user.id);
     if (projectFilter) matching = matching.filter((task) => task.project?.id === projectFilter);
     if (priorityFilter) matching = matching.filter((task) => task.priority === priorityFilter);
     if (query.trim()) { const needle = query.trim().toLocaleLowerCase(); matching = matching.filter((task) => task.title.toLocaleLowerCase().includes(needle) || task.labels.some((label) => label.includes(needle))); }
-    if (filter === 'ALL') return matching;
-    if (filter === 'COMPLETED') return matching.filter((task) => task.status === 'COMPLETED');
-    return matching.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
-  }, [filter, labelFilter, priorityFilter, projectFilter, query, tab, tasks, user.id]);
+    if (quick === 'TODAY') matching = matching.filter((task) => task.dueAt?.slice(0, 10) === todayKey);
+    if (quick === 'WEEK') matching = matching.filter((task) => { const day = task.dueAt?.slice(0, 10); return !!day && day > todayKey && day <= weekEndKey; });
+    if (quick === 'HIGH') matching = matching.filter((task) => task.priority === 'HIGH' || task.priority === 'URGENT');
+    return matching;
+  }, [labelFilter, priorityFilter, projectFilter, query, quick, tab, tasks, todayKey, user.id, weekEndKey]);
+  const visibleTasks = useMemo(() => {
+    if (quick) return matchingTasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
+    if (filter === 'ALL') return matchingTasks;
+    if (filter === 'COMPLETED') return matchingTasks.filter((task) => task.status === 'COMPLETED');
+    return matchingTasks.filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED');
+  }, [filter, matchingTasks, quick]);
+  const activeFilters = (filter !== 'OPEN' ? 1 : 0) + (projectFilter ? 1 : 0) + (priorityFilter ? 1 : 0) + (labelFilter ? 1 : 0) + (groupBy !== 'DUE' ? 1 : 0);
+  const clearFilters = () => { setFilter('OPEN'); setProjectFilter(''); setPriorityFilter(''); setSelectedLabel(''); setGroupBy('DUE'); setQuick(''); setQuery(''); };
   const groups = useMemo(() => {
     const rank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
     const sorted = [...visibleTasks].sort((a, b) => (dayOf(a) ?? '9999').localeCompare(dayOf(b) ?? '9999') || (rank[a.priority] ?? 4) - (rank[b.priority] ?? 4));
@@ -203,38 +249,40 @@ export function MyTasksWorkspace() {
     <div className="workspace-section-page task-list-page">
       <PageHeader eyebrow={t('tasks.eyebrow')} title={t('nav.tasks')} description={t('tasks.desc')} />
       {error && <p className="productivity-error" role="alert">{error}</p>}
-      <div className="rd-grid rd-grid--aside">
+      <div className={view === 'BOARD' ? 'rd-grid' : 'rd-grid rd-grid--aside'}>
         <div>
-          <StatRow label={t('inbox.summaryAria')}>
-            <StatCard icon="tasks" value={loading ? '—' : stats.open} label={t('tasks.s.open')} />
-            <StatCard icon="calendar" value={loading ? '—' : stats.today} label={t('tasks.s.today')} tone="bronze" />
-            <StatCard icon="flag" value={loading ? '—' : stats.week} label={t('tasks.s.week')} tone="violet" />
-            <StatCard icon="bolt" value={loading ? '—' : stats.high} label={t('tasks.s.high')} tone="red" />
-          </StatRow>
           <section className="task-list-panel rd-panel" aria-labelledby="my-tasks-title">
             <h2 id="my-tasks-title" className="visually-hidden">{t('tasks.all')}</h2>
-            <div className="rd-listbar">
+            <div className="task-summary" role="group" aria-label={t('tasks.quickFilters')}>
+              {([['', stats.open, 'tasks.s.open'], ['TODAY', stats.today, 'tasks.s.today'], ['WEEK', stats.week, 'tasks.s.week'], ['HIGH', stats.high, 'tasks.s.high']] as const).map(([key, count, label]) => <button key={key || 'open'} type="button" aria-pressed={quick === key} className={`task-summary__chip${quick === key ? ' is-active' : ''}${key === 'HIGH' && count > 0 ? ' is-alert' : ''}`} onClick={() => setQuick(key)}><strong>{loading ? '—' : count}</strong>{t(label)}</button>)}
+            </div>
+            <div className="rd-listbar task-toolbar">
               <PillTabs label={t('tasks.tabsAria')} value={tab} onChange={setTab} items={[{ key: 'ALL', label: t('tasks.tab.all') }, { key: 'MINE', label: t('tasks.tab.mine') }]} />
+              <div className="rd-search task-toolbar__search"><Icon name="search" size={18} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('tasks.search')} aria-label={t('tasks.search')} /></div>
               <div className="rd-listbar__tools">
-                <label className="rd-inline">{t('tasks.groupBy')}<select className="rd-select" value={groupBy} onChange={(event) => setGroupBy(event.target.value as TaskGroupBy)}><option value="DUE">{t('tasks.g.due')}</option><option value="PROJECT">{t('tasks.g.project')}</option><option value="PRIORITY">{t('tasks.g.priority')}</option><option value="STATUS">{t('tasks.g.status')}</option></select></label>
+                <details className="task-filters">
+                  <summary className="rd-btn rd-btn--soft rd-btn--small"><Icon name="filter" size={16} />{t('tasks.filters')}{activeFilters > 0 && <span className="task-filters__count">{activeFilters}</span>}</summary>
+                  <div className="task-filters__panel">
+                    <label className="rd-inline">{t('tasks.f.status')}<select className="rd-select" value={filter} disabled={view === 'BOARD' || !!quick} onChange={(event) => setFilter(event.target.value)}><option value="OPEN">{t('tasks.f.open')}</option><option value="ALL">{t('tasks.f.all')}</option><option value="COMPLETED">{t('tasks.f.completed')}</option></select></label>
+                    <label className="rd-inline">{t('tasks.f.project')}<select className="rd-select" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}><option value="">{t('tasks.allProjects')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+                    <label className="rd-inline">{t('tasks.f.priority')}<select className="rd-select" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="">{t('tasks.allPriorities')}</option>{['URGENT', 'HIGH', 'MEDIUM', 'LOW'].map((value) => <option key={value} value={value}>{t(`prio.${value.toLowerCase()}` as Key).replace(/^./, (c) => c.toLocaleUpperCase())}</option>)}</select></label>
+                    <TaskLabelFilter labels={allLabels} value={labelFilter} onChange={setSelectedLabel} />
+                    <label className="rd-inline">{t('tasks.groupBy')}<select className="rd-select" value={groupBy} disabled={view === 'BOARD'} onChange={(event) => setGroupBy(event.target.value as TaskGroupBy)}><option value="DUE">{t('tasks.g.due')}</option><option value="PROJECT">{t('tasks.g.project')}</option><option value="PRIORITY">{t('tasks.g.priority')}</option><option value="STATUS">{t('tasks.g.status')}</option></select></label>
+                    {(activeFilters > 0 || quick || query) && <button type="button" className="rd-btn rd-btn--soft rd-btn--small" onClick={clearFilters}>{t('tasks.clearFilters')}</button>}
+                  </div>
+                </details>
                 <div className="rd-viewswitch" role="group" aria-label={t('tasks.views')}>
-                  <button type="button" className="is-active" aria-pressed="true" aria-label={t('tasks.v.list')}><Icon name="list" size={18} /></button>
-                  <Link href="/workspace/projects" aria-label={t('tasks.v.board')}><Icon name="columns" size={18} /></Link>
-                  <Link href="/workspace/calendar" aria-label={t('tasks.v.calendar')}><Icon name="calendar" size={18} /></Link>
+                  <button type="button" className={view === 'LIST' ? 'is-active' : ''} aria-pressed={view === 'LIST'} aria-label={t('tasks.v.list')} title={t('tasks.v.list')} onClick={() => setView('LIST')}><Icon name="list" size={18} /></button>
+                  <button type="button" className={view === 'BOARD' ? 'is-active' : ''} aria-pressed={view === 'BOARD'} aria-label={t('tasks.v.board')} title={t('tasks.v.board')} onClick={() => setView('BOARD')}><Icon name="columns" size={18} /></button>
                 </div>
               </div>
             </div>
             <QuickAddTask projects={projects} onCreate={createTask} inputRef={quickAdd} />
             <p className="task-undo" role="status">{justDone && <>{t('tasks.doneNotice', { title: justDone.title })} <button type="button" onClick={() => { void updateStatus(justDone.id, 'TODO'); setJustDone(null); }}>{t('tasks.undo')}</button></>}</p>
-            <div className="rd-filterbar">
-              <label className="rd-inline">{t('tasks.f.status')}<select className="rd-select" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="OPEN">{t('tasks.f.open')}</option><option value="ALL">{t('tasks.f.all')}</option><option value="COMPLETED">{t('tasks.f.completed')}</option></select></label>
-              <label className="rd-inline">{t('tasks.f.project')}<select className="rd-select" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}><option value="">{t('tasks.allProjects')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-              <label className="rd-inline">{t('tasks.f.priority')}<select className="rd-select" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="">{t('tasks.allPriorities')}</option>{['URGENT', 'HIGH', 'MEDIUM', 'LOW'].map((value) => <option key={value} value={value}>{t(`prio.${value.toLowerCase()}` as Key).replace(/^./, (c) => c.toLocaleUpperCase())}</option>)}</select></label>
-              <TaskLabelFilter labels={allLabels} value={labelFilter} onChange={setSelectedLabel} />
-              <div className="rd-search rd-filterbar__search"><Icon name="search" size={18} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('tasks.search')} aria-label={t('tasks.search')} /></div>
-            </div>
-            {loading ? <p className="productivity-message">{t('tasks.loading')}</p> : visibleTasks.length === 0 ? (
-              <EmptyState art="check" title={filter === 'COMPLETED' ? t('tasks.emptyDone') : t('tasks.emptyClear')} text={filter === 'COMPLETED' ? t('tasks.emptyDoneHint') : t('tasks.emptyClearHint')}><button type="button" className="rd-btn rd-btn--soft" onClick={() => quickAdd.current?.focus()}>{t('tasks.add.label')}</button><Link className="rd-btn rd-btn--soft" href="/workspace/projects">{t('tasks.openProjects')} <span aria-hidden="true">→</span></Link></EmptyState>
+            {loading ? <p className="productivity-message">{t('tasks.loading')}</p> : view === 'BOARD' ? <MyTaskBoard tasks={matchingTasks} savingId={savingId} onStatus={(id, status) => void updateStatus(id, status)} /> : visibleTasks.length === 0 ? (
+              (activeFilters > 0 && filter !== 'COMPLETED') || quick || query.trim() || tab === 'MINE'
+                ? <EmptyState art="search" title={t('tasks.noMatch')} text={t('tasks.noMatchHint')}><button type="button" className="rd-btn rd-btn--soft" onClick={() => { clearFilters(); setTab('ALL'); }}>{t('tasks.clearFilters')}</button></EmptyState>
+                : <EmptyState art="check" title={filter === 'COMPLETED' ? t('tasks.emptyDone') : t('tasks.emptyClear')} text={filter === 'COMPLETED' ? t('tasks.emptyDoneHint') : t('tasks.emptyClearHint')}><button type="button" className="rd-btn rd-btn--soft" onClick={() => quickAdd.current?.focus()}>{t('tasks.add.label')}</button><Link className="rd-btn rd-btn--soft" href="/workspace/projects">{t('tasks.openProjects')} <span aria-hidden="true">→</span></Link></EmptyState>
             ) : (
               <div className="rd-groups">{groups.map((group) => <section key={group.key} className={`rd-group${collapsedGroups.includes(group.key) ? ' is-collapsed' : ''}`}><h3><button type="button" className="rd-group__toggle" aria-expanded={!collapsedGroups.includes(group.key)} onClick={() => setCollapsedGroups((current) => (current.includes(group.key) ? current.filter((key) => key !== group.key) : [...current, group.key]))}><Icon name="chevron" size={18} />{group.title}<span>{group.items.length}</span></button></h3>
                 {!collapsedGroups.includes(group.key) && group.items.map((task) => <article className={`rd-taskrow${dayOf(task) && dayOf(task)! < todayKey && task.status !== 'COMPLETED' ? ' is-overdue' : ''}${task.status === 'COMPLETED' ? ' is-done' : ''}`} key={task.id}>
@@ -251,7 +299,7 @@ export function MyTasksWorkspace() {
             )}
           </section>
         </div>
-        <aside className="rd-rail" aria-label={t('tasks.quick')}>
+        {view === 'LIST' && <aside className="rd-rail" aria-label={t('tasks.quick')}>
           <Panel icon="sparkle" title={t('tasks.focus')} subtitle={t('tasks.focusHint')} id="focus" className="rd-rail__card">
             {focusTask ? <><Link className="rd-btn rd-btn--block" href={`/workspace/tasks/${focusTask.id}`}><Icon name="play" size={18} />{t('tasks.focusMode')}</Link><p className="rd-rail__note">{t('tasks.focusNext', { title: focusTask.title })}</p></> : <p className="rd-rail__note">{t('tasks.focusNone')}</p>}
           </Panel>
@@ -261,7 +309,7 @@ export function MyTasksWorkspace() {
           <Panel icon="bolt" title={t('tasks.quick')} id="quick" className="rd-rail__card">
             <div className="rd-quick"><button type="button" className="rd-btn rd-btn--soft" onClick={() => { quickAdd.current?.focus(); quickAdd.current?.scrollIntoView({ block: 'center' }); }}><Icon name="plus" size={18} />{t('tasks.q.new')}</button><Link className="rd-btn rd-btn--soft" href="/workspace/calendar"><Icon name="calendar" size={18} />{t('tasks.q.schedule')}</Link><Link className="rd-btn rd-btn--soft" href="/workspace/projects"><Icon name="arrow" size={18} />{t('tasks.q.template')}</Link></div>
           </Panel>
-        </aside>
+        </aside>}
       </div>
     </div>
   );

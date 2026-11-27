@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useT } from '../../i18n';
 import type { Key } from '../../i18n/en';
 import { useWorkspaceSession } from '../workspace-shell';
@@ -14,6 +14,7 @@ type SearchResponse = { query: string; results: SearchResult[] };
 type SemanticStatus = { configured: boolean; entitled: boolean; total: number; pending: number };
 type SemanticState = { results: SearchResult[]; pending: number; failed: boolean };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+const subscribeHistory = (notify: () => void) => { window.addEventListener('popstate', notify); return () => window.removeEventListener('popstate', notify); };
 const filters = ['All', 'Project', 'Task', 'Document', 'Database', 'Record', 'Knowledge', 'Event'];
 const filterKeys: Record<string, Key> = { All: 'act.f.all', Project: 'act.f.project', Task: 'act.f.task', Document: 'act.f.document', Database: 'nav.databases', Record: 'srch.f.record', Knowledge: 'act.f.knowledge', Event: 'srch.f.event' };
 const typeKeys: Record<string, Key> = { Project: 'entity.project', Task: 'entity.task', Document: 'entity.document', Database: 'srch.t.database', Record: 'srch.t.record', Knowledge: 'entity.knowledge', Event: 'srch.t.event' };
@@ -22,10 +23,14 @@ export default function WorkspaceSearchPage() {
   const { getToken } = useAuth();
   const t = useT();
   const { workspace } = useWorkspaceSession();
-  const [query, setQuery] = useState('');
+  const urlQuery = useSyncExternalStore(subscribeHistory, () => new URLSearchParams(window.location.search).get('q')?.trim() ?? '', () => '');
+  const [typed, setQuery] = useState<string | null>(null);
+  const query = typed ?? urlQuery;
   const [filter, setFilter] = useState('All');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  // The query the shown results belong to: until it matches what is typed, the page says it is searching.
+  const [searchedFor, setSearchedFor] = useState('');
   const [error, setError] = useState('');
   const [status, setStatus] = useState<SemanticStatus | null>(null);
   const [semantic, setSemantic] = useState<SemanticState>({ results: [], pending: 0, failed: false });
@@ -42,6 +47,15 @@ export default function WorkspaceSearchPage() {
     })();
     return () => { cancelled = true; };
   }, [getToken, workspace.id]);
+
+  // The query lives in the address (?q=) so a search can be linked to, reloaded, and reached again with Back.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const trimmed = query.trim();
+    if ((url.searchParams.get('q') ?? '') === trimmed) return;
+    if (trimmed) url.searchParams.set('q', trimmed); else url.searchParams.delete('q');
+    window.history.replaceState(window.history.state, '', url);
+  }, [query]);
 
   const semanticOn = Boolean(status?.configured && status.entitled);
   useEffect(() => {
@@ -80,9 +94,9 @@ export default function WorkspaceSearchPage() {
             throw new Error(body?.message ?? 'Search could not be completed.');
           }
           const data = await response.json() as SearchResponse;
-          if (!cancelled) setResults(data.results);
+          if (!cancelled) { setResults(data.results); setSearchedFor(trimmed); }
         } catch (reason) {
-          if (!cancelled) setError(reason instanceof Error ? reason.message : 'Search could not be completed.');
+          if (!cancelled) { setError(reason instanceof Error ? reason.message : 'Search could not be completed.'); setSearchedFor(trimmed); }
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -109,7 +123,7 @@ export default function WorkspaceSearchPage() {
 
       <section className="workspace-search-results" aria-live="polite" aria-busy={query.trim().length >= 2 && loading}>
         <div className="workspace-search-filters" role="group" aria-label={t('srch.filterAria')}>{filters.map((item) => <button key={item} type="button" aria-pressed={filter === item} className={filter === item ? 'workspace-search-filter--active' : ''} onClick={() => setFilter(item)}>{t(filterKeys[item])}</button>)}</div>
-        {query.trim().length < 2 ? <p className="productivity-message">{t('srch.min')}</p> : loading ? <p className="productivity-message">{t('srch.searching')}</p> : error ? null : visibleResults.length === 0 ? <p className="productivity-message">{filter === 'All' ? t('srch.noneAll', { q: query.trim() }) : t('srch.noneType', { type: t(filterKeys[filter]).toLocaleLowerCase(), q: query.trim() })}</p> : (
+        {query.trim().length < 2 ? <p className="productivity-message">{t('srch.min')}</p> : loading || searchedFor !== query.trim() ? <p className="productivity-message">{t('srch.searching')}</p> : error ? null : visibleResults.length === 0 ? <p className="productivity-message">{filter === 'All' ? t('srch.noneAll', { q: query.trim() }) : t('srch.noneType', { type: t(filterKeys[filter]).toLocaleLowerCase(), q: query.trim() })}</p> : (
           <div className="workspace-search-list">{visibleResults.map((item) => <Link className="workspace-search-result" key={`${item.type}-${item.id}`} href={item.href}>
             <span className="workspace-search-result__type">{typeKeys[item.type] ? t(typeKeys[item.type]).replace(/^./, (c) => c.toLocaleUpperCase()) : item.type}</span><span className="workspace-search-result__body"><strong>{item.title}</strong><small>{item.detail}</small>{item.type === 'Task' && item.labels && <TaskLabels labels={item.labels} compact />}</span><time dateTime={item.updatedAt}>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(item.updatedAt))}</time><span aria-hidden="true">→</span>
           </Link>)}</div>

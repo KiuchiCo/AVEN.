@@ -10,6 +10,7 @@ import { useWorkspaceSession } from './workspace-shell';
 import { TaskLabels } from './task-labels';
 import { Icon } from './home-icons';
 import { PageHeader } from './ui';
+import { Modal } from './projects/project-ui';
 import { connectionError, apiFetch } from './connection-error';
 
 type Project = { id: string; name: string };
@@ -115,6 +116,8 @@ export function CalendarWorkspace() {
   const [showDeadlines, setShowDeadlines] = useState(true);
   const [eventTypeFilter, setEventTypeFilter] = useState<'ALL' | CalendarEventType>('ALL');
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  // The event form opens on request (New event, a day, an hour, an event) so the calendar keeps the whole width.
+  const [composerOpen, setComposerOpen] = useState(false);
   const [endValue, setEndValue] = useState('');
   const [repeatFrequency, setRepeatFrequency] = useState('');
   const [repeatUntilValue, setRepeatUntilValue] = useState('');
@@ -168,11 +171,11 @@ export function CalendarWorkspace() {
     let cancelled = false;
     void (async () => {
       try { await reload(); }
-      catch (reason) { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load calendar events.'); }
+      catch (reason) { if (!cancelled) setError(reason instanceof Error ? reason.message : t('cal.err.load')); }
       finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [reload]);
+  }, [reload, t]);
 
   // While the calendar is on screen it asks the server every few seconds to bring connected calendars up to date (the server does a small incremental
   // read, and skips connections synced in the last few seconds, so several tabs or people don't multiply the requests). Nothing runs while the tab is hidden.
@@ -218,10 +221,11 @@ export function CalendarWorkspace() {
       formElement.reset();
       setEditingEvent(null); setEndValue(''); setRepeatFrequency(''); setRepeatUntilValue('');
       setStartValue(`${selectedDate}T09:00`);
+      setComposerOpen(false);
       await reloadEvents();
     } catch (reason) {
-      if ((reason as { status?: number }).status === 409) { setEditingEvent(null); setError('Someone else changed this event while you were editing. The latest version has been loaded—open it again to make your change.'); await reloadEvents(); }
-      else setError(reason instanceof Error ? reason.message : 'Could not schedule the event.');
+      if ((reason as { status?: number }).status === 409) { setEditingEvent(null); setComposerOpen(false); setError(t('cal.conflict')); await reloadEvents(); }
+      else setError(reason instanceof Error ? reason.message : t('cal.err.save'));
     }
     finally { setBusy(false); }
   }
@@ -267,12 +271,20 @@ export function CalendarWorkspace() {
     setStartValue(localDateTimeValue(dateTime));
   }
 
+  /** Opens an empty event form, starting at `start` (a datetime-local value) or 9:00 on the selected day. */
+  function openComposer(start?: string) {
+    setEditingEvent(null); setEndValue(''); setRepeatFrequency(''); setRepeatUntilValue(''); setError('');
+    setStartValue(start ?? `${selectedDate}T09:00`);
+    setComposerOpen(true);
+  }
+
+  function closeComposer() {
+    setComposerOpen(false); setEditingEvent(null); setEndValue(''); setRepeatFrequency(''); setRepeatUntilValue('');
+  }
+
   function editEvent(event: CalendarEvent) {
-    setEditingEvent(event);
-    // On phones the form sits below the calendar; bring it into view only when it is off-screen.
-    document.querySelector('.connected-compose')?.scrollIntoView({ block: 'nearest' });
-    // Keyboard and screen-reader users land in the form they are now editing, not at the top of the page.
-    window.requestAnimationFrame(() => (document.getElementById('calendar-event-title') as HTMLInputElement | null)?.focus({ preventScroll: true }));
+    setEditingEvent(event); setError('');
+    setComposerOpen(true);
     const timeZone = event.recurrenceTimeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     setStartValue(event.recurrence ? localDateTimeValueInZone(new Date(event.startsAt), timeZone) : localDateTimeValue(new Date(event.startsAt)));
     setEndValue(event.endsAt ? event.recurrence ? localDateTimeValueInZone(new Date(event.endsAt), timeZone) : localDateTimeValue(new Date(event.endsAt)) : '');
@@ -280,7 +292,6 @@ export function CalendarWorkspace() {
     setRepeatUntilValue(event.recurrenceUntil ? event.recurrence ? dateKeyInZone(new Date(event.recurrenceUntil), timeZone) : localDateKey(new Date(event.recurrenceUntil)) : '');
     setSelectedDate(localDateKey(new Date(event.startsAt)));
     setMonth(new Date(new Date(event.startsAt).getFullYear(), new Date(event.startsAt).getMonth(), 1));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function removeEvent(event: CalendarEvent) {
@@ -288,9 +299,9 @@ export function CalendarWorkspace() {
     setBusy(true); setError('');
     try {
       await request(`/workspaces/${workspace.id}/events/${event.id}`, { method: 'DELETE' });
-      if (editingEvent?.id === event.id) setEditingEvent(null);
+      if (editingEvent?.id === event.id) closeComposer();
       await reloadEvents();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the event.'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('cal.err.delete')); }
     finally { setBusy(false); }
   }
 
@@ -301,7 +312,7 @@ export function CalendarWorkspace() {
       if (file.size > 1_000_000) throw new Error(t('cal.fileBig'));
       setImportSummary(await request(`/workspaces/${workspace.id}/events/import`, { method: 'POST', body: JSON.stringify({ ics: await file.text() }) }));
       await reloadEvents();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import this calendar file.'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('cal.err.import')); }
     finally { setBusy(false); }
   }
 
@@ -320,8 +331,10 @@ export function CalendarWorkspace() {
 
   return (
     <div className="workspace-section-page connected-page calendar-page">
-      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.calendar')} description={t('cal.desc')} />
-      {error && <p className="productivity-error" role="alert">{error}</p>}
+      <PageHeader eyebrow={t('act.eyebrow', { name: workspace.name })} title={t('nav.calendar')} description={t('cal.desc')}>
+        <button type="button" className="rd-btn" onClick={() => openComposer()}><Icon name="plus" size={18} />{t('cal.newEvent')}</button>
+      </PageHeader>
+      {error && !composerOpen && <p className="productivity-error" role="alert">{error}</p>}
       {importSummary && <div className="calendar-import-summary" role="status">
         <strong>{t('cal.importDone')}</strong> {t('cal.importCounts', { created: importSummary.created, updated: importSummary.updated, unchanged: importSummary.unchanged })}{importSummary.skipped.length ? t('cal.importSkipped', { n: importSummary.skipped.length }) : ''}.
         {importSummary.notes.map((note) => <p key={note}>{note}</p>)}
@@ -329,9 +342,9 @@ export function CalendarWorkspace() {
         <p>{t('cal.importAgain')}</p>
         <button type="button" onClick={() => setImportSummary(null)}>{t('cal.dismiss')}</button>
       </div>}
-      <div className="connected-layout">
-        <form className="productivity-form connected-compose" key={editingEvent?.id ?? 'new-event'} onSubmit={createEvent}>
-          <div className="rd-formhead"><span className="rd-tile" aria-hidden="true"><Icon name="calendar" size={24} /></span><h2>{editingEvent ? t('cal.editEvent') : t('cal.schedule')}</h2></div>
+      {composerOpen && <Modal title={editingEvent ? t('cal.editEvent') : t('cal.newEvent')} onClose={closeComposer}>
+        <form className="productivity-form calendar-event-form" key={editingEvent?.id ?? 'new-event'} onSubmit={createEvent}>
+          {error && <p className="productivity-error" role="alert">{error}</p>}
           <label>{t('cal.title')}<input id="calendar-event-title" name="title" defaultValue={editingEvent?.title ?? ''} required maxLength={200} placeholder={t('cal.titlePh')} /></label>
           <div className="productivity-form__row"><label>{t('cal.type')}<select name="type" defaultValue={editingEvent?.type ?? 'MEETING'}>{['MEETING','FOCUS','PERSONAL','REMINDER','OTHER'].map((value) => <option key={value} value={value}>{typeLabel(value)}</option>)}</select></label><label>{t('cal.location')} <span>{t('doc.optional')}</span><input name="location" defaultValue={editingEvent?.location ?? ''} maxLength={250} placeholder={t('cal.locationPh')} /></label></div>
           <label>{t('cal.notes')} <span>{t('doc.optional')}</span><textarea name="description" defaultValue={editingEvent?.description ?? ''} maxLength={2000} rows={2} placeholder={t('cal.notesPh')} /></label>
@@ -344,16 +357,24 @@ export function CalendarWorkspace() {
           </div>
           <label>{t('cal.repeats')}<select name="recurrence" value={repeatFrequency} onChange={(event) => { setRepeatFrequency(event.target.value); if (!event.target.value) setRepeatUntilValue(''); }}><option value="">{t('cal.noRepeat')}</option><option value="DAILY">{t('cal.r.daily')}</option><option value="WEEKLY">{t('cal.r.weekly')}</option><option value="MONTHLY">{t('cal.r.monthly')}</option></select></label>
           {repeatFrequency && <div className="calendar-repeat-fields"><label>{t('cal.interval')}<select name="recurrenceInterval" defaultValue={editingEvent?.recurrenceInterval ?? 1}>{[1, 2, 3, 4, 6, 12].map((interval) => <option key={interval} value={interval}>{t((repeatFrequency === 'DAILY' ? (interval === 1 ? 'cal.everyDay' : 'cal.everyDays') : repeatFrequency === 'WEEKLY' ? (interval === 1 ? 'cal.everyWeek' : 'cal.everyWeeks') : (interval === 1 ? 'cal.everyMonth' : 'cal.everyMonths')) as Key, { n: interval })}</option>)}</select></label><label>{t('cal.until')}<input name="recurrenceUntil" type="date" value={repeatUntilValue} onChange={(event) => setRepeatUntilValue(event.target.value)} required /></label></div>}
-          <button type="submit" disabled={busy}>{busy ? t('set.saving') : editingEvent ? editingEvent.recurrence ? t('cal.saveSeries') : t('cal.saveEvent') : t('cal.add')}</button>
-          {editingEvent && <button type="button" className="calendar-cancel-edit" onClick={() => { setEditingEvent(null); setEndValue(''); setRepeatFrequency(''); setRepeatUntilValue(''); }}>{t('cal.cancelEdit')}</button>}
-          <p className="calendar-form-hint">{t('cal.hint')}{editingEvent?.recurrence ? t('cal.hintSeries') : ''}</p>
+          <p className="calendar-form-hint">{t('cal.hintTz')}{editingEvent?.recurrence ? t('cal.hintSeries') : ''}</p>
+          <div className="pw-actions calendar-event-form__actions">
+            {editingEvent && <button type="button" className="rd-btn rd-btn--soft is-danger" disabled={busy} onClick={() => void removeEvent(editingEvent)}>{t('cal.deleteEvent')}</button>}
+            <span />
+            <button type="button" className="rd-btn rd-btn--soft" onClick={closeComposer}>{t('msg.cancel')}</button>
+            <button type="submit" disabled={busy} aria-busy={busy}>{busy ? t('set.saving') : editingEvent ? editingEvent.recurrence ? t('cal.saveSeries') : t('cal.saveEvent') : t('cal.add')}</button>
+          </div>
         </form>
+      </Modal>}
+      <div className="calendar-layout">
         <section className="connected-record-list" aria-labelledby="calendar-list-title">
           <div className="aven-calendar">
-            <div className="aven-calendar__toolbar"><div><p className="workspace-eyebrow">{t('cal.schedEyebrow')}</p><h2 id="calendar-list-title">{calendarView === 'AGENDA' ? t('cal.coming') : calendarView === 'MONTH' ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(month) : calendarView === 'WEEK' ? `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(weekStart)} – ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6))}` : new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(selectedLocalDate)}</h2></div><div className="aven-calendar__controls"><button type="button" onClick={() => { const today = new Date(); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(localDateKey(today)); }}>{t('cal.today')}</button><button type="button" aria-label={t('cal.prev')} onClick={() => moveMonth(-1)}>‹</button><button type="button" aria-label={t('cal.next')} onClick={() => moveMonth(1)}>›</button><button type="button" onClick={exportCalendar}>{t('cal.export')}</button><label className="calendar-import">{t('cal.import')}<input type="file" accept=".ics,text/calendar" disabled={busy} onChange={(event) => { void importCalendar(event.target.files?.[0]); event.target.value = ''; }} /></label></div></div>
+            <div className="aven-calendar__toolbar"><div><p className="workspace-eyebrow">{t('cal.schedEyebrow')}</p><h2 id="calendar-list-title">{calendarView === 'AGENDA' ? t('cal.coming') : calendarView === 'MONTH' ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(month) : calendarView === 'WEEK' ? `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(weekStart)} – ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6))}` : new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(selectedLocalDate)}</h2></div><div className="aven-calendar__controls"><button type="button" onClick={() => { const today = new Date(); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(localDateKey(today)); }}>{t('cal.today')}</button><button type="button" aria-label={t('cal.prev')} onClick={() => moveMonth(-1)}>‹</button><button type="button" aria-label={t('cal.next')} onClick={() => moveMonth(1)}>›</button><details className="rd-menu calendar-more"><summary className="rd-iconbtn" aria-label={t('cal.moreActions')}><Icon name="more" size={20} /></summary><div className="rd-menu__list"><button type="button" onClick={(event) => { exportCalendar(); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{t('cal.export')}</button><label className="calendar-import">{t('cal.import')}<input type="file" accept=".ics,text/calendar" disabled={busy} onChange={(event) => { void importCalendar(event.target.files?.[0]); event.target.value = ''; event.currentTarget.closest('details')?.removeAttribute('open'); }} /></label></div></details></div></div>
+            <div className="calendar-bar">
             <div className="aven-calendar__view-switch">{(['DAY','WEEK','MONTH','AGENDA'] as const).map((view) => <button key={view} type="button" aria-pressed={calendarView === view} className={calendarView === view ? 'is-active' : ''} onClick={() => setCalendarView(view)}>{t(`cal.v.${view.toLowerCase()}` as Key)}</button>)}</div>
             <div className="calendar-filters"><button type="button" aria-pressed={showEvents} className={showEvents ? 'is-active' : ''} onClick={() => setShowEvents((value) => !value)}><i className="calendar-filter-dot calendar-filter-dot--event" /> {t('cal.scheduledEvents')}</button><button type="button" aria-pressed={showDeadlines} className={showDeadlines ? 'is-active' : ''} onClick={() => setShowDeadlines((value) => !value)}><i className="calendar-filter-dot calendar-filter-dot--deadline" /> {t('cal.taskDeadlines')}</button></div>
-            <div className="calendar-type-filters" role="group" aria-label={t('cal.typeFilterAria')}>{(['ALL','MEETING','FOCUS','PERSONAL','REMINDER','OTHER'] as const).map((type) => <button key={type} type="button" aria-pressed={eventTypeFilter === type} className={eventTypeFilter === type ? 'is-active' : ''} onClick={() => setEventTypeFilter(type)}>{type === 'ALL' ? t('cal.allTypes') : typeLabel(type)}</button>)}</div>
+            <label className="rd-inline calendar-type-select">{t('cal.typeFilter')}<select className="rd-select" value={eventTypeFilter} disabled={!showEvents} onChange={(event) => setEventTypeFilter(event.target.value as 'ALL' | CalendarEventType)}>{(['ALL','MEETING','FOCUS','PERSONAL','REMINDER','OTHER'] as const).map((type) => <option key={type} value={type}>{type === 'ALL' ? t('cal.allTypes') : typeLabel(type)}</option>)}</select></label>
+            </div>
             {loading ? <p className="productivity-message">{t('cal.loading')}</p> : calendarView === 'MONTH' ? <>
               <div className="aven-calendar__weekdays">{(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const).map((day) => <span key={day}>{t(`cal.wd.${day}` as Key)}</span>)}</div>
               <div className="aven-calendar__grid">{monthDays.map((date) => {
@@ -362,8 +383,8 @@ export function CalendarWorkspace() {
                   <time dateTime={key} aria-hidden="true">{date.getDate()}</time><span className="visually-hidden">{new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(date)}</span><span className="aven-calendar__day-items">{dayItems.slice(0, 2).map((item) => <small className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`} key={`${item.kind}-${item.id}`}>{item.title}</small>)}{dayItems.length > 2 && <small className="aven-calendar__more">{t('cal.more', { n: dayItems.length - 2 })}</small>}</span>
                 </button>;
               })}</div>
-            </> : calendarView === 'WEEK' ? <div className="aven-calendar__week-grid">{weekDays.map((date) => { const key = localDateKey(date); const dayItems = itemsByDate.get(key) ?? []; return <section key={key} className={key === localDateKey(new Date()) ? 'is-today' : ''}><button type="button" className="aven-calendar__week-date" onClick={() => chooseDate(date)}><small>{new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date)}</small><strong>{date.getDate()}</strong></button>{dayItems.length ? dayItems.map((item) => <button type="button" key={`${item.kind}-${item.id}`} className={`aven-calendar__week-event aven-calendar__week-event--${(item.eventType ?? item.kind).toLocaleLowerCase()}`} onClick={() => item.kind === 'Event' && editEvent(events.find((event) => event.id === item.eventId)!)}><small>{timeText(item)}</small><strong>{item.title}</strong></button>) : <button type="button" className="aven-calendar__week-empty" onClick={() => chooseDate(date)}>＋</button>}</section>; })}</div> : calendarView === 'DAY' ? <div className="aven-calendar__day-timeline">{dayHours.map((hour) => { const hourItems = selectedItems.filter((item) => !item.isAllDay && item.kind === 'Event' && new Date(item.startsAt).getHours() === hour); const allDayItems = hour === 0 ? selectedItems.filter((item) => item.isAllDay || item.kind === 'Deadline') : []; return <div className="aven-calendar__hour" key={hour}><time>{String(hour).padStart(2, '0')}:00</time><div>{[...allDayItems, ...hourItems].map((item) => <article key={`${item.kind}-${item.id}`} className={`aven-calendar__timeline-event aven-calendar__timeline-event--${(item.eventType ?? item.kind).toLocaleLowerCase()}`}><strong>{item.title}</strong><span>{timeText(item)}{item.location ? ` · ${item.location}` : ''}{item.projectTitle ? ` · ${item.projectTitle}` : ''}</span>{item.kind === 'Event' && <button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>{t('cal.edit')}</button>}</article>)}<button type="button" className="aven-calendar__hour-add" aria-label={t('cal.scheduleAt', { hour })} onClick={() => { setStartValue(`${selectedDate}T${String(hour).padStart(2, '0')}:00`); document.querySelector('.connected-compose')?.scrollIntoView({ behavior: 'smooth' }); }}>＋</button></div></div>; })}</div> : <div className="aven-calendar__agenda">{visibleCalendarItems.length === 0 ? <p className="productivity-message">{t('cal.noMatch')}</p> : visibleCalendarItems.map((item) => <article className="aven-calendar__agenda-item" key={`${item.kind}-${item.id}`}><time dateTime={item.startsAt}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', weekday: 'short' }).format(new Date(item.startsAt))}<small>{timeText(item)}</small></time><span className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`}>{kindLabel(item)}</span>{item.kind === 'Deadline' && item.taskId ? <Link className="calendar-task-link" href={`/workspace/tasks/${item.taskId}`}>{item.title}</Link> : <strong>{item.title}</strong>}{item.location && <small>{item.location}</small>}{item.projectTitle && <small>{t('cal.project', { name: item.projectTitle })}</small>}{item.taskTitle && <small>{t('cal.task', { name: item.taskTitle })}</small>}{item.kind === 'Deadline' && item.labels && <TaskLabels labels={item.labels} compact />} {item.kind === 'Event' && <div className="calendar-item-actions"><button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>{t('cal.edit')}</button><button type="button" onClick={() => void removeEvent(events.find((event) => event.id === item.eventId)!)}>{t('wb.delete')}</button></div>}</article>)}</div>}
-            <div className="aven-calendar__selected"><div className="project-milestones__heading"><h3 suppressHydrationWarning>{selectedLabel}</h3><span>{t(selectedItems.length === 1 ? 'cal.itemOne' : 'cal.itemMany', { n: selectedItems.length })}</span>{<button type="button" className="rd-btn rd-btn--soft rd-btn--small" onClick={() => { const field = document.getElementById('calendar-event-title') as HTMLInputElement | null; field?.scrollIntoView({ block: 'center', behavior: 'smooth' }); field?.focus({ preventScroll: true }); }}>{t('cal.addOnDay')}</button>}</div>{selectedItems.length === 0 ? <p>{t('cal.noDay')}</p> : selectedItems.map((item) => <article key={`selected-${item.kind}-${item.id}`}><span className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`}>{item.recurrence ? t('cal.repeating') : item.kind === 'Deadline' ? t('cal.k.deadline') : t('cal.k.event')}</span><strong>{item.title}</strong><time>{timeText(item)}{item.projectTitle ? ` · ${item.projectTitle}` : ''}{item.endsAt && !item.isAllDay ? ` – ${new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.endsAt))}` : ''}</time>{item.kind === 'Event' && <div className="calendar-item-actions"><button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>{t('cal.edit')}</button><button type="button" onClick={() => void removeEvent(events.find((event) => event.id === item.eventId)!)}>{t('wb.delete')}</button></div>}</article>)}</div>
+            </> : calendarView === 'WEEK' ? <div className="aven-calendar__week-grid">{weekDays.map((date) => { const key = localDateKey(date); const dayItems = itemsByDate.get(key) ?? []; return <section key={key} className={key === localDateKey(new Date()) ? 'is-today' : ''}><button type="button" className="aven-calendar__week-date" onClick={() => chooseDate(date)}><small>{new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date)}</small><strong>{date.getDate()}</strong></button>{dayItems.length ? dayItems.map((item) => <button type="button" key={`${item.kind}-${item.id}`} className={`aven-calendar__week-event aven-calendar__week-event--${(item.eventType ?? item.kind).toLocaleLowerCase()}`} onClick={() => item.kind === 'Event' && editEvent(events.find((event) => event.id === item.eventId)!)}><small>{timeText(item)}</small><strong>{item.title}</strong></button>) : <button type="button" className="aven-calendar__week-empty" aria-label={t('cal.addOnDate', { date: new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(date) })} onClick={() => { chooseDate(date); openComposer(`${key}T09:00`); }}>＋</button>}</section>; })}</div> : calendarView === 'DAY' ? <div className="aven-calendar__day-timeline">{dayHours.map((hour) => { const hourItems = selectedItems.filter((item) => !item.isAllDay && item.kind === 'Event' && new Date(item.startsAt).getHours() === hour); const allDayItems = hour === 0 ? selectedItems.filter((item) => item.isAllDay || item.kind === 'Deadline') : []; return <div className="aven-calendar__hour" key={hour}><time>{String(hour).padStart(2, '0')}:00</time><div>{[...allDayItems, ...hourItems].map((item) => <article key={`${item.kind}-${item.id}`} className={`aven-calendar__timeline-event aven-calendar__timeline-event--${(item.eventType ?? item.kind).toLocaleLowerCase()}`}><strong>{item.title}</strong><span>{timeText(item)}{item.location ? ` · ${item.location}` : ''}{item.projectTitle ? ` · ${item.projectTitle}` : ''}</span>{item.kind === 'Event' && <button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>{t('cal.edit')}</button>}</article>)}<button type="button" className="aven-calendar__hour-add" aria-label={t('cal.scheduleAt', { hour })} onClick={() => openComposer(`${selectedDate}T${String(hour).padStart(2, '0')}:00`)}>＋</button></div></div>; })}</div> : <div className="aven-calendar__agenda">{visibleCalendarItems.length === 0 ? <p className="productivity-message">{t('cal.noMatch')}</p> : visibleCalendarItems.map((item) => <article className="aven-calendar__agenda-item" key={`${item.kind}-${item.id}`}><time dateTime={item.startsAt}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', weekday: 'short' }).format(new Date(item.startsAt))}<small>{timeText(item)}</small></time><span className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`}>{kindLabel(item)}</span>{item.kind === 'Deadline' && item.taskId ? <Link className="calendar-task-link" href={`/workspace/tasks/${item.taskId}`}>{item.title}</Link> : <strong>{item.title}</strong>}{item.location && <small>{item.location}</small>}{item.projectTitle && <small>{t('cal.project', { name: item.projectTitle })}</small>}{item.taskTitle && <small>{t('cal.task', { name: item.taskTitle })}</small>}{item.kind === 'Deadline' && item.labels && <TaskLabels labels={item.labels} compact />} {item.kind === 'Event' && <div className="calendar-item-actions"><button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>{t('cal.edit')}</button><button type="button" onClick={() => void removeEvent(events.find((event) => event.id === item.eventId)!)}>{t('wb.delete')}</button></div>}</article>)}</div>}
+            <div className="aven-calendar__selected"><div className="project-milestones__heading"><h3 suppressHydrationWarning>{selectedLabel}</h3><span>{t(selectedItems.length === 1 ? 'cal.itemOne' : 'cal.itemMany', { n: selectedItems.length })}</span><button type="button" className="rd-btn rd-btn--soft rd-btn--small" onClick={() => openComposer()}>{t('cal.addOnDay')}</button></div>{selectedItems.length === 0 ? <p>{t('cal.noDay')}</p> : selectedItems.map((item) => <article key={`selected-${item.kind}-${item.id}`}><span className={`aven-calendar__item aven-calendar__item--${item.kind.toLowerCase()}`}>{item.recurrence ? t('cal.repeating') : item.kind === 'Deadline' ? t('cal.k.deadline') : t('cal.k.event')}</span><strong>{item.title}</strong><time>{timeText(item)}{item.projectTitle ? ` · ${item.projectTitle}` : ''}{item.endsAt && !item.isAllDay ? ` – ${new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(item.endsAt))}` : ''}</time>{item.kind === 'Event' && <div className="calendar-item-actions"><button type="button" onClick={() => editEvent(events.find((event) => event.id === item.eventId)!)}>{t('cal.edit')}</button><button type="button" onClick={() => void removeEvent(events.find((event) => event.id === item.eventId)!)}>{t('wb.delete')}</button></div>}</article>)}</div>
           </div>
         </section>
       </div>

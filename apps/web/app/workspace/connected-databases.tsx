@@ -574,7 +574,7 @@ export function DatabasesWorkspace() {
           {loading ? <p className="productivity-message">{t('db.loading')}</p> : !selected ? (
             <div className="database-empty"><span aria-hidden="true">▤</span><h2>{t('db.firstTable')}</h2><p>{t('db.firstTableHint')}</p></div>
           ) : <>
-            <div className="database-table-heading"><div><p className="workspace-eyebrow">{t('db.viewWord', { layout: t(`db.l.${viewLayout.toLowerCase()}` as Key).toLocaleUpperCase() })}</p><h2>{selected.name} <FavouriteStar kind="DATABASE" entityId={selected.id} /></h2><p>{selected.description || t('db.defaultDesc')}</p></div><span className="rd-pill rd-pill--sand">{t('db.recordMany', { n: selected.records.length })}</span></div>
+            <div className="database-table-heading"><div><p className="workspace-eyebrow">{t('db.viewWord', { layout: t(`db.l.${viewLayout.toLowerCase()}` as Key).replace(/^./, (c) => c.toLocaleUpperCase()) })}</p><h2>{selected.name} <FavouriteStar kind="DATABASE" entityId={selected.id} /></h2><p>{selected.description || t('db.defaultDesc')}</p></div><span className="rd-pill rd-pill--sand">{t('db.recordMany', { n: selected.records.length })}</span></div>
             <details className="database-settings" key={`settings-${selected.id}`} open={selected.records.length === 0 && selected.properties.length <= 2}><summary><Icon name="sliders" size={16} />{t('db.settings')}</summary>
             <form className="database-add-property" key={`${selected.id}:${selected.name}:${selected.description ?? ''}`} onSubmit={updateDatabase} aria-label={t('db.editDetails')}>
               <label>{t('db.name')}<input name="databaseName" required maxLength={160} defaultValue={selected.name} /></label>

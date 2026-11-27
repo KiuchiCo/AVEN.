@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useT } from '../i18n';
 import type { Key } from '../i18n/en';
 import { Icon } from './home-icons';
-import { ago } from './relative-time';
+import { ago, dueDay } from './relative-time';
 import { useWorkspaceSession } from './workspace-shell';
 import { connectionError, apiFetch } from './connection-error';
 
@@ -32,18 +32,12 @@ const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.g
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
 const longDate = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 const shortDate = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-const dayMonth = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
 
 function activityLink(entityType: string, entityId: string) {
   if (entityType.startsWith('TASK')) return `/workspace/tasks/${entityId}`;
   if (entityType === 'DOCUMENT') return `/workspace/documents/${entityId}`;
   if (entityType === 'CHANNEL') return '/workspace/messages';
   return '/workspace/activity';
-}
-function dueLabel(dueAt: string | null, today: Date) {
-  if (!dueAt) return 'No date';
-  const due = new Date(`${dueAt.slice(0, 10)}T12:00:00`); const diff = Math.round((due.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12).getTime()) / 86_400_000);
-  return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : diff < 0 ? `${-diff} days ago` : dayMonth.format(due);
 }
 
 export function HomeDashboard() {
@@ -98,8 +92,8 @@ export function HomeDashboard() {
   const upcoming = briefing ? briefing.events.filter((event) => new Date(event.startsAt) > today && !sameDay(new Date(event.startsAt), today)).sort((a, b) => a.startsAt.localeCompare(b.startsAt)).slice(0, 3) : [];
   const insightText = briefing && briefing.insights.length ? briefing.insights.slice(0, 2).map((insight) => `${insight.title}. ${insight.detail}`).join(' ') : t('home.noInsights');
   const recents = summary ? [
-    ...(recentTab !== 'PROJECTS' ? summary.recentDocuments.map((item) => ({ key: `d${item.id}`, kind: 'doc' as const, title: item.title, note: `Edited ${ago(item.updatedAt)}`, href: `/workspace/documents/${item.id}` })) : []),
-    ...(recentTab !== 'DOCUMENTS' ? summary.projects.map((item) => ({ key: `p${item.id}`, kind: 'folder' as const, title: item.name, note: `${item.completedTaskCount} of ${item.taskCount} tasks done`, href: `/workspace/projects/${item.id}` })) : []),
+    ...(recentTab !== 'PROJECTS' ? summary.recentDocuments.map((item) => ({ key: `d${item.id}`, kind: 'doc' as const, title: item.title, note: t('home.edited', { when: ago(item.updatedAt) }), href: `/workspace/documents/${item.id}` })) : []),
+    ...(recentTab !== 'DOCUMENTS' ? summary.projects.map((item) => ({ key: `p${item.id}`, kind: 'folder' as const, title: item.name, note: t('ph.tasksDone', { done: item.completedTaskCount, total: item.taskCount }), href: `/workspace/projects/${item.id}` })) : []),
   ].slice(0, 4) : [];
   const tiles = briefing ? [
     { icon: 'tasks' as const, label: t('home.tile.tasks'), value: briefing.summary.openTasks, caption: briefing.summary.overdueTasks ? t('home.cap.openOverdue', { n: briefing.summary.overdueTasks }) : t('home.cap.open'), href: '/workspace/tasks' },
@@ -134,10 +128,10 @@ export function HomeDashboard() {
           {(shown('nextUp') || shown('events')) && <div className="home-row home-row--tasks">
             {shown('nextUp') && <article className="home-card"><header><h2>{t('home.priorityTasks')}</h2><Link href="/workspace/tasks">{t('home.seeAll')} <Icon name="arrow" size={14} /></Link></header>
               {summary.myTasks.length === 0 ? <p className="home-empty">{t('home.noTasks')}</p> : <ul className="home-tasks">{summary.myTasks.slice(0, 5).map((task) => <li key={task.id}>
-                <button type="button" className="home-check" aria-label={`Mark “${task.title}” complete`} onClick={() => void complete(task.id)} />
+                <button type="button" className="home-check" aria-label={t('tasks.markDone', { title: task.title })} onClick={() => void complete(task.id)} />
                 <Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link>
                 <span className={`home-pill home-pill--${task.priority.toLowerCase()}`}>{['URGENT', 'HIGH', 'MEDIUM', 'LOW'].includes(task.priority) ? t(`prio.${task.priority.toLowerCase()}` as Key).replace(/^./, (c) => c.toLocaleUpperCase()) : task.priority}</span>
-                <span className="home-tasks__due">{dueLabel(task.dueAt, today)}</span>
+                <span className={`home-tasks__due${task.dueAt && dueDay(task.dueAt, today).overdue ? ' is-overdue' : ''}`}>{task.dueAt ? (dueDay(task.dueAt, today).overdue ? t('home.overdueSince', { date: dueDay(task.dueAt, today).label }) : t('tasks.due', { date: dueDay(task.dueAt, today).label })) : t('pj.noDate')}</span>
               </li>)}</ul>}
             </article>}
             {shown('events') && <article className="home-card"><header><h2>{t('home.today')}</h2><Link href="/workspace/calendar" aria-label={t('home.openCalendar')}><Icon name="arrow" size={16} /></Link></header>
@@ -180,12 +174,12 @@ export function HomeDashboard() {
           <li><Link href="/workspace/intelligence"><span><Icon name="sparkle" size={22} /></span><div><strong>{t('ai.daily')}</strong><small>{t('ai.dailySub')}</small></div></Link></li>
           <li><Link href="/workspace/search"><span><Icon name="search" size={22} /></span><div><strong>{t('ai.find')}</strong><small>{t('ai.findSub')}</small></div></Link></li>
           <li><Link href="/workspace/intelligence"><span><Icon name="paper" size={22} /></span><div><strong>{t('ai.action')}</strong><small>{t('ai.actionSub')}</small></div></Link></li>
-          <li><Link href="/workspace/intelligence?q=Help%20me%20focus%20on%20my%20most%20important%20task"><span><Icon name="target" size={22} /></span><div><strong>{t('ai.deep')}</strong><small>{t('ai.deepSub')}</small></div></Link></li>
+          <li><Link href={`/workspace/intelligence?q=${encodeURIComponent(t('ai.deepPrompt'))}`}><span><Icon name="target" size={22} /></span><div><strong>{t('ai.deep')}</strong><small>{t('ai.deepSub')}</small></div></Link></li>
         </ul>
         <form onSubmit={submitAsk}>
           <label className="visually-hidden" htmlFor="home-ask">{t('ai.ask')}</label>
           <input id="home-ask" value={ask} maxLength={500} placeholder={t('ai.askPlaceholder')} onChange={(event) => setAsk(event.target.value)} />
-          <button aria-label="Ask" disabled={!ask.trim()}><Icon name="arrow" size={18} /></button>
+          <button aria-label={t('ai.ask')} disabled={!ask.trim()}><Icon name="arrow" size={18} /></button>
         </form>
         <div className="home-ai__chips">{[t('ai.chipDay'), t('ai.chipWeek'), t('ai.chipProject')].map((chip) => <Link key={chip} href={`/workspace/intelligence?q=${encodeURIComponent(chip)}`}>{chip}</Link>)}</div>
       </aside>

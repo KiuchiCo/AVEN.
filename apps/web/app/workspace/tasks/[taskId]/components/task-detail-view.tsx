@@ -23,12 +23,12 @@ export function TaskDetailView({ task, currentUserId, members, projectTasks, bus
   // Two columns on wide screens: the work (description, subtasks, discussion) and the task's properties beside it.
   // The properties come first in the page order, so phones show status, priority and dates before the long content.
   return <div className="workspace-section-page task-detail">
-    <TaskDetailHeader task={task} />
+    <TaskDetailHeader task={task} editor={<TaskEditPanel key={`${task.title}-${task.description}`} task={task} busy={busy} onSave={onUpdate} />} />
     {errorMessage && <TaskDetailError message={errorMessage} />}
     <div className="task-detail__grid">
       <aside className="task-detail__side" aria-label={t('td.properties')}>
         <TaskQuickActions task={task} busy={busy} onUpdate={onUpdate} />
-        <TaskSummaryCard task={task} />
+        <TaskSummaryCard task={task} members={members} busy={busy} onUpdate={onUpdate} />
         <TaskRepeatPanel key={`${task.recurrence}-${task.recurrenceInterval}-${task.recurrenceUntil}-${task.dueAt}`} task={task} busy={busy} onSave={onUpdate} />
         <AttachmentsPanel target={{ taskId: task.id }} />
         <TaskDependenciesPanel task={task} tasks={projectTasks} busy={busy} onSave={onSaveDependencies} />
@@ -36,7 +36,6 @@ export function TaskDetailView({ task, currentUserId, members, projectTasks, bus
         <div className="task-detail__danger"><button type="button" disabled={busy} onClick={onDuplicate}>{busy ? t('td.working') : t('td.duplicate')}</button><button type="button" className="task-quick-actions__delete" disabled={busy} onClick={onDelete}>{t('td.deleteTask')}</button></div>
       </aside>
       <div className="task-detail__main">
-        <TaskEditPanel task={task} members={members} busy={busy} onSave={onUpdate} />
         <TaskSubtasksPanel task={task} busy={busy} onAdd={onAddSubtask} onToggle={onToggleSubtask} />
         <section className="task-detail__collab"><TaskDetailNav active={tab} onChange={setTab} /><TaskCollaborationPanel key={`${task.id}-${tab}`} taskId={task.id} currentUserId={currentUserId} members={members} tab={tab} /></section>
       </div>

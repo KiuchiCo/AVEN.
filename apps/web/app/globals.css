@@ -2995,9 +2995,6 @@ body {
 .task-label-directory__card:hover { border-color: var(--h-c6ab8a); transform: translateY(-1px); }
 .task-label-directory__card strong { font-family: var(--aven-display-font); font-size: 20px; font-weight: 500; }
 .task-label-directory__card small { color: var(--h-82796e); font-size: 11px; }
-.task-labels-callout { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin: 12px 0 -6px; color: var(--h-81776b); font-size: 11px; }
-.task-labels-callout a { color: var(--h-72583a); font-weight: 600; text-decoration: none; }
-.task-labels-callout a:hover { text-decoration: underline; }
 .task-detail { display: grid; gap: 18px; }
 .task-detail__header { display: flex; justify-content: space-between; align-items: start; gap: 24px; padding: 20px 0 8px; }
 .task-detail__header h1 { margin: 12px 0 8px; color: var(--h-1f1d1a); font: 500 var(--ds-fs-title)/1.1 var(--aven-display-font); letter-spacing: -.04em; }

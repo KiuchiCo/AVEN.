@@ -274,13 +274,140 @@ html { scrollbar-gutter: stable; } /* a page with a scrollbar and one without mu
   .task-detail__side > * { order: 4; }
   .task-detail__side > .task-detail__danger { order: 5; }
 }
-/* iPad portrait and small laptops: the month gets the full width and the event form follows it (the day's "Add event" button jumps there). */
-@media (max-width: 1100px) {
-  .calendar-page .connected-layout { grid-template-columns: minmax(0, 1fr); }
-  .calendar-page .connected-layout > .connected-compose { order: 1; }
-}
 /* Touch: checkboxes and small text buttons get a finger-sized target (WCAG 2.5.8). Zero-specificity, so deliberate sizes still win. */
 @media (pointer: coarse), (max-width: 760px) {
   .workspace-content :where(input[type='checkbox'], input[type='radio']) { width: 24px; height: 24px; flex: 0 0 auto; }
   .workspace-content :where(button) { min-height: 32px; }
 }
+
+/* ── Phase 6 ─────────────────────────────────────────────────────────────── */
+/* Forms that open in a dialog drop their card chrome: the dialog is the card. */
+.pw-modal .productivity-form { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.pw-actions .is-danger, .rd-menu__list .is-danger { color: var(--m-bad-ink); }
+.pw-actions > span:empty { flex: 1; }
+
+/* Calendar: the calendar owns the page; events are added and edited in a dialog. */
+.calendar-layout { margin-top: 24px; }
+.calendar-event-form__actions { align-items: center; }
+.calendar-event-form__actions button[type='submit'] { margin: 0; }
+.calendar-more > summary { min-height: var(--ds-control-h); min-width: var(--ds-control-h); display: inline-grid; place-items: center; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-card-solid); }
+.aven-calendar__controls .calendar-more .rd-menu__list button, .calendar-more .rd-menu__list .calendar-import { width: 100%; min-height: 0; justify-content: flex-start; padding: 9px 12px; border: 0; border-radius: var(--ds-radius-sm); background: transparent; color: var(--m-ink); font: 500 13px var(--aven-interface-font); cursor: pointer; }
+.calendar-more .rd-menu__list .calendar-import:hover { background: var(--m-chip); }
+.calendar-type-select { margin: 4px 0 10px; }
+@media (max-width: 760px) {
+  .aven-calendar__toolbar { gap: 10px; }
+  .aven-calendar__controls { flex-wrap: nowrap; }
+  .calendar-filters { flex-wrap: nowrap; overflow-x: auto; }
+}
+.calendar-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 4px 0 14px; }
+.calendar-bar .aven-calendar__view-switch, .calendar-bar .calendar-filters, .calendar-bar .calendar-type-select { margin: 0; padding: 0; }
+.calendar-bar .calendar-type-select { margin-left: auto; }
+/* Soft (secondary) buttons keep their look inside forms; the old ".productivity-form button" rule painted every button as primary. */
+.productivity-form .rd-btn.rd-btn--soft { border: 1px solid var(--m-border); background: var(--m-card-solid); color: var(--m-ink); font-weight: 500; }
+.productivity-form .rd-btn.rd-btn--soft:hover { background: var(--m-chip); border-color: var(--m-focus); }
+.productivity-form .rd-btn.rd-btn--soft.is-danger { color: var(--m-bad-ink); }
+
+/* My Tasks: counts are one-tap filters; filters sit behind one button; list or board. */
+.task-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.task-summary__chip { display: inline-flex; align-items: baseline; gap: 6px; min-height: 36px; padding: 6px 14px; border: 1px solid var(--m-border); border-radius: 999px; background: var(--m-card-solid); color: var(--m-muted); font: 500 13px var(--aven-interface-font); cursor: pointer; }
+.task-summary__chip strong { color: var(--m-ink); font: 500 18px var(--aven-display-font); }
+.task-summary__chip:hover { border-color: var(--m-focus); }
+.task-summary__chip.is-active { border-color: var(--m-focus); background: var(--m-active-soft); color: var(--m-ink); }
+.task-summary__chip.is-alert strong { color: var(--m-bad-ink); }
+.task-toolbar { flex-wrap: wrap; gap: 10px; }
+.task-toolbar__search { flex: 1 1 220px; max-width: 360px; }
+.task-filters { position: relative; }
+.task-filters > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+.task-filters > summary::-webkit-details-marker { display: none; }
+.task-filters__count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--m-primary); color: var(--m-primary-ink); font-size: 11px; font-weight: 600; }
+.task-filters__panel { position: absolute; right: 0; z-index: 30; display: grid; gap: 10px; width: min(320px, calc(100vw - 32px)); margin-top: 6px; padding: 14px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-card-solid); box-shadow: 0 18px 40px rgb(43 42 39 / 16%); }
+.task-filters__panel .rd-inline { justify-content: space-between; }
+.task-filters__panel .rd-select { min-width: 0; flex: 0 1 190px; }
+.pw-board.task-board { grid-template-columns: repeat(4, minmax(220px, 1fr)); margin-top: 6px; }
+.task-board .pw-column { min-height: 200px; }
+.task-board__empty { margin: 0; color: var(--m-muted); font-size: var(--ds-fs-small); }
+.task-board .rd-projectpill { justify-self: start; }
+@media (max-width: 1100px) { .pw-board.task-board { grid-template-columns: repeat(4, minmax(240px, 70%)); } }
+@media (max-width: 760px) {
+  .task-summary { flex-wrap: nowrap; overflow-x: auto; margin-inline: -4px; padding-inline: 4px; scrollbar-width: none; }
+  .task-summary__chip { flex: none; }
+  .task-toolbar__search { order: 3; flex-basis: 100%; max-width: none; }
+  .pw-board.task-board { grid-template-columns: repeat(4, minmax(260px, 86%)); }
+}
+/* A one-column grid must not grow to its widest child (a board, a table): the column can shrink and the child scrolls. */
+.rd-grid { grid-template-columns: minmax(0, 1fr); }
+
+/* Knowledge: the library owns the page; add and edit happen in a dialog; card actions are Edit plus a menu. */
+.pw-modal .knowledge-compose { padding: 0; border: 0; background: none; box-shadow: none; }
+.knowledge-compose__more > summary { cursor: pointer; color: var(--m-ink); font: 600 13px var(--aven-interface-font); }
+.knowledge-compose__more[open] > summary { margin-bottom: 12px; }
+.knowledge-card footer .rd-menu > summary { min-height: 32px; min-width: 32px; display: inline-grid; place-items: center; }
+.knowledge-card footer > div { display: flex; align-items: center; gap: 6px; }
+
+/* Whiteboards: one template picker (the chips), with the choice described underneath. */
+.wb-template-hint { margin: 10px 0 0; color: var(--m-muted); font-size: var(--ds-fs-small); }
+.wb-template-hint strong { color: var(--m-ink); font-weight: 600; }
+
+/* Task page: title and description are edited under the heading; the assignee is a control in the side panel. */
+.task-detail__header .task-edit-panel { margin: 12px 0 0; padding: 0; border: 0; background: none; }
+.task-detail__header .task-edit-panel.is-open { max-width: 720px; padding: 16px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-lg); background: var(--m-card-solid); }
+.task-detail__header .task-edit-panel__form { margin-top: 0; }
+.task-detail__assignee { display: grid; gap: 6px; }
+.task-detail__assignee > span { color: var(--m-muted); font-size: var(--ds-fs-small); }
+.task-detail__assignee select { width: 100%; min-height: var(--ds-control-h-sm, 34px); padding: 4px 10px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-field); color: var(--m-ink); font: 500 13px var(--aven-interface-font); }
+.task-detail__side .task-detail__summary .task-detail__assignee { grid-column: 1 / -1; }
+.automations-page > .rd-tabs { margin: 4px 0 18px; }
+.home-tasks__due.is-overdue { color: var(--m-bad-ink); }
+/* Phones: filter toggles stay on one line; month cells show a dot per item (names are in the day list below the grid). */
+@media (max-width: 760px) {
+  .calendar-filters button { flex: none; white-space: nowrap; }
+  .calendar-bar .calendar-type-select { margin-left: 0; }
+  .aven-calendar__day-items { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
+  .aven-calendar__day-items .aven-calendar__item { width: 7px; height: 7px; min-height: 0; padding: 0; border: 0; border-radius: 50%; font-size: 0; overflow: hidden; }
+  .aven-calendar__day-items .aven-calendar__item--event { background: var(--h-9a83ad); }
+  .aven-calendar__day-items .aven-calendar__item--deadline { background: var(--h-bd8c55); }
+  .aven-calendar__day-items .aven-calendar__more { font-size: 10px; line-height: 7px; }
+}
+/* The selected day's list: type · title over time · actions, at every width. */
+.aven-calendar__selected > article { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "kind title actions" "kind time actions"; align-items: center; column-gap: 10px; row-gap: 2px; padding: 10px 12px; }
+.aven-calendar__selected > article > .aven-calendar__item { grid-area: kind; }
+.aven-calendar__selected > article > strong { grid-area: title; font-size: 13px; }
+.aven-calendar__selected > article > time { grid-area: time; margin: 0; font-size: 12px; white-space: normal; }
+.aven-calendar__selected > article > .calendar-item-actions { grid-area: actions; display: flex; gap: 6px; }
+.aven-calendar__selected > article > .calendar-item-actions button { white-space: nowrap; }
+@media (max-width: 760px) { .aven-calendar__day-items .aven-calendar__more { display: none; } }
+@media (max-width: 760px) {
+  .aven-calendar__selected > article { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "kind actions" "title actions" "time actions"; }
+  .aven-calendar__selected > article > .aven-calendar__item { justify-self: start; }
+}
+/* Long dialog forms keep Cancel / Save in reach: the action row sticks to the bottom of the scrolling dialog body. */
+.pw-modal .productivity-form > .pw-actions { position: sticky; bottom: -24px; z-index: 1; margin: 4px -24px -24px; padding: 12px 24px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--m-border); background: var(--m-card-solid); }
+
+/* Whiteboard cards: the old list rule made each card a flex row, so the thumbnail only took its text's width. */
+.wb-cards:not(.wb-cards--list) > li { display: block; }
+/* iPad portrait (sidebar open): the top bar's search becomes an icon so Create stays on screen. */
+@media (max-width: 900px) {
+  .workspace-topbar__search span, .workspace-topbar__search kbd { display: none; }
+  .workspace-topbar__search { width: 46px; justify-content: center; padding: 0; }
+}
+
+/* Document side panel: six tools as an even 3 × 2 grid instead of a ragged wrap. */
+.document-studio__tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.document-studio__tabs button { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Billing: what each plan offers, side by side. */
+.billing-plans { margin-top: 18px; }
+.billing-plans > h3 { margin: 0 0 10px; font: 600 14px var(--aven-interface-font); color: var(--m-ink); }
+.billing-plans > ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.billing-plan { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-lg); background: var(--m-card-solid); }
+.billing-plan.is-current { border-color: var(--m-focus); background: var(--m-active-soft); }
+.billing-plan__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.billing-plan__head h4 { margin: 0; font: 500 18px var(--aven-display-font); color: var(--m-ink); }
+.billing-plan__current { padding: 2px 8px; border-radius: 999px; background: var(--m-primary); color: var(--m-primary-ink); font-size: 11px; font-weight: 600; }
+.billing-plan__price { margin: 0; color: var(--m-ink); font-weight: 600; font-size: 13px; }
+.billing-plan__tagline, .billing-plan__note { margin: 0; color: var(--m-muted); font-size: 12px; }
+.billing-plan__list { flex: 1; margin: 4px 0 8px; padding-left: 16px; color: var(--m-ink); font-size: 12.5px; display: grid; gap: 3px; }
+.billing-plan .rd-btn { align-self: flex-start; }
+.billing-usage .files-usage { margin-bottom: 10px; }
+.billing-usage .files-usage > span:first-child { grid-row: 2; grid-column: 1 / 3; color: var(--m-ink); font-size: 13px; font-weight: 500; }
+.billing-usage .files-usage > small { grid-row: 2; grid-column: 3; justify-self: end; }

@@ -7,7 +7,6 @@ import { useT } from '../../../i18n';
 import type { Key } from '../../../i18n/en';
 import { FavouriteStar } from '../../favourites';
 import { Icon, type IconName } from '../../home-icons';
-import { useWorkspaceSession } from '../../workspace-shell';
 import { EmptyState } from '../../ui';
 import { ProjectProvider, useProject } from '../project-context';
 import { LoadingBlock, Notice, PersonChip, StatusPill, formatDate } from '../project-ui';
@@ -31,12 +30,11 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
 function Frame({ children }: { children: ReactNode }) {
   const t = useT();
   const pathname = usePathname();
-  const { workspace } = useWorkspaceSession();
   const { project, tasks, milestones, team, error, notice, clear, taskDialog, openTask } = useProject();
   const base = `/workspace/projects/${project.id}`;
   const counts: Record<string, number> = { tasks: tasks.length, milestones: milestones.length, team: team.length };
   return <div className="pw-page">
-    <nav className="pw-crumbs" aria-label={t('pw.breadcrumb')}><Link href="/workspace/projects"><Icon name="back" size={16} />{t('pw.allProjects')}</Link><span aria-hidden="true">/</span><span>{workspace.name}</span></nav>
+    <nav className="pw-crumbs" aria-label={t('pw.breadcrumb')}><Link href="/workspace/projects"><Icon name="back" size={16} />{t('pw.allProjects')}</Link></nav>
     <header className="pw-head">
       <div className="pw-head__text">
         <div className="pw-head__title"><h1>{project.name}</h1><StatusPill status={project.status} /></div>
