@@ -87,5 +87,61 @@ test.describe('working journeys', () => {
   });
 });
 
+const dayKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+async function dragBetween(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
+  await page.mouse.move(from.x, from.y); await page.mouse.down();
+  await page.mouse.move(from.x + 8, from.y + 8, { steps: 3 }); await page.mouse.move(to.x, to.y, { steps: 10 }); await page.mouse.up();
+}
+const centre = async (locator: import('@playwright/test').Locator) => { const box = (await locator.boundingBox())!; return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; };
+
+test.describe('phase 7 journeys', () => {
+  test('messages: react to a message, see who reacted, and take it back', async ({ page }) => {
+    await signIn(page); await page.goto('/workspace/messages');
+    await page.getByRole('button', { name: 'Add a channel' }).click();
+    await page.getByLabel('New channel').fill(`e2e-${Date.now().toString(36)}`); await page.getByLabel('New channel').press('Enter');
+    const composer = page.getByRole('textbox', { name: /^Message/ });
+    await composer.fill('Reaction test'); await composer.press('Enter');
+    const message = page.locator('.msgs-message', { hasText: 'Reaction test' });
+    await expect(message).toBeVisible({ timeout: 20_000 });
+    await message.hover(); await message.locator('summary.msgs-reaction--add').click();
+    await page.getByRole('button', { name: 'Celebrate', exact: true }).click();
+    const chip = message.getByRole('button', { name: /^Celebrate: 1, from you$/ });
+    await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Celebrate', exact: true })).toBeHidden(); // the picker closed
+    await page.reload(); await expect(page.locator('.msgs-message', { hasText: 'Reaction test' }).getByRole('button', { name: /^Celebrate: 1/ })).toBeVisible({ timeout: 20_000 }); // saved
+    await page.locator('.msgs-message', { hasText: 'Reaction test' }).getByRole('button', { name: /^Celebrate: 1/ }).click();
+    await expect(page.locator('.msgs-message', { hasText: 'Reaction test' }).getByRole('button', { name: /^Celebrate/ })).toHaveCount(0);
+  });
+
+  test('calendar: drag an event to another day, undo it, and lengthen it by dragging its edge', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await signIn(page); await page.goto('/workspace/calendar');
+    const today = new Date(); const other = new Date(today); other.setDate(today.getDate() + (today.getDay() === 0 ? -1 : 1)); // stays in this Monday–Sunday week
+    await page.getByRole('button', { name: 'New event' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Event title').fill('E2E drag');
+    await dialog.getByLabel(/^Ends/).fill(`${dayKey(today)}T10:00`);
+    await dialog.getByRole('button', { name: 'Add to calendar' }).click(); await expect(dialog).toBeHidden();
+
+    await page.getByRole('button', { name: 'Week', exact: true }).click();
+    const chip = page.locator('.aven-calendar__week-event', { hasText: 'E2E drag' });
+    await expect(page.locator(`section[data-cal-date="${dayKey(today)}"]`).getByText('E2E drag')).toBeVisible();
+    await dragBetween(page, await centre(chip), await centre(page.locator(`section[data-cal-date="${dayKey(other)}"]`)));
+    await expect(page.locator(`section[data-cal-date="${dayKey(other)}"]`).getByText('E2E drag')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('dialog')).toHaveCount(0); // a drag does not also open the event
+    await page.getByRole('status').filter({ hasText: 'Moved “E2E drag”' }).getByRole('button', { name: 'Undo' }).click();
+    await expect(page.locator(`section[data-cal-date="${dayKey(today)}"]`).getByText('E2E drag')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: 'Day', exact: true }).click();
+    const event = page.locator('.aven-calendar__timeline-event', { hasText: 'E2E drag' });
+    await expect(event).toContainText(/10:00/);
+    const handle = event.locator('.aven-calendar__resize'); const row = (await page.locator('.aven-calendar__hour').first().boundingBox())!;
+    const from = await centre(handle); await dragBetween(page, from, { x: from.x, y: from.y + row.height });
+    await expect(event).toContainText(/11:00/, { timeout: 15_000 });
+    await page.reload(); await page.getByRole('button', { name: 'Day', exact: true }).click();
+    await expect(page.locator('.aven-calendar__timeline-event', { hasText: 'E2E drag' })).toContainText(/11:00/, { timeout: 20_000 }); // saved
+  });
+});
+
 // Registration, email verification, password reset and multi-factor happen inside Clerk's own screens. Clerk's testing support signs in an existing user but cannot drive those:
 // run them by hand against the development instance with a "+clerk_test" address (Clerk accepts the fixed code 424242 for those), as listed in docs/TESTING.md.

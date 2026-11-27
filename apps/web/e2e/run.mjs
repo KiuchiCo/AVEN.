@@ -22,6 +22,7 @@ if (!existsSync(`${apiDir}/dist/main.js`)) { console.log('Building the API first
 
 const admin = new Client({ connectionString: adminUrl }); await admin.connect();
 let status = 1;
+let clerkUserId = null;
 // Next rewrites these two tracked files when it starts with another build folder; put them back afterwards.
 const touched = ['next-env.d.ts', 'tsconfig.json'].map((name) => [`${webDir}/${name}`, readFileSync(`${webDir}/${name}`, 'utf8')]);
 try {
@@ -48,11 +49,25 @@ try {
   await share(tokens.active, null, null); await share(tokens.download, null, null, true); await share(tokens.revoked, new Date(), null); await share(tokens.expired, null, new Date(Date.now() - 86_400_000));
   await db.end();
 
-  const shared = { ...process.env, E2E_API_PORT: String(ports.api), E2E_WEB_PORT: String(ports.web), E2E_DATABASE_URL: e2eUrl, E2E_TOKEN_ACTIVE: tokens.active, E2E_TOKEN_REVOKED: tokens.revoked, E2E_TOKEN_EXPIRED: tokens.expired, E2E_TOKEN_DOWNLOAD: tokens.download, E2E_CLERK_PUBLISHABLE_KEY: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '', E2E_CLERK_SECRET_KEY: env.CLERK_SECRET_KEY ?? '' };
+  // Signed-in tests need a user of the Clerk DEVELOPMENT instance. Unless one is named, a throwaway one is made here through Clerk's
+  // backend API and deleted afterwards (finally, below). Never with a production key; never with a password: the tests sign in with one-time tickets.
+  if (!process.env.E2E_CLERK_USER_EMAIL && (env.CLERK_SECRET_KEY ?? '').startsWith('sk_test_') && process.env.E2E_NO_TEST_USER !== '1') {
+    const email = `aven-e2e-${randomBytes(4).toString('hex')}+clerk_test@example.com`;
+    const created = await fetch('https://api.clerk.com/v1/users', { method: 'POST', headers: { Authorization: `Bearer ${env.CLERK_SECRET_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ email_address: [email], first_name: 'AVEN', last_name: 'E2E', skip_password_requirement: true }) });
+    if (created.ok) { clerkUserId = (await created.json()).id; process.env.E2E_CLERK_USER_EMAIL = email; console.log('Signed-in tests use a throwaway Clerk test user (deleted afterwards).'); }
+    else console.log(`Could not create a Clerk test user (HTTP ${created.status}): signed-in tests will be skipped.`);
+  }
+  const shared = { ...process.env, E2E_API_PORT: String(ports.api), E2E_WEB_PORT: String(ports.web), E2E_DATABASE_URL: e2eUrl, E2E_TOKEN_ACTIVE: tokens.active, E2E_TOKEN_REVOKED: tokens.revoked, E2E_TOKEN_EXPIRED: tokens.expired, E2E_TOKEN_DOWNLOAD: tokens.download, E2E_CLERK_PUBLISHABLE_KEY: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '', E2E_CLERK_SECRET_KEY: env.CLERK_SECRET_KEY ?? '',
+    // @clerk/testing (clerkSetup, sign-in tickets) reads these names in the test process itself.
+    CLERK_PUBLISHABLE_KEY: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '', CLERK_SECRET_KEY: env.CLERK_SECRET_KEY ?? '' };
   const result = spawnSync('npx', ['playwright', 'test', '--config', 'e2e/playwright.config.ts', ...process.argv.slice(2)], { cwd: webDir, env: shared, stdio: 'inherit' });
   status = result.status ?? 1;
 } catch (error) { console.error(error instanceof Error ? error.message : error); } finally {
   for (const [file, content] of touched) writeFileSync(file, content);
+  if (clerkUserId) {
+    const removed = await fetch(`https://api.clerk.com/v1/users/${clerkUserId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${env.CLERK_SECRET_KEY}` } }).catch(() => null);
+    console.log(removed?.ok ? 'Throwaway Clerk test user deleted.' : `Could not delete the throwaway Clerk test user ${clerkUserId}: remove it in the Clerk dashboard.`);
+  }
   await admin.query(`DROP DATABASE IF EXISTS "${e2eName}" WITH (FORCE)`).catch(() => undefined); await admin.end();
 }
 process.exit(status);

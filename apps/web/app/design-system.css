@@ -411,3 +411,58 @@ html { scrollbar-gutter: stable; } /* a page with a scrollbar and one without mu
 .billing-usage .files-usage { margin-bottom: 10px; }
 .billing-usage .files-usage > span:first-child { grid-row: 2; grid-column: 1 / 3; color: var(--m-ink); font-size: 13px; font-weight: 500; }
 .billing-usage .files-usage > small { grid-row: 2; grid-column: 3; justify-self: end; }
+
+/* ── Phase 7 ─────────────────────────────────────────────────────────────── */
+/* Message reactions: quiet chips under the message; yours are outlined in bronze. */
+.msgs-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.msgs-reaction { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 2px 9px; border: 1px solid var(--m-border); border-radius: 999px; background: var(--m-card-solid); color: var(--m-ink); font: 500 12.5px var(--aven-interface-font); cursor: pointer; }
+.msgs-reaction:hover { border-color: var(--m-focus); }
+.msgs-reaction.is-mine { border-color: var(--m-focus); background: var(--m-active-soft); }
+.msgs-reaction:disabled { cursor: default; }
+.msgs-reaction--add { list-style: none; color: var(--m-muted); opacity: 0; transition: opacity .15s; }
+.msgs-reaction--add::-webkit-details-marker { display: none; }
+.msgs-message:hover .msgs-reaction--add, .msgs-message:focus-within .msgs-reaction--add, .msgs-react-picker[open] .msgs-reaction--add, .msgs-reactions:has(.msgs-reaction:not(.msgs-reaction--add)) .msgs-reaction--add { opacity: 1; }
+.msgs-react-picker { position: relative; }
+.msgs-react-picker__panel { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 40px); gap: 4px; padding: 6px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-card-solid); box-shadow: 0 18px 40px rgb(43 42 39 / 16%); }
+.msgs-react-picker__panel button { width: 40px; height: 40px; border: 1px solid transparent; border-radius: var(--ds-radius-sm); background: transparent; font-size: 20px; cursor: pointer; }
+.msgs-react-picker__panel button:hover, .msgs-react-picker__panel button[aria-pressed='true'] { border-color: var(--m-focus); background: var(--m-chip); }
+@media (prefers-reduced-motion: reduce) { .msgs-reaction--add { transition: none; } }
+/* Touch screens have no hover: message tools and the reaction button stay visible so they can be reached. */
+@media (hover: none) {
+  .msgs-message__tools { display: flex; }
+  .msgs-reaction--add { opacity: 1; }
+  .msgs-reaction { min-height: 32px; }
+}
+
+/* Calendar moving and resizing. */
+.calendar-moved { margin: 8px 0 0; min-height: 0; color: var(--m-ink); font-size: var(--ds-fs-small); }
+.calendar-moved button { margin-left: 6px; border: 0; background: none; color: var(--m-accent-ink, #6b5746); font-weight: 600; text-decoration: underline; cursor: pointer; }
+.calendar-drag-hint { margin: -4px 0 12px; color: var(--m-muted); font-size: 12px; }
+.is-draggable { cursor: grab; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.is-dragging { opacity: .45; }
+.is-drop { outline: 2px solid var(--m-focus); outline-offset: -2px; background: var(--m-active-soft) !important; }
+.calendar-drag-ghost { position: fixed; z-index: 2000; max-width: 260px; padding: 6px 10px; border: 1px solid var(--m-focus); border-radius: var(--ds-radius-sm); background: var(--m-card-solid); color: var(--m-ink); box-shadow: 0 12px 28px rgb(43 42 39 / 22%); font: 600 12.5px var(--aven-interface-font); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aven-calendar__timeline-event { position: relative; }
+.aven-calendar__resize { position: absolute; left: 0; right: 0; bottom: -4px; height: 12px; cursor: ns-resize; touch-action: none; }
+.aven-calendar__resize::after { content: ''; position: absolute; left: 50%; bottom: 4px; width: 28px; height: 3px; margin-left: -14px; border-radius: 2px; background: var(--m-border); }
+.aven-calendar__timeline-event:hover .aven-calendar__resize::after { background: var(--m-focus); }
+/* Phones change times in the event dialog; the drag hint would only mislead there. */
+@media (max-width: 760px) { .calendar-drag-hint { display: none; } }
+@media (pointer: coarse) { .aven-calendar__resize { height: 20px; bottom: -8px; } }
+/* Narrow top bar: the search words stay in the accessibility tree (they name the link) while only the icon shows. */
+@media (max-width: 900px) {
+  .workspace-topbar__search span { display: block !important; position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+}
+/* iOS Safari zooms the whole page into any field under 16px when it is focused, and stays zoomed (seen in the iOS Simulator on the
+   channel name field). On touch screens every text field is at least 16px; larger type is kept. */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']), select, textarea, [contenteditable='true'] { font-size: max(16px, 1em) !important; }
+}
+/* Messages on phones: the conversation header and its tabs keep the page gutter (they touched both edges), and the last message's
+   reactions are not hidden under the composer. */
+.msgs-thread { padding-bottom: 14px; scroll-padding-bottom: 14px; }
+@media (max-width: 760px) {
+  .workspace-content .msgs-main > .msgs-head, .workspace-content .msgs-main > .rd-tabs { padding-inline: 16px; }
+}
+/* The calendar is one card, not a card inside a card (the outer frame cost ~40px of width on phones). */
+.calendar-page .connected-record-list { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }

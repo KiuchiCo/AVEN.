@@ -43,6 +43,7 @@ export class MessagingController {
   @Get(':channelId/messages/:messageId/replies') replies(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Param('messageId', new ParseUUIDPipe()) messageId: string) { return this.messaging.replies(who, ws, id, messageId); }
   @Post(':channelId/messages') send(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Body() body: unknown) { return this.messaging.send(who, ws, id, body); }
   @Patch(':channelId/messages/:messageId') edit(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Param('messageId', new ParseUUIDPipe()) messageId: string, @Body() body: unknown) { return this.messaging.edit(who, ws, id, messageId, body); }
+  @Post(':channelId/messages/:messageId/reactions') react(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Param('messageId', new ParseUUIDPipe()) messageId: string, @Body() body: unknown) { return this.messaging.react(who, ws, id, messageId, body); }
   @Delete(':channelId/messages/:messageId') remove(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string, @Param('messageId', new ParseUUIDPipe()) messageId: string) { return this.messaging.remove(who, ws, id, messageId); }
   @Post(':channelId/read') read(@CurrentIdentity() who: Who, @workspace() ws: string, @channel() id: string) { return this.messaging.read(who, ws, id); }
 }

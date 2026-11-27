@@ -162,9 +162,10 @@ export function WorkspaceShell({ session, children }: Readonly<{ session: Worksp
               {pathname !== '/workspace' && <p className="workspace-breadcrumb"><strong>{pageTitle}</strong></p>}
             </div>
             <div className="workspace-topbar__actions">
-              <Link className="workspace-topbar__search" href="/workspace/search" aria-label={t('shell.searchLabel')}>
+              {/* The visible words are the link's name (WCAG 2.5.3); on narrow screens they are hidden visually, not removed. */}
+              <Link className="workspace-topbar__search" href="/workspace/search">
                 <NavIcon name="search" />
-                <span>{t('shell.searchPlaceholder')}</span><kbd>⌘K</kbd>
+                <span>{t('shell.searchPlaceholder')}</span><kbd aria-hidden="true">⌘K</kbd>
               </Link>
               <Link className="workspace-bell" href="/workspace/inbox" aria-label={unread > 0 ? `${t('nav.inbox')}, ${t('shell.unread', { n: unread })}` : t('nav.inbox')}><NavIcon name="bell" />{unread > 0 && <i aria-hidden="true" />}</Link>
               {session.workspace.role !== 'GUEST' && <div className="workspace-create" ref={createRef}>

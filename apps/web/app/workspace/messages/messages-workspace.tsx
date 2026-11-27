@@ -9,6 +9,7 @@ import { useFilesApi } from '../files/use-files-api';
 import { useT } from '../../i18n';
 import { Composer } from './composer';
 import { MessageBody } from './message-body';
+import { MessageReactions, applyReaction, type Reaction } from './reactions';
 import { readEvents } from './sse';
 import { Icon } from '../home-icons';
 import { Avatar, EmptyState, PillTabs } from '../ui';
@@ -16,10 +17,10 @@ import { connectionError, apiFetch } from '../connection-error';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 export type Channel = { id: string; kind: 'CHANNEL' | 'DIRECT' | 'GROUP'; name: string | null; topic: string; unread: number; participants: Participant[] };
-export type Message = { id: string; channelId: string; parentId: string | null; body: string; createdAt: string; editedAt: string | null; deletedAt: string | null; replyCount: number; author: Participant; files: { id: string; name: string; mimeType: string; sizeBytes: number }[] };
+export type Message = { id: string; channelId: string; parentId: string | null; body: string; createdAt: string; editedAt: string | null; deletedAt: string | null; replyCount: number; author: Participant; files: { id: string; name: string; mimeType: string; sizeBytes: number }[]; reactions?: Reaction[] };
 type Member = { userId: string; displayName: string; role: string };
 type Hit = { id: string; channelId: string; parentId: string | null; body: string; createdAt: string; author: Participant; channel: { kind: Channel['kind']; name: string | null; participants: Participant[] } };
-type LiveEvent = { type: 'refresh' } | { type: 'message' | 'message_updated'; channelId: string; message: Message } | { type: 'message_deleted'; channelId: string; id: string; parentId?: string | null } | { type: 'channel'; channel: Channel } | { type: 'presence'; online: string[] };
+type LiveEvent = { type: 'refresh' } | { type: 'message' | 'message_updated'; channelId: string; message: Message } | { type: 'message_deleted'; channelId: string; id: string; parentId?: string | null } | { type: 'message_reactions'; channelId: string; messageId: string; reactions: Reaction[] } | { type: 'channel'; channel: Channel } | { type: 'presence'; online: string[] };
 const byName = (a: Channel, b: Channel) => (a.name ?? '').localeCompare(b.name ?? '');
 
 export function MessagesWorkspace() {
@@ -61,6 +62,13 @@ export function MessagesWorkspace() {
   }, [getToken, workspace.id]);
 
   const fail = (reason: unknown) => setError(reason instanceof Error ? reason.message : 'Something went wrong.');
+  /** Changes one message's reactions wherever it is shown: the conversation and the open thread. */
+  const setReactions = useCallback((messageId: string, change: (current: Reaction[]) => Reaction[]) => {
+    const update = (item: Message) => (item.id === messageId ? { ...item, reactions: change(item.reactions ?? []) } : item);
+    setMessages((list) => list.map(update));
+    setThread((current) => (current ? { root: update(current.root), replies: current.replies.map(update) } : current));
+  }, []);
+
   const loadChannels = useCallback(() => call<Channel[]>('').then((list) => { setChannels(list); setActiveId((current) => current ?? list.find((item) => item.kind === 'CHANNEL')?.id ?? list[0]?.id ?? null); }).catch(fail).finally(() => setChannelsLoaded(true)), [call]);
   const loadMessages = useCallback((id: string) => call<{ messages: Message[]; hasMore: boolean }>(`/${id}/messages`).then((page) => { if (active.current === id) { setMessages(page.messages); setHasMore(page.hasMore); } }).catch(fail), [call]);
   const loadThread = useCallback((channelId: string, rootId: string) => call<{ root: Message; replies: Message[] }>(`/${channelId}/messages/${rootId}/replies`).then((data) => { if (openThread.current === rootId) setThread(data); }).catch(fail), [call]);
@@ -89,6 +97,7 @@ export function MessagesWorkspace() {
       if (event.type === 'refresh') { void loadChannels(); if (active.current) void loadMessages(active.current); if (openThread.current && active.current) void loadThread(active.current, openThread.current); return; } // an event too large to pass between servers: look again
       if (event.type === 'channel') { setChannels((list) => (list.some((item) => item.id === event.channel.id) ? list : [...list, event.channel])); return; }
       const inActive = event.channelId === active.current;
+      if (event.type === 'message_reactions') { setReactions(event.messageId, () => event.reactions); return; }
       if (event.type === 'message_deleted') {
         const gone = (item: Message) => (item.id === event.id ? { ...item, body: '', deletedAt: new Date().toISOString() } : item);
         if (inActive && !event.parentId) setMessages((list) => list.map(gone));
@@ -124,7 +133,7 @@ export function MessagesWorkspace() {
       }
     })();
     return () => abort.abort();
-  }, [call, getToken, loadChannels, loadMessages, loadThread, workspace.id]);
+  }, [call, getToken, loadChannels, loadMessages, loadThread, setReactions, workspace.id]);
 
   async function post(body: string, fileIds: string[], parentId?: string) {
     if (!activeId) return;
@@ -153,6 +162,14 @@ export function MessagesWorkspace() {
     try { const message = await call<Message>(`/${activeId}/messages/${editing.id}`, 'PATCH', { body: editing.body }); setMessages((list) => list.map((item) => (item.id === message.id ? message : item))); setThread((current) => (current ? { root: current.root.id === message.id ? message : current.root, replies: current.replies.map((item) => (item.id === message.id ? message : item)) } : current)); setEditing(null); }
     catch (reason) { fail(reason); }
   }
+  /** Shows the change at once, then keeps what the server says (or puts it back and explains if it failed). */
+  async function react(message: Message, emoji: string, active: boolean) {
+    const before = message.reactions ?? [];
+    setReactions(message.id, (current) => applyReaction(current, emoji, user.id, active));
+    try { const result = await call<{ reactions: Reaction[] }>(`/${message.channelId}/messages/${message.id}/reactions`, 'POST', { emoji, active }); setReactions(message.id, () => result.reactions); }
+    catch (reason) { setReactions(message.id, () => before); fail(reason); }
+  }
+
   async function remove(message: Message) {
     if (!activeId || !window.confirm(t('msg.confirmDelete'))) return;
     try { await call(`/${activeId}/messages/${message.id}`, 'DELETE'); } catch (reason) { fail(reason); }
@@ -211,7 +228,8 @@ export function MessagesWorkspace() {
       </header>
       {message.deletedAt ? <p className="chat-deleted">{t('msg.deleted')}</p> : editing?.id === message.id ? <div className="msgs-edit"><textarea autoFocus value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setEditing(null); } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && editing.body.trim()) { event.preventDefault(); void saveEdit(); } }} aria-label={t('msg.editLabel')} /><div><button type="button" className="rd-btn" onClick={() => void saveEdit()} disabled={!editing.body.trim()}>{t('msg.save')}</button><button type="button" className="rd-btn rd-btn--soft" onClick={() => setEditing(null)}>{t('msg.cancel')}</button></div></div> : <>
         {message.body && <p><MessageBody body={message.body} names={names} /></p>}
-        {message.files?.length > 0 && <div className="msgs-files">{message.files.map(fileCard)}</div>}</>}
+        {message.files?.length > 0 && <div className="msgs-files">{message.files.map(fileCard)}</div>}
+        <MessageReactions reactions={message.reactions ?? []} userId={user.id} names={names} readOnly={readOnly} onToggle={(emoji, on) => void react(message, emoji, on)} /></>}
       {!message.deletedAt && !inThread && (message.replyCount > 0 || !readOnly) && <button type="button" className="msgs-replies" onClick={() => openReplies(message)}>{message.replyCount ? <><strong>{t(message.replyCount === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: message.replyCount })}</strong><span className={`msgs-replies__chev${thread?.root.id === message.id ? ' is-open' : ''}`}><Icon name="chevron" size={14} /></span></> : <span>{t('msg.reply')}</span>}</button>}
     </div>
   </article>;
@@ -226,7 +244,7 @@ export function MessagesWorkspace() {
       <form className="rd-search" onSubmit={search} role="search"><Icon name="search" size={18} /><label className="visually-hidden" htmlFor="chat-search">{t('msg.searchLabel')}</label><input id="chat-search" value={query} placeholder={t('msg.searchLabel')} onChange={(event) => { setQuery(event.target.value); if (!event.target.value) setHits(null); }} /></form>
       <PillTabs size="small" label={t('msg.conversations')} value={scope} onChange={setScope} items={[{ key: 'ALL', label: t('msg.scope.all') }, { key: 'CHANNELS', label: t('msg.scope.channels') }, { key: 'DMS', label: t('msg.scope.dms') }]} />
       {scope !== 'DMS' && <section className="msgs-group"><header><h2>{t('msg.channels')}</h2>{!readOnly && <button type="button" className="rd-iconbtn" aria-label={t('msg.addChannel')} aria-expanded={adding} onClick={() => setAdding((open) => !open)}><Icon name="plus" size={18} /></button>}</header>
-        {adding && !readOnly && <form className="msgs-add" onSubmit={(event) => { void createChannel(event).then(() => setAdding(false)); }}><label className="visually-hidden" htmlFor="new-channel">{t('msg.newChannelLabel')}</label><input id="new-channel" autoFocus value={newChannel} maxLength={40} placeholder={t('msg.newChannel')} onChange={(event) => setNewChannel(event.target.value)} /><button className="rd-btn" disabled={!newChannel.trim()}>{t('msg.add')}</button></form>}
+        {adding && !readOnly && <form className="msgs-add" onSubmit={(event) => { void createChannel(event).then(() => setAdding(false)); }}><label className="visually-hidden" htmlFor="new-channel">{t('msg.newChannelLabel')}</label><input id="new-channel" autoFocus autoCapitalize="none" autoCorrect="off" spellCheck={false} value={newChannel} maxLength={40} placeholder={t('msg.newChannel')} onChange={(event) => setNewChannel(event.target.value)} /><button className="rd-btn" disabled={!newChannel.trim()}>{t('msg.add')}</button></form>}
         <ul>{publicChannels.filter(inScope).map((item) => <li key={item.id}><button type="button" aria-current={item.id === activeId} onClick={() => { setHits(null); setThread(null); setInfo(false); setActiveId(item.id); }}><span className="msgs-list__name">{label(item)}</span>{item.unread > 0 && <span className="chat-unread" aria-label={t('shell.unread', { n: item.unread })}>{item.unread}</span>}</button></li>)}</ul></section>}
       {scope !== 'CHANNELS' && <section className="msgs-group"><header><h2>{t('msg.dms')}</h2>{!readOnly && <button type="button" className="rd-iconbtn" aria-label={peers.length ? t('msg.newMessage') : t('msg.invitePeople')} disabled={!peers.length} aria-expanded={picking !== null} onClick={() => setPicking((current) => (current === null ? [] : null))}><Icon name="plus" size={18} /></button>}</header>
         {picking !== null && !readOnly && <fieldset className="msgs-picker"><legend>{t('msg.messageWho')}</legend>
@@ -240,7 +258,7 @@ export function MessagesWorkspace() {
       {hits ? <div className="msgs-results"><header><h2>{t('msg.results')}</h2><button type="button" className="rd-btn rd-btn--soft" onClick={() => { setHits(null); setQuery(''); }}>{t('msg.close')}</button></header>
         {hits.length === 0 ? <EmptyState art="search" compact title={t('msg.noMatch', { q: query })} /> : <ul>{hits.map((hit) => <li key={hit.id}><button type="button" onClick={() => jump(hit)}><small>{label(hit.channel)} · {hit.author.displayName} · {new Date(hit.createdAt).toLocaleDateString()}</small><span>{hit.body.replace(/@\[([^\]]*)\]\([^)]*\)/g, '@$1').slice(0, 200)}</span></button></li>)}</ul>}</div>
       : !channel && !channelsLoaded ? <p className="productivity-message" role="status">{t('wbe.loading')}</p>
-      : !channel ? <EmptyState art="chat" title={channels.length ? t('msg.choose') : readOnly ? t('msg.noChannels') : t('msg.createFirst')} />
+      : !channel ? <EmptyState art="chat" title={channels.length ? t('msg.choose') : readOnly ? t('msg.noChannels') : t('msg.createFirst')}>{!channels.length && !readOnly && <button type="button" className="rd-btn" onClick={() => setAdding(true)}><Icon name="plus" size={18} />{t('msg.newChannel')}</button>}</EmptyState>
       : <>
         <header className="msgs-head">
           <div className="msgs-head__title"><h2>{label(channel)}</h2><p>{channel.topic || t(channel.kind === 'CHANNEL' ? 'msg.kind.channel' : channel.kind === 'GROUP' ? 'msg.kind.group' : 'msg.kind.direct')}</p></div>

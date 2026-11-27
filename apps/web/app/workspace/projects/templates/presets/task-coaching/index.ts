@@ -1,63 +1,10 @@
+import { coachingCatalog } from './coaching-catalog';
+import { buildTaskCoaching } from './coaching-text';
 import type { TemplateTaskCoaching } from './types';
 
-const loaders: Record<string, () => Promise<{ taskCoaching: TemplateTaskCoaching[] }>> = {
-  "product": () => import('./product'),
-  "feature-delivery": () => import('./feature-delivery'),
-  "bug-triage": () => import('./bug-triage'),
-  "release-readiness": () => import('./release-readiness'),
-  "customer-onboarding": () => import('./customer-onboarding'),
-  "pricing-test": () => import('./pricing-test'),
-  "accessibility-remediation": () => import('./accessibility-remediation'),
-  "design-system": () => import('./design-system'),
-  "integration": () => import('./integration'),
-  "security-review": () => import('./security-review'),
-  "user-survey": () => import('./user-survey'),
-  "usability-study": () => import('./usability-study'),
-  "literature-review": () => import('./literature-review'),
-  "competitive-analysis": () => import('./competitive-analysis'),
-  "data-quality": () => import('./data-quality'),
-  "interview-study": () => import('./interview-study'),
-  "advisory-board": () => import('./advisory-board'),
-  "seo-refresh": () => import('./seo-refresh'),
-  "newsletter": () => import('./newsletter'),
-  "social-launch": () => import('./social-launch'),
-  "webinar": () => import('./webinar'),
-  "brand-campaign": () => import('./brand-campaign'),
-  "case-study": () => import('./case-study'),
-  "content-refresh": () => import('./content-refresh'),
-  "market-launch": () => import('./market-launch'),
-  "quarterly-planning": () => import('./quarterly-planning'),
-  "budget-cycle": () => import('./budget-cycle'),
-  "hiring-plan-workflow": () => import('./hiring-plan-workflow'),
-  "employee-onboarding": () => import('./employee-onboarding'),
-  "process-improvement": () => import('./process-improvement'),
-  "procurement": () => import('./procurement'),
-  "incident-response": () => import('./incident-response'),
-  "policy-rollout": () => import('./policy-rollout'),
-  "office-move": () => import('./office-move'),
-  "performance-cycle": () => import('./performance-cycle'),
-  "study-term": () => import('./study-term'),
-  "exam-preparation": () => import('./exam-preparation'),
-  "job-search": () => import('./job-search'),
-  "moving-home": () => import('./moving-home'),
-  "personal-finance-review": () => import('./personal-finance-review'),
-  "productivity-reset": () => import('./productivity-reset'),
-  "meal-plan": () => import('./meal-plan'),
-  "fitness-goal": () => import('./fitness-goal'),
-  "community-event": () => import('./community-event'),
-  "grant-application": () => import('./grant-application'),
-  "product-migration": () => import('./product-migration'),
-  "analytics-dashboard": () => import('./analytics-dashboard'),
-  "internal-tool": () => import('./internal-tool'),
-  "knowledge-base": () => import('./knowledge-base'),
-  "annual-review": () => import('./annual-review'),
-  "customer-support-improvement": () => import('./customer-support-improvement'),
-  "data-retention": () => import('./data-retention'),
-};
-
-export async function getTemplateTaskCoaching(presetId: string, taskIndex: number) {
-  const load = loaders[presetId];
-  if (!load) return null;
-  const presetModule = await load();
-  return presetModule.taskCoaching[taskIndex] ?? null;
+/** Coaching for one task of a starter template (this module is loaded only when someone opens a task's coaching). */
+export async function getTemplateTaskCoaching(presetId: string, taskIndex: number): Promise<TemplateTaskCoaching | null> {
+  const preset = coachingCatalog[presetId];
+  const title = preset?.tasks[taskIndex];
+  return preset && title !== undefined ? buildTaskCoaching(preset.name, title) : null;
 }

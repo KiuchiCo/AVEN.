@@ -105,6 +105,20 @@ test.describe('the signed-out app', () => {
     await expect(page.getByRole('link', { name: 'Inbox' })).toHaveCount(0);
   });
 
+  test('sign-in and sign-up follow the chosen language, Clerk\u2019s own screens included', async ({ page, context, baseURL }) => {
+    test.skip(!process.env.E2E_CLERK_PUBLISHABLE_KEY, 'needs Clerk keys (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) so there is a sign-in to show');
+    const cases = [['de', 'Deine ganze Welt, organisiert.', 'Fortsetzen'], ['fr', 'Tout votre univers, organisé.', 'Continuer'], ['es', 'Todo tu mundo, organizado.', 'Continuar'], ['en', 'Your entire world, organised.', 'Continue']] as const;
+    for (const [language, tagline, button] of cases) {
+      await context.addCookies([{ name: 'aven-lang', value: language, url: baseURL! }]);
+      for (const path of ['/sign-in', '/sign-up']) {
+        await page.goto(path);
+        await expect(page.locator('html')).toHaveAttribute('lang', language);
+        await expect(page.getByText(tagline)).toBeVisible();
+        await expect(page.locator('.cl-formButtonPrimary').first()).toContainText(button, { timeout: 30_000 });
+      }
+    }
+  });
+
   test('the landing page loads without script errors', async ({ page }) => {
     const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
     const response = await page.goto('/');

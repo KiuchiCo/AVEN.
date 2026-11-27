@@ -4,15 +4,15 @@ import { requireWorkspaceMember } from '../auth/workspace-access.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { ChannelEvents } from './channel-events.js';
-import { directKey, extractMentionIds, messageLimits, parseBefore, parseChannelName, parseMessageBody, parseMessageContent, parseMessageFileIds, parseParentId, parseParticipants, parseSearchQuery, parseTopic } from './message-rules.js';
+import { directKey, extractMentionIds, messageLimits, parseBefore, parseChannelName, parseMessageBody, parseMessageContent, parseMessageFileIds, parseParentId, parseParticipants, parseReaction, parseSearchQuery, parseTopic, summariseReactions } from './message-rules.js';
 
 const authorSelect = { select: { id: true, displayName: true } } as const;
-const messageSelect = { id: true, channelId: true, parentId: true, body: true, createdAt: true, editedAt: true, deletedAt: true, author: authorSelect, files: { select: { file: { select: { id: true, name: true, mimeType: true, sizeBytes: true, deletedAt: true } } } }, _count: { select: { replies: { where: { deletedAt: null } } } } } as const;
+const messageSelect = { id: true, channelId: true, parentId: true, body: true, createdAt: true, editedAt: true, deletedAt: true, author: authorSelect, reactions: { select: { emoji: true, userId: true }, orderBy: { createdAt: 'asc' } }, files: { select: { file: { select: { id: true, name: true, mimeType: true, sizeBytes: true, deletedAt: true } } } }, _count: { select: { replies: { where: { deletedAt: null } } } } } as const;
 const channelSelect = { id: true, kind: true, name: true, topic: true, createdAt: true, members: { select: { user: authorSelect } } } as const;
 const object = (input: unknown) => { if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('A JSON object is required.'); return input as Record<string, unknown>; };
 
-type RawMessage = { id: string; channelId: string; parentId: string | null; body: string; createdAt: Date; editedAt: Date | null; deletedAt: Date | null; author: { id: string; displayName: string }; files: { file: { id: string; name: string; mimeType: string; sizeBytes: number; deletedAt: Date | null } }[]; _count: { replies: number } };
-const shape = ({ _count, files, ...message }: RawMessage) => ({ ...message, files: message.deletedAt ? [] : files.filter(({ file }) => !file.deletedAt).map(({ file: { deletedAt: _gone, ...file } }) => file), replyCount: _count.replies });
+type RawMessage = { id: string; channelId: string; parentId: string | null; body: string; createdAt: Date; editedAt: Date | null; deletedAt: Date | null; author: { id: string; displayName: string }; files: { file: { id: string; name: string; mimeType: string; sizeBytes: number; deletedAt: Date | null } }[]; reactions: { emoji: string; userId: string }[]; _count: { replies: number } };
+const shape = ({ _count, files, reactions, ...message }: RawMessage) => ({ ...message, reactions: message.deletedAt ? [] : summariseReactions(reactions), files: message.deletedAt ? [] : files.filter(({ file }) => !file.deletedAt).map(({ file: { deletedAt: _gone, ...file } }) => file), replyCount: _count.replies });
 type RawChannel = { id: string; kind: 'CHANNEL' | 'DIRECT' | 'GROUP'; name: string | null; topic: string; createdAt: Date; members: { user: { id: string; displayName: string } }[] };
 const shapeChannel = ({ members, ...channel }: RawChannel, unread = 0) => ({ ...channel, participants: channel.kind === 'CHANNEL' ? [] : members.map((member) => member.user), unread });
 
@@ -154,9 +154,24 @@ export class MessagingService {
     const message = await this.prisma.channelMessage.findFirst({ where: { id: messageId, channelId, workspaceId, deletedAt: null }, select: { authorId: true, parentId: true } });
     if (!message) throw new NotFoundException('Message not found.');
     if (message.authorId !== userId && !['OWNER', 'ADMINISTRATOR'].includes((await this.role(userId, workspaceId)) ?? '')) throw new ForbiddenException('You can only delete your own messages.');
-    await this.prisma.channelMessage.update({ where: { id: messageId }, data: { body: '', deletedAt: new Date(), files: { deleteMany: {} } } });
+    await this.prisma.channelMessage.update({ where: { id: messageId }, data: { body: '', deletedAt: new Date(), files: { deleteMany: {} }, reactions: { deleteMany: {} } } });
     this.events.publish(workspaceId, { type: 'message_deleted', channelId, id: messageId, parentId: message.parentId }, this.audience(channel));
     return { id: messageId, deleted: true };
+  }
+
+  /** Adds or removes the caller's reaction. Anyone who can write in the conversation may react; a deleted message takes no reactions. */
+  async react(identity: AuthenticatedIdentity, workspaceId: string, channelId: string, messageId: string, input: unknown) {
+    const userId = await requireWorkspaceMember(this.prisma, identity, workspaceId, true);
+    const channel = await this.channel(workspaceId, channelId, userId);
+    const { emoji, active } = parseReaction(input);
+    const message = await this.prisma.channelMessage.findFirst({ where: { id: messageId, channelId, workspaceId, deletedAt: null }, select: { id: true, parentId: true } });
+    if (!message) throw new NotFoundException('Message not found.');
+    // createMany with skipDuplicates and deleteMany both succeed when the reaction is already in the wanted state, so double taps and retries are harmless.
+    if (active) await this.prisma.channelMessageReaction.createMany({ data: [{ messageId, userId, emoji }], skipDuplicates: true });
+    else await this.prisma.channelMessageReaction.deleteMany({ where: { messageId, userId, emoji } });
+    const reactions = summariseReactions(await this.prisma.channelMessageReaction.findMany({ where: { messageId }, orderBy: { createdAt: 'asc' }, select: { emoji: true, userId: true } }));
+    this.events.publish(workspaceId, { type: 'message_reactions', channelId, messageId, parentId: message.parentId, reactions }, this.audience(channel));
+    return { messageId, reactions };
   }
 
   /** Finds messages in the conversations you can see. Other people's private conversations are never searched. */

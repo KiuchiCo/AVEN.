@@ -77,3 +77,20 @@ export function parseSearchQuery(value: unknown): string {
   if (q.length < 2 || q.length > 80) throw new BadRequestException('Search for between 2 and 80 characters.');
   return q;
 }
+
+/** The reactions people can add. A short, fixed set keeps the row tidy and means nothing arbitrary is stored. */
+export const reactionEmoji = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '✅'] as const;
+export type ReactionEmoji = (typeof reactionEmoji)[number];
+
+/** `{ emoji, active }`: active true adds the reaction, false removes it. Setting a state (not toggling) makes a repeated request harmless. */
+export function parseReaction(input: unknown): { emoji: ReactionEmoji; active: boolean } {
+  const body = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
+  if (typeof body.emoji !== 'string' || !(reactionEmoji as readonly string[]).includes(body.emoji)) throw new BadRequestException('Choose one of the reactions AVEN offers.');
+  if (typeof body.active !== 'boolean') throw new BadRequestException('Say whether to add or remove the reaction.');
+  return { emoji: body.emoji as ReactionEmoji, active: body.active };
+}
+
+/** Rows to the shape clients get: each emoji once, in the offered order, with who reacted. */
+export function summariseReactions(rows: { emoji: string; userId: string }[]): { emoji: string; userIds: string[] }[] {
+  return reactionEmoji.map((emoji) => ({ emoji, userIds: rows.filter((row) => row.emoji === emoji).map((row) => row.userId) })).filter((group) => group.userIds.length > 0);
+}

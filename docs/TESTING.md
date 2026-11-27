@@ -21,13 +21,9 @@ Browser tests cover: shared document links and the public API behind them, the s
 - loads **every main screen** at 1440, 768 and 390 px wide and checks no sideways scroll and no WCAG 2.2 AA violations;
 - creates a project; downloads the data export and opens (and cancels) the account-deletion dialog; changes the theme.
 
-It is **skipped** unless you provide a user, and it refuses a production Clerk key. To run it:
+It refuses a production Clerk key. With the development instance's keys in the root `.env` (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`), `npm run test:e2e` **creates a throwaway Clerk test user** (`aven-e2e-…+clerk_test@example.com`, no password) through Clerk's backend API before the run and **deletes it afterwards**, so the signed-in tests run without any manual set-up. To use an existing user instead, set `E2E_CLERK_USER_EMAIL`; to skip the signed-in tests, set `E2E_NO_TEST_USER=1`.
 
-1. In your Clerk **development** instance, create a throwaway user (the user must already exist; the test does not create accounts).
-2. Make sure the root `.env` holds the development instance's `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` (`npm run test:e2e` passes them on).
-3. `E2E_CLERK_USER_EMAIL=throwaway@example.com npm run test:e2e --workspace @aven/web -- authenticated.spec.ts`
-
-Credentials never go in the repository: pass them in the environment only. **These tests have not been run**: no test user or Clerk access was available when they were written, so expect to adjust selectors on the first run.
+Credentials never go in the repository: they are read from `.env` and passed in the environment only. These tests were first run in Phase 7 (see `docs/audits/PHASE-7-FULL-PRODUCT-COMPLETION.md`).
 
 ## 3. What only a person can check in Clerk
 

@@ -62,7 +62,7 @@ Use CSS custom properties for these values. Do not introduce one-off colours whe
 
 ## Themes
 
-Light mode is the default. Define semantic tokens so a future dark theme can change surface and text values without changing component structure. Dark mode is not part of the current dashboard milestone.
+Light mode is the default. Define semantic tokens so a future dark theme can change surface and text values without changing component structure. Dark mode is built: Settings → Appearance offers light (default), dark, or matching the device, and the choice applies before the first paint.
 
 ## Current implementation
 

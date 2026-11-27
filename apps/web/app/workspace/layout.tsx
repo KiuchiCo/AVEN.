@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { cookies, headers } from 'next/headers';
 import { pickLanguage, translate } from '../i18n/core';
+import { requestLanguage } from '../i18n/request-language';
 import { AuthSetupNotice } from '../auth-setup-notice';
 import { WorkspaceShell } from './workspace-shell';
 
@@ -59,5 +60,7 @@ export default async function WorkspaceLayout({ children }: Readonly<{ children:
     );
   }
 
-  return <WorkspaceShell session={session}>{children}</WorkspaceShell>;
+  // No saved language yet: follow this device's choice or the browser, as the sign-in pages and Clerk do, rather than defaulting to English.
+  const language = session.user.language ?? await requestLanguage();
+  return <WorkspaceShell session={{ ...session, user: { ...session.user, language } }}>{children}</WorkspaceShell>;
 }

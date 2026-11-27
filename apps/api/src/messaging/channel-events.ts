@@ -5,6 +5,7 @@ export type ChannelEvent =
   | { type: 'message'; channelId: string; message: unknown }
   | { type: 'message_updated'; channelId: string; message: unknown }
   | { type: 'message_deleted'; channelId: string; id: string; parentId?: string | null }
+  | { type: 'message_reactions'; channelId: string; messageId: string; parentId: string | null; reactions: { emoji: string; userIds: string[] }[] }
   | { type: 'channel'; channel: unknown }
   | { type: 'presence'; online: string[] }
   /** Sent instead of an event too large to pass between API instances: the client reloads what it is looking at. */

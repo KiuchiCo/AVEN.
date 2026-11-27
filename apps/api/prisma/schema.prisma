@@ -143,6 +143,7 @@ model User {
   whiteboards           Whiteboard[]
   channelsCreated       Channel[]            @relation("ChannelCreator")
   channelMessages       ChannelMessage[]     @relation("ChannelMessageAuthor")
+  messageReactions      ChannelMessageReaction[]
   channelReads          ChannelRead[]        @relation("ChannelReader")
   calendarConnections   CalendarConnection[] @relation("CalendarConnector")
   favourites            Favourite[]          @relation("FavouriteOwner")
@@ -1131,10 +1132,25 @@ model ChannelMessage {
   parent      ChannelMessage?      @relation("MessageReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies     ChannelMessage[]     @relation("MessageReplies")
   files       ChannelMessageFile[]
+  reactions   ChannelMessageReaction[]
 
   @@index([channelId, createdAt])
   @@index([parentId, createdAt])
   @@map("channel_messages")
+}
+
+/// One person's emoji on a message. The key makes the same reaction twice impossible; reactions go with their message.
+model ChannelMessageReaction {
+  messageId String         @db.Uuid
+  userId    String         @db.Uuid
+  emoji     String         @db.VarChar(16)
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+  message   ChannelMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("channel_message_reactions")
 }
 
 /// A workspace file shared in a message. The file itself stays in Files; this only links it.
