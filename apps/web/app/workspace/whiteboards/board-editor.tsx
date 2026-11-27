@@ -43,6 +43,8 @@ export function BoardEditor({ boardId }: { boardId: string }) {
   const [pick, setPick] = useState<Pick | null>(null);
   const router = useRouter();
   const history = useRef<BoardElement[][]>([]);
+  /** Undone states, newest last; any new change clears it, as in every editor. */
+  const future = useRef<BoardElement[][]>([]);
   const gesture = useRef<Gesture | null>(null);
   const latest = useRef({ elements, updatedAt });
   useEffect(() => { latest.current = { elements, updatedAt }; });
@@ -87,11 +89,12 @@ export function BoardEditor({ boardId }: { boardId: string }) {
   }, [dirty, elements, updatedAt, readOnly, conflict, call, t]);
 
   const commit = useCallback((next: BoardElement[], remember = true) => {
-    if (remember) history.current = [...history.current.slice(-49), latest.current.elements];
+    if (remember) { history.current = [...history.current.slice(-49), latest.current.elements]; future.current = []; }
     setElements(attachArrows(next)); setDirty(true);
   }, []);
   const patch = (id: string, change: Partial<BoardElement>) => setElements((list) => attachArrows(list.map((item) => (item.id === id ? { ...item, ...change } : item))));
-  const undo = useCallback(() => { const previous = history.current.pop(); if (previous) { setElements(previous); setDirty(true); setSelected(null); } }, []);
+  const undo = useCallback(() => { const previous = history.current.pop(); if (previous) { future.current = [...future.current.slice(-49), latest.current.elements]; setElements(previous); setDirty(true); setSelected(null); } }, []);
+  const redo = useCallback(() => { const next = future.current.pop(); if (next) { history.current = [...history.current.slice(-49), latest.current.elements]; setElements(next); setDirty(true); setSelected(null); } }, []);
   const remove = useCallback(() => { if (selected) { commit(latest.current.elements.filter((item) => item.id !== selected)); setSelected(null); } }, [selected, commit]);
 
   useEffect(() => {
@@ -99,7 +102,8 @@ export function BoardEditor({ boardId }: { boardId: string }) {
       if (event.key === 'Escape' && pick) { setPick(null); document.querySelector<HTMLElement>('.board-tools [data-tool="card"]')?.focus(); return; }
       if (editing || readOnly || (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName))) return;
       if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); remove(); }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); undo(); }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
+      if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
       if (event.key === 'Escape') { setTool('select'); setSelected(null); }
       // Keyboard alternative to dragging: arrows move the selected element, Enter edits its text.
       const target = selected ? latest.current.elements.find((item) => item.id === selected) : undefined;
@@ -112,7 +116,7 @@ export function BoardEditor({ boardId }: { boardId: string }) {
       } else if (event.key === 'Enter' && enterEdits(event, target.id) && target.type !== 'arrow' && target.type !== 'pen' && target.type !== 'card') { event.preventDefault(); returnFocus.current = target.id; setEditing(target.id); }
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
-  }, [editing, readOnly, remove, undo, pick, selected, commit]);
+  }, [editing, readOnly, remove, undo, redo, pick, selected, commit]);
 
   const point = (event: { clientX: number; clientY: number }): [number, number] => {
     const rect = svg.current!.getBoundingClientRect(); return toWorld(view, event.clientX - rect.left, event.clientY - rect.top);
@@ -136,7 +140,7 @@ export function BoardEditor({ boardId }: { boardId: string }) {
       const id = uid();
       const startShape = latest.current.elements.find((item) => item.id === target?.dataset.id && item.type !== 'arrow' && item.type !== 'pen');
       const element: BoardElement = tool === 'pen' ? { id, type: 'pen', x: px, y: py, w: 0, h: 0, color, points: [[px, py]] } : { id, type: 'arrow', x: px, y: py, w: 0, h: 0, color, ...(startShape ? { from: startShape.id } : {}) };
-      history.current = [...history.current.slice(-49), latest.current.elements];
+      history.current = [...history.current.slice(-49), latest.current.elements]; future.current = [];
       setElements((list) => [...list, element]); gesture.current = { kind: 'draw', id, px, py };
     } else {
       const size = defaults[tool]; const id = uid();
@@ -172,7 +176,7 @@ export function BoardEditor({ boardId }: { boardId: string }) {
       }
       if (drawn?.type === 'pen') { const xs = drawn.points!.map((p) => p[0]); const ys = drawn.points!.map((p) => p[1]); patch(g.id, { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }); }
       setSelected(g.id);
-    } else history.current = [...history.current.slice(-49), latest.current.elements.map((item) => (item.id === g.id ? g.orig : item))];
+    } else { history.current = [...history.current.slice(-49), latest.current.elements.map((item) => (item.id === g.id ? g.orig : item))]; future.current = []; }
     setDirty(true);
   }
 
@@ -224,7 +228,8 @@ export function BoardEditor({ boardId }: { boardId: string }) {
       <span className="board-sep" />
       {colorNames.map((name) => <button key={name} className="board-swatch" type="button" aria-label={t('wbe.colour', { name: t(`wbe.c.${name}` as Key) })} aria-pressed={color === name} style={{ background: palette[name].fill, borderColor: palette[name].line }} onClick={() => { setColor(name); if (selected) { commit(latest.current.elements.map((item) => (item.id === selected ? { ...item, color: name } : item))); } }} />)}
       <span className="board-sep" />
-      <button type="button" onClick={undo}>{t('wbe.undo')}</button>
+      <button type="button" onClick={undo} title={t('wbe.undoKeys')}>{t('wbe.undo')}</button>
+      <button type="button" onClick={redo} title={t('wbe.redoKeys')}>{t('wbe.redo')}</button>
       <button type="button" onClick={remove} disabled={!selected}>{t('wbe.delete')}</button>
       {select?.type === 'card' && select.entity && <Link className="board-open" href={`${entityPaths[select.entity.type].href}/${select.entity.id}`}>{t(`wbe.open.${select.entity.type}` as Key)} ↗</Link>}
       <span className="board-sep" />
@@ -233,7 +238,7 @@ export function BoardEditor({ boardId }: { boardId: string }) {
       <button type="button" onClick={() => setView((current) => zoomAt(current, 400, 250, 1.2))} aria-label={t('wbe.zoomIn')}>+</button>
     </div>}
     {conflict && <div className="board-conflict" role="alert"><span>{t('wbe.conflict')}</span>
-      <button type="button" onClick={() => { setElements(conflict.content.elements); setUpdatedAt(conflict.updatedAt); setConflict(null); setDirty(false); history.current = []; }}>{t('wbe.loadTheirs')}</button>
+      <button type="button" onClick={() => { setElements(conflict.content.elements); setUpdatedAt(conflict.updatedAt); setConflict(null); setDirty(false); history.current = []; future.current = []; }}>{t('wbe.loadTheirs')}</button>
       <button type="button" onClick={() => { setUpdatedAt(conflict.updatedAt); setConflict(null); }}>{t('wbe.keepMine')}</button></div>}
     {pick && <div className="board-picker" role="dialog" aria-label={t('wbe.pickTitle')}>
       <div role="group" aria-label={t('wbe.pickWhat')}>{(Object.keys(entityPaths) as EntityType[]).map((type) => <button type="button" key={type} aria-pressed={pick.type === type} onClick={() => void openPicker(type)}>{t(`wbe.ents.${type}` as Key)}</button>)}</div>

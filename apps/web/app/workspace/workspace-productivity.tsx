@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { groupUpdates, type Update } from './inbox-groups';
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type RefObject } from 'react';
 import Link from 'next/link';
 import { useT } from '../i18n';
 import type { Key } from '../i18n/en';
@@ -91,7 +91,42 @@ function useWorkspaceProductivity() {
     finally { setSavingId(''); }
   }, [reload, request, workspace.id]);
 
-  return { tasks, projects, loading, savingId, error, updateStatus };
+  /** Creates a task from the quick-add row. A project is optional: a task can live on its own in My Tasks. */
+  const createTask = useCallback(async (fields: { title: string; dueAt: string | null; projectId: string | null }) => {
+    setError('');
+    const created = await request(`/workspaces/${workspace.id}/tasks`, { method: 'POST', body: JSON.stringify({ title: fields.title, ...(fields.dueAt ? { dueAt: fields.dueAt } : {}), ...(fields.projectId ? { projectId: fields.projectId } : {}) }) }) as TaskRecord;
+    await reload();
+    return created;
+  }, [reload, request, workspace.id]);
+
+  return { tasks, projects, loading, savingId, error, updateStatus, createTask };
+}
+
+/** One line to add a task: type, optionally pick a due date or project, press Enter. Focus stays put so several can be added in a row. */
+function QuickAddTask({ projects, onCreate, inputRef }: { projects: ProjectRecord[]; onCreate: (fields: { title: string; dueAt: string | null; projectId: string | null }) => Promise<TaskRecord>; inputRef: RefObject<HTMLInputElement | null> }) {
+  const t = useT();
+  const [title, setTitle] = useState(''); const [due, setDue] = useState(''); const [projectId, setProjectId] = useState('');
+  const [busy, setBusy] = useState(false); const [notice, setNotice] = useState(''); const [problem, setProblem] = useState('');
+  const sending = useRef(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault(); const clean = title.trim(); if (!clean || sending.current) return;
+    sending.current = true; setBusy(true); setProblem(''); setNotice('');
+    try {
+      await onCreate({ title: clean, dueAt: due ? `${due}T12:00:00.000Z` : null, projectId: projectId || null });
+      setTitle(''); setDue(''); setNotice(t('tasks.add.done', { title: clean })); inputRef.current?.focus();
+    } catch (reason) { setProblem(reason instanceof Error ? reason.message : t('tasks.add.failed')); }
+    finally { sending.current = false; setBusy(false); }
+  }
+  return <form className="task-quickadd" onSubmit={(event) => void submit(event)} aria-label={t('tasks.add.label')}>
+    <Icon name="plus" size={18} />
+    <label className="visually-hidden" htmlFor="quick-add-task">{t('tasks.add.label')}</label>
+    <input ref={inputRef} id="quick-add-task" className="task-quickadd__title" value={title} maxLength={200} placeholder={t('tasks.add.placeholder')} onChange={(event) => setTitle(event.target.value)} />
+    <label className="task-quickadd__field"><span className="visually-hidden">{t('tasks.add.due')}</span><input type="date" value={due} onChange={(event) => setDue(event.target.value)} aria-label={t('tasks.add.due')} /></label>
+    <label className="task-quickadd__field"><span className="visually-hidden">{t('tasks.add.project')}</span><select value={projectId} onChange={(event) => setProjectId(event.target.value)} aria-label={t('tasks.add.project')}><option value="">{t('tasks.add.noProject')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+    <button type="submit" className="rd-btn rd-btn--small" disabled={!title.trim() || busy} aria-busy={busy}>{busy ? t('tasks.add.adding') : t('tasks.add.submit')}</button>
+    <p className="task-quickadd__status" role="status">{problem ? '' : notice}</p>
+    {problem && <p className="task-quickadd__problem" role="alert">{problem}</p>}
+  </form>;
 }
 
 const labelColours = ['#d9776a', '#7fa36f', '#7c78c8', '#d9a24f', '#5f9bc4', '#b07aa6'];
@@ -103,7 +138,12 @@ type TaskGroupBy = 'DUE' | 'PROJECT' | 'PRIORITY' | 'STATUS';
 export function MyTasksWorkspace() {
   const t = useT();
   const { user } = useWorkspaceSession();
-  const { tasks, projects, loading, savingId, error, updateStatus } = useWorkspaceProductivity();
+  const { tasks, projects, loading, savingId, error, updateStatus, createTask } = useWorkspaceProductivity();
+  const quickAdd = useRef<HTMLInputElement>(null);
+  // Completing a task from the list hides it at once, so say so and offer to bring it back.
+  const [justDone, setJustDone] = useState<{ id: string; title: string } | null>(null);
+  useEffect(() => { if (!justDone) return; const timer = window.setTimeout(() => setJustDone(null), 8000); return () => window.clearTimeout(timer); }, [justDone]);
+  const toggleDone = (task: TaskRecord, done: boolean) => { void updateStatus(task.id, done ? 'COMPLETED' : 'TODO'); setJustDone(done && filter === 'OPEN' ? { id: task.id, title: task.title } : null); };
   const [filter, setFilter] = useState('OPEN');
   const [tab, setTab] = useState<'ALL' | 'MINE'>('ALL');
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
@@ -184,6 +224,8 @@ export function MyTasksWorkspace() {
                 </div>
               </div>
             </div>
+            <QuickAddTask projects={projects} onCreate={createTask} inputRef={quickAdd} />
+            <p className="task-undo" role="status">{justDone && <>{t('tasks.doneNotice', { title: justDone.title })} <button type="button" onClick={() => { void updateStatus(justDone.id, 'TODO'); setJustDone(null); }}>{t('tasks.undo')}</button></>}</p>
             <div className="rd-filterbar">
               <label className="rd-inline">{t('tasks.f.status')}<select className="rd-select" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="OPEN">{t('tasks.f.open')}</option><option value="ALL">{t('tasks.f.all')}</option><option value="COMPLETED">{t('tasks.f.completed')}</option></select></label>
               <label className="rd-inline">{t('tasks.f.project')}<select className="rd-select" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}><option value="">{t('tasks.allProjects')}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
@@ -192,13 +234,13 @@ export function MyTasksWorkspace() {
               <div className="rd-search rd-filterbar__search"><Icon name="search" size={18} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('tasks.search')} aria-label={t('tasks.search')} /></div>
             </div>
             {loading ? <p className="productivity-message">{t('tasks.loading')}</p> : visibleTasks.length === 0 ? (
-              <EmptyState art="check" title={filter === 'COMPLETED' ? t('tasks.emptyDone') : t('tasks.emptyClear')} text={filter === 'COMPLETED' ? t('tasks.emptyDoneHint') : t('tasks.emptyClearHint')}><Link className="rd-btn rd-btn--soft" href="/workspace/projects">{t('tasks.openProjects')} <span aria-hidden="true">→</span></Link></EmptyState>
+              <EmptyState art="check" title={filter === 'COMPLETED' ? t('tasks.emptyDone') : t('tasks.emptyClear')} text={filter === 'COMPLETED' ? t('tasks.emptyDoneHint') : t('tasks.emptyClearHint')}><button type="button" className="rd-btn rd-btn--soft" onClick={() => quickAdd.current?.focus()}>{t('tasks.add.label')}</button><Link className="rd-btn rd-btn--soft" href="/workspace/projects">{t('tasks.openProjects')} <span aria-hidden="true">→</span></Link></EmptyState>
             ) : (
               <div className="rd-groups">{groups.map((group) => <section key={group.key} className={`rd-group${collapsedGroups.includes(group.key) ? ' is-collapsed' : ''}`}><h3><button type="button" className="rd-group__toggle" aria-expanded={!collapsedGroups.includes(group.key)} onClick={() => setCollapsedGroups((current) => (current.includes(group.key) ? current.filter((key) => key !== group.key) : [...current, group.key]))}><Icon name="chevron" size={18} />{group.title}<span>{group.items.length}</span></button></h3>
                 {!collapsedGroups.includes(group.key) && group.items.map((task) => <article className={`rd-taskrow${dayOf(task) && dayOf(task)! < todayKey && task.status !== 'COMPLETED' ? ' is-overdue' : ''}${task.status === 'COMPLETED' ? ' is-done' : ''}`} key={task.id}>
-                  <input type="checkbox" className="rd-check" checked={task.status === 'COMPLETED'} disabled={savingId === task.id} aria-label={t('tasks.markDone', { title: task.title })} onChange={(event) => void updateStatus(task.id, event.target.checked ? 'COMPLETED' : 'TODO')} />
+                  <input type="checkbox" className="rd-check" checked={task.status === 'COMPLETED'} disabled={savingId === task.id} aria-label={t('tasks.markDone', { title: task.title })} onChange={(event) => toggleDone(task, event.target.checked)} />
                   <div className="rd-taskrow__main"><h4><Link href={`/workspace/tasks/${task.id}`}>{task.title}</Link><TaskBadges task={task} /></h4><TaskLabels labels={task.labels} compact />{task.events.length > 0 && <small>{task.events.length === 1 ? t('tasks.scheduled') : t('tasks.events', { n: task.events.length })}</small>}</div>
-                  {task.project ? <Link className="rd-projectpill" href="/workspace/projects"><Icon name="layers" size={15} />{task.project.name}</Link> : <span />}
+                  {task.project ? <Link className="rd-projectpill" href={`/workspace/projects/${task.project.id}`}><Icon name="layers" size={15} />{task.project.name}</Link> : <span />}
                   <Pill tone={priorityTone(task.priority)}><i className="rd-dot" />{t(`prio.${task.priority.toLowerCase()}` as Key).replace(/^./, (c) => c.toLocaleUpperCase())}</Pill>
                   <span className="rd-due">{task.dueAt ? <time dateTime={task.dueAt}><Icon name="calendar" size={16} />{dayOf(task) === todayKey ? t('tasks.gr.today') : dateOf(task.dueAt)}</time> : <span className="rd-due--none">—</span>}</span>
                   <details className="rd-menu"><summary className="rd-iconbtn" aria-label={t('tasks.rowActions', { title: task.title })}><Icon name="more" size={20} /></summary>
@@ -217,7 +259,7 @@ export function MyTasksWorkspace() {
             {labelCounts.length === 0 ? <p className="rd-rail__note">{t('tasks.noLabels')}</p> : <ul className="rd-labellist">{labelCounts.map(({ label, count }) => <li key={label}><button type="button" aria-pressed={labelFilter === label} className={labelFilter === label ? 'is-active' : ''} onClick={() => setSelectedLabel(labelFilter === label ? '' : label)}><i style={{ background: labelColour(label) }} />{label}<small>{count}</small></button></li>)}</ul>}
           </Panel>
           <Panel icon="bolt" title={t('tasks.quick')} id="quick" className="rd-rail__card">
-            <div className="rd-quick"><Link className="rd-btn rd-btn--soft" href="/workspace/projects"><Icon name="plus" size={18} />{t('tasks.q.new')}</Link><Link className="rd-btn rd-btn--soft" href="/workspace/calendar"><Icon name="calendar" size={18} />{t('tasks.q.schedule')}</Link><Link className="rd-btn rd-btn--soft" href="/workspace/projects"><Icon name="arrow" size={18} />{t('tasks.q.template')}</Link></div>
+            <div className="rd-quick"><button type="button" className="rd-btn rd-btn--soft" onClick={() => { quickAdd.current?.focus(); quickAdd.current?.scrollIntoView({ block: 'center' }); }}><Icon name="plus" size={18} />{t('tasks.q.new')}</button><Link className="rd-btn rd-btn--soft" href="/workspace/calendar"><Icon name="calendar" size={18} />{t('tasks.q.schedule')}</Link><Link className="rd-btn rd-btn--soft" href="/workspace/projects"><Icon name="arrow" size={18} />{t('tasks.q.template')}</Link></div>
           </Panel>
         </aside>
       </div>

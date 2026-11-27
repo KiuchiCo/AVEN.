@@ -30,7 +30,7 @@ export default function OverviewTab() {
   return <div className="pw-stack">
     <Panel className="pw-summary">
       <div className="pw-summary__text">
-        <p className="pw-summary__desc">{project.description || t('ph.fallbackDesc')}</p>
+        {project.description ? <p className="pw-summary__desc">{project.description}</p> : <p className="pw-summary__desc pw-summary__desc--empty">{t('ph.noDesc')}</p>}
         <dl className="pw-facts">
           <div><dt>{t('pw.owner')}</dt><dd>{project.owner.displayName}</dd></div>
           <div><dt>{t('pj.startDate')}</dt><dd>{formatDate(project.startAt, t('ph.noDateSet'))}</dd></div>

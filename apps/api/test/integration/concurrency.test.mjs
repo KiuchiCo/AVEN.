@@ -49,4 +49,13 @@ describe('two people editing at once', { skip }, () => {
     }
     assert.equal((await t.call('ann', 'GET', `${ws()}/documents/${doc.id}`)).body.content, 'd');
   });
+  test('the calendar form can save a one-off event it opened for editing (it always sends recurrenceTimeZone: null)', async () => {
+    const made = (await t.call('ann', 'POST', `${ws()}/events`, { title: 'One-off', startsAt: '2027-03-01T09:00:00Z', endsAt: '2027-03-01T10:00:00Z', recurrence: null, recurrenceTimeZone: null })).body;
+    const form = { baseUpdatedAt: made.updatedAt, title: 'One-off moved', startsAt: '2027-03-02T11:00:00Z', endsAt: '2027-03-02T12:00:00Z', description: null, location: null, type: 'MEETING', isAllDay: false, recurrence: null, recurrenceInterval: 1, recurrenceUntil: null, recurrenceTimeZone: null };
+    const saved = await t.call('ann', 'PATCH', `${ws()}/events/${made.id}`, form);
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(saved.body.title, 'One-off moved'); assert.equal(saved.body.startsAt, '2027-03-02T11:00:00.000Z');
+    const series = await t.call('ann', 'PATCH', `${ws()}/events/${made.id}`, { ...form, baseUpdatedAt: saved.body.updatedAt, recurrence: 'WEEKLY', recurrenceUntil: '2027-04-01T00:00:00Z', recurrenceTimeZone: null });
+    assert.equal(series.status, 400, 'a series still needs a time zone');
+  });
 });

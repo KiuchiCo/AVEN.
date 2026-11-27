@@ -1337,7 +1337,8 @@ export class ProductivityService {
     if ('recurrence' in body) data.recurrence = recurrenceField(body.recurrence);
     if ('recurrenceInterval' in body) data.recurrenceInterval = recurrenceIntervalField(body.recurrenceInterval);
     if ('recurrenceUntil' in body) data.recurrenceUntil = dateField(body.recurrenceUntil, 'Repeat until');
-    if ('recurrenceTimeZone' in body) data.recurrenceTimeZone = timeZoneField(body.recurrenceTimeZone);
+    // null means "not a series" (the calendar form always sends the field); validateRecurrence below still requires a zone for a series.
+    if ('recurrenceTimeZone' in body) data.recurrenceTimeZone = body.recurrenceTimeZone === null || body.recurrenceTimeZone === '' ? null : timeZoneField(body.recurrenceTimeZone);
     if ('recurrence' in body && !body.recurrence) { data.recurrenceInterval = 1; data.recurrenceUntil = null; data.recurrenceTimeZone = null; }
     if ('taskId' in body) {
       data.taskId = optionalUuid(body.taskId, 'Task');

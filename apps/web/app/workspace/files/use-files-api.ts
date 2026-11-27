@@ -65,9 +65,15 @@ export function useFilesApi() {
   }, [fetchBlob]);
 
   const preview = useCallback(async (file: Pick<FileRecord, 'id'>) => {
-    const url = URL.createObjectURL(await fetchBlob(file.id, { inline: true }));
-    window.open(url, '_blank', 'noopener');
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    // The tab opens during the click itself: opened after the download, Safari (iPhone and iPad too) treats it as a pop-up and blocks it.
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
+    try {
+      const url = URL.createObjectURL(await fetchBlob(file.id, { inline: true }));
+      if (tab) tab.location.href = url;
+      else { const anchor = document.createElement('a'); anchor.href = url; anchor.download = ''; anchor.click(); } // pop-ups blocked: save it instead of leaving AVEN
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (reason) { tab?.close(); throw reason; }
   }, [fetchBlob]);
 
   return { call, upload, download, preview, fetchBlob, workspaceId: workspace.id, role: workspace.role };

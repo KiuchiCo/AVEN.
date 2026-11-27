@@ -29,6 +29,7 @@ export function MessagesWorkspace() {
   const { download } = useFilesApi();
   const readOnly = workspace.role === 'GUEST';
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [channelsLoaded, setChannelsLoaded] = useState(false); // until then, never say there are no channels
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -60,7 +61,7 @@ export function MessagesWorkspace() {
   }, [getToken, workspace.id]);
 
   const fail = (reason: unknown) => setError(reason instanceof Error ? reason.message : 'Something went wrong.');
-  const loadChannels = useCallback(() => call<Channel[]>('').then((list) => { setChannels(list); setActiveId((current) => current ?? list.find((item) => item.kind === 'CHANNEL')?.id ?? list[0]?.id ?? null); }).catch(fail), [call]);
+  const loadChannels = useCallback(() => call<Channel[]>('').then((list) => { setChannels(list); setActiveId((current) => current ?? list.find((item) => item.kind === 'CHANNEL')?.id ?? list[0]?.id ?? null); }).catch(fail).finally(() => setChannelsLoaded(true)), [call]);
   const loadMessages = useCallback((id: string) => call<{ messages: Message[]; hasMore: boolean }>(`/${id}/messages`).then((page) => { if (active.current === id) { setMessages(page.messages); setHasMore(page.hasMore); } }).catch(fail), [call]);
   const loadThread = useCallback((channelId: string, rootId: string) => call<{ root: Message; replies: Message[] }>(`/${channelId}/messages/${rootId}/replies`).then((data) => { if (openThread.current === rootId) setThread(data); }).catch(fail), [call]);
 
@@ -204,11 +205,11 @@ export function MessagesWorkspace() {
     <div className="msgs-message__main">
       <header><strong>{message.author.displayName}</strong><time dateTime={message.createdAt}>{when(message.createdAt)}</time>{message.editedAt && !message.deletedAt && <small>{t('msg.edited')}</small>}
         {!message.deletedAt && editing?.id !== message.id && !readOnly && (message.author.id === user.id || canModerate) && <span className="msgs-message__tools">
-          {!inThread && <button type="button" className="rd-iconbtn" aria-label={t('msg.reply')} onClick={() => openReplies(message)}><Icon name="chat" size={16} /></button>}
-          {message.author.id === user.id && <button type="button" className="rd-iconbtn" aria-label={t('msg.edit')} onClick={() => setEditing({ id: message.id, body: message.body })}><Icon name="edit" size={16} /></button>}
-          <button type="button" className="rd-iconbtn" aria-label={t('msg.delete')} onClick={() => void remove(message)}><Icon name="trash" size={16} /></button></span>}
+          {!inThread && <button type="button" className="rd-iconbtn" aria-label={t('msg.reply')} title={t('msg.reply')} onClick={() => openReplies(message)}><Icon name="chat" size={16} /></button>}
+          {message.author.id === user.id && <button type="button" className="rd-iconbtn" aria-label={t('msg.edit')} title={t('msg.edit')} onClick={() => setEditing({ id: message.id, body: message.body })}><Icon name="edit" size={16} /></button>}
+          <button type="button" className="rd-iconbtn" aria-label={t('msg.delete')} title={t('msg.delete')} onClick={() => void remove(message)}><Icon name="trash" size={16} /></button></span>}
       </header>
-      {message.deletedAt ? <p className="chat-deleted">{t('msg.deleted')}</p> : editing?.id === message.id ? <div className="msgs-edit"><textarea value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} aria-label={t('msg.editLabel')} /><div><button type="button" className="rd-btn" onClick={() => void saveEdit()} disabled={!editing.body.trim()}>{t('msg.save')}</button><button type="button" className="rd-btn rd-btn--soft" onClick={() => setEditing(null)}>{t('msg.cancel')}</button></div></div> : <>
+      {message.deletedAt ? <p className="chat-deleted">{t('msg.deleted')}</p> : editing?.id === message.id ? <div className="msgs-edit"><textarea autoFocus value={editing.body} maxLength={4000} onChange={(event) => setEditing({ id: message.id, body: event.target.value })} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setEditing(null); } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && editing.body.trim()) { event.preventDefault(); void saveEdit(); } }} aria-label={t('msg.editLabel')} /><div><button type="button" className="rd-btn" onClick={() => void saveEdit()} disabled={!editing.body.trim()}>{t('msg.save')}</button><button type="button" className="rd-btn rd-btn--soft" onClick={() => setEditing(null)}>{t('msg.cancel')}</button></div></div> : <>
         {message.body && <p><MessageBody body={message.body} names={names} /></p>}
         {message.files?.length > 0 && <div className="msgs-files">{message.files.map(fileCard)}</div>}</>}
       {!message.deletedAt && !inThread && (message.replyCount > 0 || !readOnly) && <button type="button" className="msgs-replies" onClick={() => openReplies(message)}>{message.replyCount ? <><strong>{t(message.replyCount === 1 ? 'msg.replyOne' : 'msg.replyMany', { n: message.replyCount })}</strong><span className={`msgs-replies__chev${thread?.root.id === message.id ? ' is-open' : ''}`}><Icon name="chevron" size={14} /></span></> : <span>{t('msg.reply')}</span>}</button>}
@@ -238,6 +239,7 @@ export function MessagesWorkspace() {
       {error && <p className="workspace-settings-status" role="alert">{error}</p>}
       {hits ? <div className="msgs-results"><header><h2>{t('msg.results')}</h2><button type="button" className="rd-btn rd-btn--soft" onClick={() => { setHits(null); setQuery(''); }}>{t('msg.close')}</button></header>
         {hits.length === 0 ? <EmptyState art="search" compact title={t('msg.noMatch', { q: query })} /> : <ul>{hits.map((hit) => <li key={hit.id}><button type="button" onClick={() => jump(hit)}><small>{label(hit.channel)} · {hit.author.displayName} · {new Date(hit.createdAt).toLocaleDateString()}</small><span>{hit.body.replace(/@\[([^\]]*)\]\([^)]*\)/g, '@$1').slice(0, 200)}</span></button></li>)}</ul>}</div>
+      : !channel && !channelsLoaded ? <p className="productivity-message" role="status">{t('wbe.loading')}</p>
       : !channel ? <EmptyState art="chat" title={channels.length ? t('msg.choose') : readOnly ? t('msg.noChannels') : t('msg.createFirst')} />
       : <>
         <header className="msgs-head">
@@ -256,7 +258,7 @@ export function MessagesWorkspace() {
           : <div className="msgs-thread" aria-live="polite">
             {hasMore && <button type="button" className="rd-btn rd-btn--soft msgs-older" onClick={() => void older()}>{t('msg.older')}</button>}
             {visible.length === 0 && <p className="rd-muted msgs-hello">{t('msg.conversationEmpty')}</p>}
-            {visible.map((message, index) => <div key={message.id}>{(index === 0 || dayOf(visible[index - 1].createdAt) !== dayOf(message.createdAt)) && <p className="msgs-day"><span>{dayTitle(message.createdAt)}</span></p>}{renderMessage(message, false)}{thread?.root.id === message.id && <div className="msgs-inline" aria-label={t('msg.thread')}>{thread.replies.map((reply) => renderMessage(reply, true))}{!readOnly && <Composer label={t('msg.reply')} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds, thread.root.id)} compact />}</div>}</div>)}
+            {visible.map((message, index) => <div key={message.id}>{(index === 0 || dayOf(visible[index - 1].createdAt) !== dayOf(message.createdAt)) && <p className="msgs-day"><span>{dayTitle(message.createdAt)}</span></p>}{renderMessage(message, false)}{thread?.root.id === message.id && <div className="msgs-inline" aria-label={t('msg.thread')}>{thread.replies.map((reply) => renderMessage(reply, true))}{!readOnly && <Composer key={thread.root.id} label={t('msg.reply')} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds, thread.root.id)} compact autoFocus />}</div>}</div>)}
             <div ref={endRef} />
           </div>}
           {readOnly ? <p className="workspace-settings-note">{t('msg.guests')}</p> : <Composer label={t('msg.composerLabel', { name: label(channel) })} members={members} selfId={user.id} onSend={(body, fileIds) => post(body, fileIds)} />}

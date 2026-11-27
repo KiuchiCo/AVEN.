@@ -102,6 +102,8 @@ export function DatabasesWorkspace() {
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Creating a database is occasional, so its form opens on request (or by itself when there is none yet) and the records get the page.
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [pageInfo, setPageInfo] = useState({ key: '', page: 1 });
   const [pageSize, setPageSize] = useState(50);
@@ -328,7 +330,7 @@ export function DatabasesWorkspace() {
       }) as WorkspaceDatabase;
       formElement.reset();
       await reload();
-      setSelectedId(created.id);
+      setSelectedId(created.id); setCreating(false);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create the database.'); }
     finally { setBusy(false); }
   }
@@ -345,6 +347,17 @@ export function DatabasesWorkspace() {
       await reload();
       setNotice(t('db.detailsSaved'));
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the database.'); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteDatabase() {
+    if (!selected || !window.confirm(t('db.deleteConfirm', { name: selected.name, n: selected.recordTotal }))) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await request(`/workspaces/${workspace.id}/databases/${selected.id}`, { method: 'DELETE' });
+      await reload();
+      setNotice(t('db.deleted', { name: selected.name }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('db.deleteFailed')); }
     finally { setBusy(false); }
   }
 
@@ -545,23 +558,24 @@ export function DatabasesWorkspace() {
         <label className="database-picker">{t('db.workspaceDb')}<span><span className="rd-tile rd-tile--sm"><Icon name="database" size={18} /></span><select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setEditingId(''); setSelectedViewId(''); setFilterQuery(''); setSortPropertyId('updatedAt'); setSortDirection('desc'); setViewLayout('TABLE'); setGroupByPropertyId('status'); setCalendarDatePropertyId(''); setChartPropertyId(''); }} disabled={!databases.length}>
           {databases.length ? databases.map((database) => <option key={database.id} value={database.id}>{database.name}</option>) : <option value="">{t('db.createFirst')}</option>}
         </select></span></label>
-        <span>{selected ? t(selected.recordTotal === 1 ? 'db.recordOne' : 'db.recordMany', { n: selected.recordTotal }) : t('db.startSimple')}</span>
+        <button type="button" className="rd-btn rd-btn--soft" aria-expanded={creating || databases.length === 0} aria-controls="database-create-form" onClick={() => setCreating((open) => !open)} disabled={!loading && databases.length === 0}><Icon name="plus" size={18} />{t('db.newDatabase')}</button>
       </div>
 
       <div className="database-layout">
-        <form className="productivity-form database-create" onSubmit={createDatabase}>
+        {(creating || (!loading && databases.length === 0)) && <form id="database-create-form" className="productivity-form database-create" onSubmit={createDatabase}>
           <h2><span className="rd-tile rd-tile--lg"><Icon name="database" size={26} /></span>{t('db.createTitle')}</h2>
           <p>{t('db.createHint')}</p>
           <label>{t('db.name')}<input name="name" required maxLength={160} placeholder={t('db.namePh')} /></label>
           <label>{t('db.description')} <span>{t('doc.optional')}</span><textarea name="description" rows={4} maxLength={500} placeholder={t('db.descPh')} /></label>
-          <button type="submit" disabled={busy}>{busy ? t('set.saving') : <><Icon name="plus" size={18} />{t('db.create')}</>}</button>
-        </form>
+          <div className="database-create__actions"><button type="submit" disabled={busy}>{busy ? t('set.saving') : <><Icon name="plus" size={18} />{t('db.create')}</>}</button>{databases.length > 0 && <button type="button" className="rd-btn rd-btn--soft" onClick={() => setCreating(false)}>{t('db.cancel')}</button>}</div>
+        </form>}
 
         <section className="database-table-card" aria-label={selected?.name ?? t('db.recordsAria')}>
           {loading ? <p className="productivity-message">{t('db.loading')}</p> : !selected ? (
             <div className="database-empty"><span aria-hidden="true">▤</span><h2>{t('db.firstTable')}</h2><p>{t('db.firstTableHint')}</p></div>
           ) : <>
             <div className="database-table-heading"><div><p className="workspace-eyebrow">{t('db.viewWord', { layout: t(`db.l.${viewLayout.toLowerCase()}` as Key).toLocaleUpperCase() })}</p><h2>{selected.name} <FavouriteStar kind="DATABASE" entityId={selected.id} /></h2><p>{selected.description || t('db.defaultDesc')}</p></div><span className="rd-pill rd-pill--sand">{t('db.recordMany', { n: selected.records.length })}</span></div>
+            <details className="database-settings" key={`settings-${selected.id}`} open={selected.records.length === 0 && selected.properties.length <= 2}><summary><Icon name="sliders" size={16} />{t('db.settings')}</summary>
             <form className="database-add-property" key={`${selected.id}:${selected.name}:${selected.description ?? ''}`} onSubmit={updateDatabase} aria-label={t('db.editDetails')}>
               <label>{t('db.name')}<input name="databaseName" required maxLength={160} defaultValue={selected.name} /></label>
               <label>{t('db.description')}<input name="databaseDescription" maxLength={500} defaultValue={selected.description ?? ''} /></label>
@@ -579,6 +593,8 @@ export function DatabasesWorkspace() {
               </>)}
               <button type="submit" disabled={busy}>{busy ? t('db.adding') : <><Icon name="plus" size={16} />{t('db.addProperty')}</>}</button>
             </form>
+            <div className="database-settings__danger"><p>{t('db.deleteHint')}</p><button type="button" className="rd-btn rd-btn--soft database-delete" disabled={busy} onClick={() => void deleteDatabase()}><Icon name="trash" size={16} />{t('db.deleteDb')}</button></div>
+            </details>
             <div className="database-view-controls" aria-label={t('db.viewControls')}>
               <label>{t('db.savedView')}<select value={selectedViewId} onChange={(event) => applyView(event.target.value)}><option value="">{t('db.customView')}</option>{selected.views.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select></label>
               <label>{t('db.layout')}<select value={viewLayout} onChange={(event) => { const layout = event.target.value as ViewLayout; setViewLayout(layout); setSelectedViewId(''); if ((layout === 'CALENDAR' || layout === 'TIMELINE') && !calendarDatePropertyId) setCalendarDatePropertyId(dateProperties[0]?.id ?? ''); }}><option value="TABLE">{t('db.l.table')}</option><option value="LIST">{t('db.l.list')}</option><option value="BOARD" disabled={!statusProperties.length}>{t('db.l.board')}</option><option value="GALLERY">{t('db.l.gallery')}</option><option value="CALENDAR" disabled={!dateProperties.length}>{t('db.l.calendar')}</option><option value="TIMELINE" disabled={!dateProperties.length}>{t('db.l.timeline')}</option><option value="CHART" disabled={!statusProperties.length}>{t('db.l.chart')}</option></select></label>
@@ -605,6 +621,7 @@ export function DatabasesWorkspace() {
               {!selected.properties.some((property) => property.type === 'relation') && <p className="database-gallery-empty">{t('db.addRelationHint')}</p>}
             </section>}
             {notice && <p className="database-import-notice" role="status">{notice}</p>}
+            <details className="database-settings database-tools"><summary><Icon name="download" size={16} />{t('db.tools')}</summary>
             <form className="database-csv-tools" onSubmit={importCsv}>
               <span className="rd-tile"><Icon name="upload" size={20} /></span><label>{t('db.importCsv')}<input name="csvFile" type="file" accept=".csv,text/csv" required /></label>
               <button type="submit" disabled={busy}>{busy ? t('db.importing') : <><Icon name="download" size={16} />{t('db.importRows')}</>}</button>
@@ -616,6 +633,7 @@ export function DatabasesWorkspace() {
               <button type="submit" disabled={busy || ((viewLayout === 'BOARD' || viewLayout === 'CHART') && !boardPropertyId) || ((viewLayout === 'CALENDAR' || viewLayout === 'TIMELINE') && !calendarPropertyId)}>{busy ? t('set.saving') : t('db.saveViewBtn')}</button>
               {selectedView && <button type="button" disabled={busy} onClick={() => void deleteSelectedView()}>{t('db.deleteView', { name: selectedView.name })}</button>}
             </form>
+            </details>
             {viewLayout === 'LIST' ? <div className="database-list" aria-label={t('db.recordList')}>
               {visibleRecords.map((record) => {
                 const titleProperty = selected.properties.find((property) => property.id === 'name') ?? selected.properties.find((property) => property.type === 'text') ?? selected.properties[0];

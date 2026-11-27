@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useWorkspaceSession } from '../workspace-shell';
 import { safeRedirectUrl } from './safe-redirect';
 import { connectionError, apiFetch } from '../connection-error';
+import { formatBytes } from '../files/types';
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
 
 type Limits = Record<'projects' | 'databases' | 'workflows' | 'customAgents' | 'members' | 'storageBytes' | 'aiCredits', number | null>;
@@ -16,7 +17,7 @@ type Overview = {
 };
 
 const labels: Record<keyof Limits, string> = { projects: 'Projects', databases: 'Databases', workflows: 'Workflows', customAgents: 'Custom agents', members: 'Members (guests are free)', storageBytes: 'Storage', aiCredits: 'AI credits this month' };
-const bytes = (n: number) => n >= 1024 ** 3 ? `${+(n / 1024 ** 3).toFixed(1)} GB` : `${Math.round(n / 1024 ** 2)} MB`;
+const bytes = formatBytes; // the Files page's formatter, so both screens report the same usage (no "0 MB" for 484 KB)
 const money = (cents: number, currency = 'aud') => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.toUpperCase() }).format(cents / 100);
 
 export function BillingCard() {

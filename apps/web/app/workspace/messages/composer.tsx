@@ -9,7 +9,7 @@ import { Icon } from '../home-icons';
 type Member = { userId: string; displayName: string };
 
 /** A message box with an @mention picker. Enter sends, Shift+Enter adds a line. */
-export function Composer({ label, members, selfId, onSend, compact = false }: { label: string; members: Member[]; selfId: string; onSend: (body: string, fileIds: string[]) => Promise<void>; compact?: boolean }) {
+export function Composer({ label, members, selfId, onSend, compact = false, autoFocus = false }: { label: string; members: Member[]; selfId: string; onSend: (body: string, fileIds: string[]) => Promise<void>; compact?: boolean; /** Opening a reply thread puts the cursor in its box. */ autoFocus?: boolean }) {
   const t = useT();
   const [draft, setDraft] = useState('');
   const [caret, setCaret] = useState(0);
@@ -52,7 +52,7 @@ export function Composer({ label, members, selfId, onSend, compact = false }: { 
     <label className="visually-hidden" htmlFor={`composer-${label}`}>{label}</label>
     <div className="chat-compose__field">
       {options.length > 0 && <ul className="chat-mentions" role="listbox" aria-label={t('msg.mention')}>{options.map((member, index) => <li key={member.userId} role="option" aria-selected={index === pick}><button type="button" onMouseDown={(event) => { event.preventDefault(); choose(member); }}>{member.displayName}</button></li>)}</ul>}
-      <textarea ref={field} id={`composer-${label}`} value={draft} maxLength={4000} rows={compact ? 2 : 2} placeholder={t('msg.placeholder', { label })}
+      <textarea ref={field} autoFocus={autoFocus} id={`composer-${label}`} value={draft} maxLength={4000} rows={compact ? 2 : 2} placeholder={t('msg.placeholder', { label })}
         onChange={(event) => { setDraft(event.target.value); setCaret(event.target.selectionStart); setPick(0); }} onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
         onKeyDown={(event) => {
           if (options.length) {

@@ -45,6 +45,15 @@ export class DatabasesController {
     return this.databases.update(identity, workspaceId, databaseId, body);
   }
 
+  @Delete(':databaseId')
+  remove(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('workspaceId', new ParseUUIDPipe()) workspaceId: string,
+    @Param('databaseId', new ParseUUIDPipe()) databaseId: string,
+  ) {
+    return this.databases.remove(identity, workspaceId, databaseId);
+  }
+
   @Post(':databaseId/records/bulk-update')
   bulkUpdateRecords(
     @CurrentIdentity() identity: AuthenticatedIdentity,

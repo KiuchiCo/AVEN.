@@ -183,3 +183,104 @@ html { scrollbar-gutter: stable; } /* a page with a scrollbar and one without mu
 .board-outline button { width: 100%; min-height: var(--ds-control-h-sm); padding: 6px 10px; border: 1px solid transparent; border-radius: var(--ds-radius-sm); background: transparent; color: var(--m-ink); font: 500 13px var(--aven-interface-font); text-align: left; cursor: pointer; }
 .board-outline button:hover, .board-outline button[aria-pressed='true'] { background: var(--m-chip); border-color: var(--m-border); }
 .board-outline p { margin: 10px 2px 0; color: var(--m-muted); font-size: 12px; line-height: 1.45; }
+/* My Tasks quick add: one line, the title takes the room, date and project stay compact. */
+.task-quickadd { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto auto; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 4px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-field); color: var(--m-muted); }
+.task-quickadd:focus-within { border-color: var(--m-focus); }
+.workspace-content .task-quickadd__title { min-height: 36px; border: 0; background: transparent; color: var(--m-ink); font-size: var(--ds-fs-body); outline: none; padding: 0 4px; }
+.workspace-content .task-quickadd__title:focus-visible { outline: none; }
+.workspace-content .task-quickadd__field :is(input, select) { min-height: 36px; padding: 0 8px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-card-solid); color: var(--m-ink); font-size: var(--ds-fs-small); }
+.task-quickadd__status, .task-quickadd__problem { grid-column: 2 / -1; margin: 0; font-size: var(--ds-fs-small); }
+.task-quickadd__status:empty { display: none; }
+.task-quickadd__status { color: var(--m-muted); } .task-quickadd__problem { color: var(--m-bad-ink); }
+@media (max-width: 760px) {
+  .task-quickadd { grid-template-columns: 20px minmax(0, 1fr) auto; }
+  .task-quickadd__field { grid-column: 2 / span 1; } .task-quickadd__field + .task-quickadd__field { grid-column: 2 / -1; }
+  .task-quickadd > button { grid-column: 3; grid-row: 1; }
+  .workspace-content .task-quickadd__field :is(input, select) { width: 100%; min-height: 40px; }
+}
+.workspace-content .task-quickadd__field select { max-width: 170px; }
+@media (max-width: 760px) { .workspace-content .task-quickadd__field select { max-width: none; } }
+.task-undo { margin: 0 0 6px; padding: 0 4px; color: var(--m-muted); font-size: var(--ds-fs-small); }
+.task-undo:empty { display: none; }
+.task-undo button { margin-left: 6px; padding: 2px 8px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-card-solid); color: var(--m-ink); font: 600 12.5px var(--aven-interface-font); cursor: pointer; }
+
+/* ---- Task page: the work on the left, its properties on the right (one column, properties first, when narrow) ---- */
+.task-detail { container-type: inline-size; }
+.task-detail__grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: var(--ds-gap); }
+.task-detail__side { grid-column: 2; grid-row: 1; display: grid; gap: 12px; min-width: 0; }
+.task-detail__main { grid-column: 1; grid-row: 1; display: grid; gap: var(--ds-gap); min-width: 0; }
+.task-detail__main > * { margin: 0; }
+.task-detail__side > * { margin: 0; }
+.task-detail__side .task-quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-lg); background: var(--m-card); }
+.task-detail__side .task-quick-actions label { min-width: 0; }
+.task-detail__side .task-quick-actions :is(select, input) { width: 100%; min-width: 0; box-sizing: border-box; }
+.task-detail__side .task-detail__summary { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px 16px; border-radius: var(--ds-radius-lg); background: var(--m-card); border-color: var(--m-border); }
+.task-detail__side .task-detail__summary .task-detail__labels { grid-column: 1 / -1; }
+.task-detail__side :is(.task-repeat, .attachments-panel, .task-dependencies-panel, .task-followers-panel) { padding: 16px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-lg); background: var(--m-card); box-shadow: none; }
+.task-detail__side .task-repeat form { display: grid; gap: 10px; }
+.task-detail__danger { display: flex; flex-wrap: wrap; gap: 8px; }
+.task-detail__danger button { min-height: var(--ds-control-h-sm); padding: 0 14px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-sm); background: var(--m-card-solid); color: var(--m-ink); font: 600 13px var(--aven-interface-font); cursor: pointer; }
+.task-detail__danger button:hover:not(:disabled) { background: var(--m-chip); }
+.task-detail__danger .task-quick-actions__delete { color: var(--m-bad-ink); }
+.task-detail__danger .task-quick-actions__delete:hover:not(:disabled) { border-color: var(--m-bad-ink); background: var(--m-bad-bg); }
+.task-detail__collab { display: grid; gap: 10px; min-width: 0; }
+@container (max-width: 900px) {
+  .task-detail__grid { grid-template-columns: minmax(0, 1fr); }
+  .task-detail__side, .task-detail__main { grid-column: 1; grid-row: auto; }
+  .task-detail__side { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+  .task-detail__side .task-quick-actions { grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); }
+}
+.task-detail__nodesc { font-style: italic; }
+.pw-summary__desc--empty { color: var(--m-muted); font-style: italic; }
+
+/* Databases: the records get the page; creating a database and editing its schema open on request. */
+.workspace-content .database-layout { grid-template-columns: minmax(0, 1fr); gap: var(--ds-gap); }
+.database-create { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px 18px; align-items: end; }
+.database-create > h2, .database-create > p { grid-column: 1 / -1; }
+.database-create textarea { min-height: 42px !important; }
+.database-create__actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 760px) { .database-create { grid-template-columns: minmax(0, 1fr); } }
+.database-settings { margin: 4px 0 14px; border: 1px solid var(--m-border); border-radius: var(--ds-radius-md); background: var(--m-card); }
+.database-settings > summary { display: flex; align-items: center; gap: 8px; min-height: var(--ds-control-h-sm); padding: 8px 14px; color: var(--m-ink); font: 600 13.5px var(--aven-interface-font); cursor: pointer; list-style: none; }
+.database-settings > summary::-webkit-details-marker { display: none; }
+.database-settings > summary::after { content: ''; width: 7px; height: 7px; margin-left: auto; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform var(--ds-dur) var(--ds-ease); }
+.database-settings[open] > summary::after { transform: rotate(-135deg); }
+.database-settings > form { margin: 0 14px 14px; }
+.database-toolbar { align-items: end; }
+.database-tools > form { margin: 0 14px 14px; }
+.database-settings__danger { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 14px 14px; padding-top: 12px; border-top: 1px solid var(--m-border); }
+.database-settings__danger p { margin: 0; color: var(--m-muted); font-size: var(--ds-fs-small); }
+.database-delete { color: var(--m-bad-ink) !important; }
+.database-delete:hover:not(:disabled) { background: var(--m-bad-bg) !important; border-color: var(--m-bad-ink) !important; }
+/* Phones: the four task filters sit two by two instead of one per row, so the list starts on the first screen. */
+@media (max-width: 760px) {
+  .task-list-page .rd-filterbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+  .task-list-page .rd-filterbar > label { display: grid; gap: 4px; min-width: 0; font-size: 12px; }
+  .task-list-page .rd-filterbar > label select, .task-list-page .rd-filterbar .task-label-filter select { width: 100%; min-width: 0; }
+  .task-list-page .rd-filterbar > :not(label):not(.rd-filterbar__search) { min-width: 0; }
+  .task-list-page .rd-filterbar__search { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .task-list-page .rd-filterbar .rd-filterbar__search { width: 100%; max-width: none; margin: 0; justify-self: stretch; }
+  .task-list-page .rd-filterbar select { font-size: var(--ds-fs-small); }
+}
+/* One column: status, priority and dates first, then the work itself, then the secondary panels (repeat, files, links, followers). */
+@container (max-width: 900px) {
+  .task-detail__grid { gap: 12px; }
+  .task-detail__side, .task-detail__main { display: contents; }
+  .task-detail__side > .task-quick-actions { order: 1; }
+  .task-detail__side > .task-detail__summary { order: 2; }
+  .task-detail__main > * { order: 3; }
+  .task-detail__side > * { order: 4; }
+  .task-detail__side > .task-detail__danger { order: 5; }
+}
+/* iPad portrait and small laptops: the month gets the full width and the event form follows it (the day's "Add event" button jumps there). */
+@media (max-width: 1100px) {
+  .calendar-page .connected-layout { grid-template-columns: minmax(0, 1fr); }
+  .calendar-page .connected-layout > .connected-compose { order: 1; }
+}
+/* Touch: checkboxes and small text buttons get a finger-sized target (WCAG 2.5.8). Zero-specificity, so deliberate sizes still win. */
+@media (pointer: coarse), (max-width: 760px) {
+  .workspace-content :where(input[type='checkbox'], input[type='radio']) { width: 24px; height: 24px; flex: 0 0 auto; }
+  .workspace-content :where(button) { min-height: 32px; }
+}

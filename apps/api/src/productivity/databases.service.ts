@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { EntitlementsService } from '../billing/entitlements.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { AuthenticatedIdentity } from '../auth/auth.types.js';
@@ -105,6 +105,24 @@ export class DatabasesService {
     const result = await this.prisma.workspaceDatabase.updateMany({ where: { id: databaseId, workspaceId }, data });
     if (result.count !== 1) throw new NotFoundException('Database not found in this workspace.');
     return this.prisma.workspaceDatabase.findFirstOrThrow({ where: { id: databaseId, workspaceId } });
+  }
+
+  /**
+   * Deletes a database with its records and views (they cascade). Refused while another database has a relation property
+   * pointing here, because that property would be left pointing at nothing; the message names them so they can be removed first.
+   */
+  async remove(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string) {
+    const actorId = await this.requireMembership(identity, workspaceId, true);
+    const database = await this.prisma.workspaceDatabase.findFirst({ where: { id: databaseId, workspaceId }, select: { id: true, name: true } });
+    if (!database) throw new NotFoundException('Database not found in this workspace.');
+    const others = await this.prisma.workspaceDatabase.findMany({ where: { workspaceId, id: { not: databaseId } }, select: { name: true, properties: true } });
+    const dependants = others.flatMap((other) => propertyList(other.properties).filter((property) => property.relatedDatabaseId === databaseId).map((property) => `“${property.name}” in ${other.name}`));
+    if (dependants.length) throw new ConflictException(`Other databases link to this one: ${dependants.slice(0, 5).join(', ')}. Remove those relation properties first.`);
+    await this.prisma.$transaction([
+      this.prisma.workspaceActivity.create({ data: { workspaceId, actorId, entityType: 'DATABASE', entityId: database.id, message: `deleted database “${database.name}”` } }),
+      this.prisma.workspaceDatabase.delete({ where: { id: database.id } }),
+    ]);
+    return { id: database.id, deleted: true };
   }
 
   async createRecord(identity: AuthenticatedIdentity, workspaceId: string, databaseId: string, input: unknown) {
